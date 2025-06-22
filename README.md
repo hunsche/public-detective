@@ -72,7 +72,7 @@ To get a local copy up and running, follow these simple steps.
 [Add examples here of how to run your script]
 ```python
 # Example of how to run the main analysis script
-python source/job/__init__.py
+python source/cli --start-date 2025-01-01 --end-date 2025-01-02
 ````
 
 ## Contributing

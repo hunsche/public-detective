@@ -16,36 +16,17 @@
             "justMyCode": true
         },
         {
-            "name": "FastAPI",
+            "name": "CLI",
             "type": "debugpy",
             "request": "launch",
-            "program": "${workspaceFolder}/.venv/bin/fastapi",
+            "program": "${workspaceFolder}/source/cli",
             "console": "integratedTerminal",
             "args": [
-                "dev",
-                "${workspaceFolder}/source/api/main.py",
-                "--host",
-                "0.0.0.0"
+                // "start-date",
+                // "end-date"
             ],
             "justMyCode": true,
             "envFile": "${workspaceFolder}/.env"
-        },
-        {
-            "name": "Worker",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": true
-        },
-        {
-            "name": "Python Debugger: Current File",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${file}",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env"
-        },
+        }
     ]
 }
