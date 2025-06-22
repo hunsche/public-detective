@@ -1,0 +1,14 @@
+[flake8]
+max-line-length = 120
+max-complexity = 12
+per-file-ignores =
+    migrations/*.py:E501
+    source/*.py:C901
+exclude =
+    .git,
+    .venv,
+    .vscode,
+    __pycache__,
+    old,
+    build,
+    dist,

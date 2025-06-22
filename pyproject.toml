@@ -1,0 +1,122 @@
+[tool.poetry]
+name = "public_detective"
+version = "1.0.0"
+description = "An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement."
+authors = ["Matheus Hunsche <mthunsche@gmail.com>"]
+readme = "README.md"
+
+packages = [
+    { include = "api", from = "source" },
+    { include = "job", from = "source" },
+]
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+fastapi = "^0.111.0"
+pydantic = "^2.7.1"
+python-dotenv = "^1.0.1"
+pydantic-extra-types = "^2.7.0"
+aiohttp = "^3.9.5"
+aioresponses = "^0.7.6"
+pytest-asyncio = "^0.24.0"
+
+[tool.poetry.group.tests.dependencies]
+pytest-dotenv = "^0.5.2"
+pytest = "^8.1.1"
+pytest-mock = "^3.12.0"
+pytest-xdist = "^3.5.0"
+faker = "^25.2.0"
+requests = "^2.32.2"
+
+[tool.poetry.group.development.dependencies]
+black = "^24.4.2"
+bandit = "^1.8.0"
+flake8 = "^7.1.1"
+isort = "^5.13.2"
+mypy = "^1.10.1"
+coverage = "^7.5.1"
+vulture = "^2.11"
+pre-commit = "^3.7.1"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["source/"]
+omit = [
+    ".venv/**",
+    "*__init__*",
+]
+
+[tool.coverage.report]
+fail_under = 60
+ignore_errors = true
+
+[tool.black]
+line-length = 90
+target-version = ['py312']
+exclude = '''
+/(
+    \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.venv
+  | _build
+  | buck-out
+  | build
+  | dist
+
+  # protobuf
+  | app/customer/adapters/proto
+  | app/provider/adapters/proto
+
+  # The following are specific to Black, you probably don't want those.
+  | blib2to3
+  | tests/data
+  | profiling
+)/
+'''
+
+[tool.isort]
+profile = "black"
+line_length = 90
+multi_line_output = 3
+skip = '''
+  .eggs,\
+  .git,\
+  .hg,\
+  .mypy_cache,\
+  .venv,\
+  _build,\
+  buck-out,\
+  build,\
+  dist,\
+  app/customer/adapters/proto,\
+  app/provider/adapters/proto,\
+  blib2to3,\
+  tests/data,\
+  profiling
+'''
+
+[tool.mypy]
+warn_return_any = true
+warn_unused_configs = true
+warn_unused_ignores = true
+ignore_missing_imports = true
+explicit_package_bases = true
+namespace_packages = true
+plugins = "pydantic.mypy"
+exclude = '/.venv/'
+
+[tool.vulture]
+min_confidence = 100
+ignore_names = ["cls", "self"]
+
+[tool.bandit]
+skips = ["B101", "B601", "B311"]
