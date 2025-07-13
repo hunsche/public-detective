@@ -1,0 +1,63 @@
+services:
+  postgres:
+    image: postgres:16.9
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: public_detective
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  pubsub:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:477.0.0
+    command: >
+      gcloud beta emulators pubsub start
+      --project=public-detective
+      --host-port=0.0.0.0:8085
+      --data-dir=/data
+    ports:
+      - "8085:8085"
+    volumes:
+      - pubsub_data:/data
+
+  gcs:
+    image: fsouza/fake-gcs-server:latest
+    command: -scheme http -host 0.0.0.0 -port 8086
+    ports:
+      - "8086:8086"
+    volumes:
+      - gcs_data:/data
+
+  gcp-init:
+    image: gcr.io/google.com/cloudsdktool/cloud-sdk:477.0.0
+    command: >
+      sh -c "
+        echo 'Configuring gcloud CLI...';
+        gcloud config set auth/disable_credentials true;
+        gcloud config set project public-detective;
+        gcloud config set api_endpoint_overrides/pubsub http://pubsub:8085/ --quiet;
+        gcloud config set api_endpoint_overrides/storage http://gcs:8086/storage/v1/ --quiet;
+
+        echo 'Waiting for Pub/Sub emulator to be ready...';
+        until gcloud pubsub topics list > /dev/null 2>&1; do
+          echo -n '.' && sleep 1;
+        done;
+
+        echo '----------';
+        echo 'Pub/Sub is ready. Creating topic...';
+        gcloud pubsub topics create procurements || echo 'Topic procurements already exists.';
+
+        echo '----------';
+        echo 'Initialization complete.';
+      "
+    depends_on:
+      - pubsub
+      - gcs
+
+
+volumes:
+  postgres_data:
+  pubsub_data:
+  gcs_data:
