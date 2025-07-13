@@ -33,8 +33,7 @@ The system follows a clear pipeline:
 
 ## Tech Stack
 
-- **Backend:** Python
-- **Frontend:** Next.js
+- **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
 
 ## Getting Started
@@ -66,6 +65,14 @@ To get a local copy up and running, follow these simple steps.
     # Create a .env file and add your keys
     # AI_API_KEY='YOUR_API_KEY'
     ```
+
+### Running Migrations
+
+Use Alembic to manage database migrations.
+
+```bash
+poetry run alembic upgrade head
+```
 
 ## Usage
 

@@ -1,4 +1,3 @@
-import click
-from cli.controllers.analysis import analysis_controller
+from cli.commands import analysis_command
 
-analysis_controller()
+analysis_command()
