@@ -1,3 +1,4 @@
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -35,10 +36,30 @@ class Config(BaseSettings):
         # 2927408,  # Salvador
     ]
 
-    GCP_PROJECT_ID: str = "public-detective"
-    GCP_PUBSUB_TOPIC_ID_PROCUREMENT: str = "procurements"
+    GCP_PROJECT: str = "public-detective"
+    GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
+    GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
+    GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_PUBSUB_HOST: str | None = None
     GCP_GEMINI_API_KEY: str
+
+    @model_validator(mode="after")
+    def set_derived_pubsub_names(self) -> "Config":
+        """
+        Dynamically sets the DLQ topic and subscription names
+        after the initial values have been loaded.
+        """
+        if self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS is None:
+            self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS = (
+                f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-dlq"
+            )
+
+        if self.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS is None:
+            self.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = (
+                f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-subscription"
+            )
+
+        return self
 
 
 class ConfigProvider:

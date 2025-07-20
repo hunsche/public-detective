@@ -27,6 +27,15 @@
             ],
             "justMyCode": true,
             "envFile": "${workspaceFolder}/.env"
+        },
+        {
+            "name": "Worker",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "${workspaceFolder}/source/worker",
+            "console": "integratedTerminal",
+            "justMyCode": true,
+            "envFile": "${workspaceFolder}/.env"
         }
     ]
 }

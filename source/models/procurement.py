@@ -1,9 +1,9 @@
 # source/job/models/procurement_model.py
 
 from datetime import datetime
-from enum import Enum, IntEnum
+from enum import IntEnum, StrEnum
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
 class ProcurementModality(IntEnum):
@@ -44,7 +44,7 @@ class ProcurementStatus(IntEnum):
     SUSPENDED = 4
 
 
-class Power(str, Enum):
+class Power(StrEnum):
     """Enum for government powers (poderes)."""
 
     EXECUTIVE = "E"
@@ -53,7 +53,7 @@ class Power(str, Enum):
     NOT_APPLICABLE = "N"
 
 
-class Sphere(str, Enum):
+class Sphere(StrEnum):
     """Enum for government spheres (esferas)."""
 
     FEDERAL = "F"
@@ -65,6 +65,7 @@ class Sphere(str, Enum):
 class LegalSupport(BaseModel):
     """Represents the legal support for the procurement."""
 
+    model_config = ConfigDict(extra="allow")
     code: int = Field(..., alias="codigo")
     name: str = Field(..., alias="nome")
     description: str = Field(..., alias="descricao")
@@ -78,6 +79,8 @@ class GovernmentEntity(BaseModel):
     power: Power = Field(..., alias="poderId")
     sphere: Sphere = Field(..., alias="esferaId")
 
+    model_config = ConfigDict(extra="allow")
+
 
 class EntityUnit(BaseModel):
     """Represents the administrative unit of an entity."""
@@ -88,6 +91,8 @@ class EntityUnit(BaseModel):
     state_acronym: str = Field(..., alias="ufSigla")
     municipality_name: str = Field(..., alias="municipioNome")
     ibge_code: str = Field(..., alias="codigoIbge")
+
+    model_config = ConfigDict(extra="allow")
 
 
 class Procurement(BaseModel):
@@ -120,6 +125,8 @@ class Procurement(BaseModel):
     in_person_justification: str | None = Field(None, alias="justificativaPresencial")
     budgetary_sources: list = Field([], alias="fontesOrcamentarias")
 
+    model_config = ConfigDict(extra="allow")
+
 
 class ProcurementListResponse(BaseModel):
     """Represents the top-level structure of the procurement list API response."""
@@ -128,3 +135,5 @@ class ProcurementListResponse(BaseModel):
     total_records: int = Field(..., alias="totalRegistros")
     total_pages: int = Field(..., alias="totalPaginas")
     page_number: int = Field(..., alias="numeroPagina")
+
+    model_config = ConfigDict(extra="allow")

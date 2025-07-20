@@ -121,7 +121,7 @@ class ProcurementRepository:
             message_bytes = message_json.encode()
 
             message_id = PubSubProvider.publish(
-                self.config.GCP_PUBSUB_TOPIC_ID_PROCUREMENT, message_bytes
+                self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes
             )
 
             self.logger.debug(
