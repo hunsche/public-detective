@@ -46,8 +46,17 @@ services:
         done;
 
         echo '----------';
-        echo 'Pub/Sub is ready. Creating topic...';
+        echo 'Pub/Sub is ready.';
+
+        echo 'Creating main topic...';
         gcloud pubsub topics create procurements || echo 'Topic procurements already exists.';
+
+        echo 'Creating dead-letter topic...';
+        gcloud pubsub topics create procurements-dlq || echo 'Topic procurements-dlq already exists.';
+
+        echo '----------';
+        echo 'Creating main subscription with DLQ policy...';
+        gcloud pubsub subscriptions create procurements-subscription --topic procurements --dead-letter-topic procurements-dlq --max-delivery-attempts 5 || echo 'Subscription procurements-subscription already exists.';
 
         echo '----------';
         echo 'Initialization complete.';
