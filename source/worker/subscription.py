@@ -1,42 +1,40 @@
 import json
 
 from google.api_core.exceptions import GoogleAPICallError
+from models.procurement import Procurement
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
+from services.analysis import AnalysisService
 
 
 class Subscription:
-    """
-    A class to encapsulate a Google Cloud Pub/Sub worker.
+    """Encapsulates a Google Cloud Pub/Sub worker that consumes, validates,
+    and processes procurement messages.
 
-    This worker connects to a specified subscription, listens for messages,
-    validates them using a Pydantic model, processes them, and handles
-    acknowledgements (ack/nack) for robust message processing.
+    Its primary role is to act as the entry point for asynchronous processing,
+    delegating the core business logic to the AnalysisService and ensuring
+    robust message lifecycle management.
     """
 
     config: Config
     logger: Logger
+    analysis_service: AnalysisService
 
-    def __init__(self):
-        """
-        Initializes the WorkerSubscription.
-
-        Loads configuration from environment variables, creates a Pub/Sub
-        subscriber client, and builds the full subscription path.
-        """
-        self.config = ConfigProvider().get_config()
+    def __init__(self) -> None:
+        """Initializes the worker, loading configuration and services."""
+        self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
+        self.analysis_service = AnalysisService()
 
     def _message_callback(self, message: Message) -> None:
-        """
-        Handles incoming messages from the Pub/Sub subscription.
+        """Handles an incoming message from the Pub/Sub subscription.
 
-        This callback function is executed for each message received. It
-        manages the full lifecycle of a message: decoding, validation,
-        processing, and final acknowledgement (ack) or negative
-        acknowledgement (nack).
+        This callback decodes, validates, and passes the message to the
+        analysis service. It manages the message's ack/nack lifecycle to ensure
+        that messages are re-processed in case of transient failures and sent
+        to a dead-letter queue for persistent errors.
 
         Args:
             message: The message object received from Pub/Sub.
@@ -46,50 +44,58 @@ class Subscription:
 
         try:
             data_str = message.data.decode()
-            self.logger.info(f"Raw data: {data_str}")
+            procurement = Procurement.model_validate_json(data_str)
+            self.logger.info(
+                f"Validated message for procurement {procurement.pncp_control_number}."
+            )
+
+            self.analysis_service.analyze_procurement(procurement)
 
             self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
             message.ack()
 
-        except json.JSONDecodeError:
+        except (json.JSONDecodeError, ValidationError) as e:
             self.logger.error(
-                f"Failed to decode JSON for message {message_id}. Sending NACK."
+                f"Validation/decoding failed for message {message_id}. Sending NACK.",
+                exc_info=True,
             )
             message.nack()
-
-        except ValidationError as e:
-            self.logger.error(
-                f"Pydantic validation failed for message {message_id}. Sending NACK."
-            )
-            self.logger.error(e)
-            message.nack()
-
         except Exception as e:
             self.logger.error(
-                f"An unexpected error occurred while processing message {message_id}: {e}",
+                f"Unexpected error processing message {message_id}: {e}",
                 exc_info=True,
             )
             message.nack()
 
     def run(self) -> None:
-        """
-        Starts the worker's message consumption loop.
+        """Starts the worker's message consumption loop.
 
-        This method initiates the subscription to the Pub/Sub topic and blocks
-        indefinitely, waiting for messages. It handles graceful shutdown
-        on KeyboardInterrupt (Ctrl+C).
+        This method initiates the subscription to the configured Pub/Sub topic
+        and blocks indefinitely, waiting for messages. It includes logic for
+        graceful shutdown upon interruption.
         """
+        subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
+        if not subscription_name:
+            self.logger.critical("Subscription name not configured. Worker cannot start.")
+            return
+
         streaming_pull_future = PubSubProvider.subscribe(
-            self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS, self._message_callback
+            subscription_name, self._message_callback
         )
+        self.logger.info("Worker is now running and waiting for messages...")
 
         try:
-            streaming_pull_future.result()
+            streaming_pull_future.result(
+                timeout=None
+            )  # TO DO: Remove timeout=None to allow graceful shutdown
         except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
-            self.logger.error(f"Worker shutdown due to: {e}")
+            self.logger.warning(f"Shutdown requested: {type(e).__name__}")
+        except Exception as e:
+            self.logger.critical(
+                f"A critical error stopped the worker: {e}", exc_info=True
+            )
+        finally:
+            self.logger.info("Stopping worker...")
             streaming_pull_future.cancel()
             streaming_pull_future.result()
-            self.logger.info("Worker has been stopped gracefully.")
-        except Exception as e:
-            self.logger.error(f"A critical error stopped the worker: {e}", exc_info=True)
-            streaming_pull_future.cancel()
+            self.logger.info("Worker has stopped gracefully.")

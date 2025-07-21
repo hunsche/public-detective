@@ -21,10 +21,11 @@ class Config(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "public_detective"
+
     PNCP_PUBLIC_QUERY_API_URL: str = "https://pncp.gov.br/api/consulta/v1/"
     PNCP_INTEGRATION_API_URL: str = "https://pncp.gov.br/api/pncp/v1/"
-    LOG_LEVEL: str = "INFO"
 
+    LOG_LEVEL: str = "INFO"
     TARGET_IBGE_CODES: list[int] = [
         3550308,  # São Paulo
         # 3304557,  # Rio de Janeiro
@@ -37,11 +38,14 @@ class Config(BaseSettings):
     ]
 
     GCP_PROJECT: str = "public-detective"
+    GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
+    GCP_GCS_HOST: str | None = None
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_PUBSUB_HOST: str | None = None
     GCP_GEMINI_API_KEY: str
+    GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
 
     @model_validator(mode="after")
     def set_derived_pubsub_names(self) -> "Config":
