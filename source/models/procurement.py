@@ -6,6 +6,56 @@ from enum import IntEnum, StrEnum
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
 
+class DocumentType(IntEnum):
+    """Enumeration for document types (Tipo de Documento).
+
+    Defines the various types of documents that can be attached to a
+    procurement, as detailed in section 5.12 of the PNCP integration manual.
+    """
+
+    DIRECT_CONTRACTING_NOTICE = 1
+    BID_NOTICE = 2
+    CONTRACT_DRAFT = 3
+    TERMS_OF_REFERENCE = 4
+    PRELIMINARY_DRAFT = 5
+    BASIC_PROJECT = 6
+    PRELIMINARY_TECHNICAL_STUDY = 7
+    EXECUTIVE_PROJECT = 8
+    RISK_MATRIX = 9
+    DFD = 10
+    PRICE_REGISTRATION_ACT = 11
+    CONTRACT = 12
+    TERMINATION_AGREEMENT = 13
+    ADDITIVE_AGREEMENT = 14
+    AMENDMENT_AGREEMENT = 15
+    OTHER_DOCUMENTS = 16
+    PAYMENT_COMMITMENT_NOTE = 17
+
+
+class ProcurementDocument(BaseModel):
+    """Represents a single document associated with a procurement.
+
+    This model is based on the response structure of the
+    /orgaos/{cnpj}/compras/{ano}/{sequencial}/arquivos endpoint,
+    detailed in section 6.3.8 of the PNCP integration manual.
+    """
+
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
+
+    uri: HttpUrl
+    url: HttpUrl
+    document_sequence: int = Field(..., alias="sequencialDocumento")
+    publication_date: datetime = Field(..., alias="dataPublicacaoPncp")
+    cnpj: str
+    procurement_year: int = Field(..., alias="anoCompra")
+    procurement_sequence: int = Field(..., alias="sequencialCompra")
+    is_active: bool = Field(..., alias="statusAtivo")
+    title: str = Field(..., alias="titulo")
+    document_type_id: DocumentType = Field(..., alias="tipoDocumentoId")
+    document_type_name: str = Field(..., alias="tipoDocumentoNome")
+    document_type_description: str = Field(..., alias="tipoDocumentoDescricao")
+
+
 class ProcurementModality(IntEnum):
     """Enum for procurement modalities (modalidades de contratação)."""
 
@@ -65,7 +115,8 @@ class Sphere(StrEnum):
 class LegalSupport(BaseModel):
     """Represents the legal support for the procurement."""
 
-    model_config = ConfigDict(extra="allow")
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
+
     code: int = Field(..., alias="codigo")
     name: str = Field(..., alias="nome")
     description: str = Field(..., alias="descricao")
@@ -74,16 +125,18 @@ class LegalSupport(BaseModel):
 class GovernmentEntity(BaseModel):
     """Represents a government entity (órgão)."""
 
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
+
     cnpj: str
     name: str = Field(..., alias="razaoSocial")
     power: Power = Field(..., alias="poderId")
     sphere: Sphere = Field(..., alias="esferaId")
 
-    model_config = ConfigDict(extra="allow")
-
 
 class EntityUnit(BaseModel):
     """Represents the administrative unit of an entity."""
+
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
 
     state_name: str = Field(..., alias="ufNome")
     unit_code: str = Field(..., alias="codigoUnidade")
@@ -92,11 +145,11 @@ class EntityUnit(BaseModel):
     municipality_name: str = Field(..., alias="municipioNome")
     ibge_code: str = Field(..., alias="codigoIbge")
 
-    model_config = ConfigDict(extra="allow")
-
 
 class Procurement(BaseModel):
     """Represents a single procurement from the API response."""
+
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
 
     proposal_opening_date: datetime | None = Field(None, alias="dataAberturaProposta")
     proposal_closing_date: datetime | None = Field(None, alias="dataEncerramentoProposta")
@@ -125,15 +178,13 @@ class Procurement(BaseModel):
     in_person_justification: str | None = Field(None, alias="justificativaPresencial")
     budgetary_sources: list = Field([], alias="fontesOrcamentarias")
 
-    model_config = ConfigDict(extra="allow")
-
 
 class ProcurementListResponse(BaseModel):
     """Represents the top-level structure of the procurement list API response."""
+
+    model_config = ConfigDict(extra="allow", use_enum_values=True)
 
     data: list[Procurement]
     total_records: int = Field(..., alias="totalRegistros")
     total_pages: int = Field(..., alias="totalPaginas")
     page_number: int = Field(..., alias="numeroPagina")
-
-    model_config = ConfigDict(extra="allow")

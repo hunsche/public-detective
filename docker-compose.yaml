@@ -44,10 +44,15 @@ services:
         until gcloud pubsub topics list > /dev/null 2>&1; do
           echo -n '.' && sleep 1;
         done;
+        echo ' Pub/Sub is ready.';
+
+        echo 'Waiting for GCS emulator to be ready...';
+        until curl -s --fail http://gcs:8086/storage/v1/b > /dev/null 2>&1; do
+          echo -n '.' && sleep 1;
+        done;
+        echo ' GCS is ready.';
 
         echo '----------';
-        echo 'Pub/Sub is ready.';
-
         echo 'Creating main topic...';
         gcloud pubsub topics create procurements || echo 'Topic procurements already exists.';
 
@@ -57,6 +62,10 @@ services:
         echo '----------';
         echo 'Creating main subscription with DLQ policy...';
         gcloud pubsub subscriptions create procurements-subscription --topic procurements --dead-letter-topic procurements-dlq --max-delivery-attempts 5 || echo 'Subscription procurements-subscription already exists.';
+
+        echo '----------';
+        echo 'Creating GCS Bucket...';
+        gcloud storage buckets create gs://procurements || echo 'Bucket procurements already exists.';
 
         echo '----------';
         echo 'Initialization complete.';
