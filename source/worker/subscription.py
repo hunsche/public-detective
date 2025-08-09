@@ -86,7 +86,7 @@ class Subscription:
 
         try:
             streaming_pull_future.result(
-                timeout=None
+                # timeout=None
             )  # TO DO: Remove timeout=None to allow graceful shutdown
         except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")

@@ -42,8 +42,8 @@ class ProcurementDocument(BaseModel):
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
-    uri: HttpUrl
-    url: HttpUrl
+    uri: HttpUrl | str | None = None
+    url: HttpUrl | str | None = None
     document_sequence: int = Field(..., alias="sequencialDocumento")
     publication_date: datetime = Field(..., alias="dataPublicacaoPncp")
     cnpj: str
@@ -51,7 +51,7 @@ class ProcurementDocument(BaseModel):
     procurement_sequence: int = Field(..., alias="sequencialCompra")
     is_active: bool = Field(..., alias="statusAtivo")
     title: str = Field(..., alias="titulo")
-    document_type_id: DocumentType = Field(..., alias="tipoDocumentoId")
+    document_type_id: DocumentType | int = Field(..., alias="tipoDocumentoId")
     document_type_name: str = Field(..., alias="tipoDocumentoNome")
     document_type_description: str = Field(..., alias="tipoDocumentoDescricao")
 
@@ -110,6 +110,7 @@ class Sphere(StrEnum):
     STATE = "E"
     MUNICIPAL = "M"
     DISTRICT = "D"
+    NOT_APPLICABLE = "N"
 
 
 class LegalSupport(BaseModel):
@@ -129,8 +130,8 @@ class GovernmentEntity(BaseModel):
 
     cnpj: str
     name: str = Field(..., alias="razaoSocial")
-    power: Power = Field(..., alias="poderId")
-    sphere: Sphere = Field(..., alias="esferaId")
+    power: Power | str = Field(..., alias="poderId")
+    sphere: Sphere | str = Field(..., alias="esferaId")
 
 
 class EntityUnit(BaseModel):
@@ -156,7 +157,7 @@ class Procurement(BaseModel):
     additional_information: str | None = Field(None, alias="informacaoComplementar")
     process_number: str = Field(..., alias="processo")
     object_description: str = Field(..., alias="objetoCompra")
-    source_system_link: HttpUrl | None = Field(None, alias="linkSistemaOrigem")
+    source_system_link: HttpUrl | str | None = Field(None, alias="linkSistemaOrigem")
     legal_support: LegalSupport = Field(..., alias="amparoLegal")
     total_awarded_value: float | None = Field(None, alias="valorTotalHomologado")
     is_srp: bool = Field(..., alias="srp")
@@ -167,14 +168,16 @@ class Procurement(BaseModel):
     last_update_date: datetime = Field(..., alias="dataAtualizacao")
     procurement_number: str = Field(..., alias="numeroCompra")
     entity_unit: EntityUnit = Field(..., alias="unidadeOrgao")
-    modality: ProcurementModality = Field(..., alias="modalidadeId")
+    modality: ProcurementModality | int = Field(..., alias="modalidadeId")
     pncp_control_number: str = Field(..., alias="numeroControlePNCP")
     global_update_date: datetime = Field(..., alias="dataAtualizacaoGlobal")
-    dispute_method: DisputeMethod = Field(..., alias="modoDisputaId")
+    dispute_method: DisputeMethod | int = Field(..., alias="modoDisputaId")
     total_estimated_value: float | None = Field(None, alias="valorTotalEstimado")
-    procurement_status: ProcurementStatus = Field(..., alias="situacaoCompraId")
+    procurement_status: ProcurementStatus | int = Field(..., alias="situacaoCompraId")
     user_name: str = Field(..., alias="usuarioNome")
-    electronic_process_link: HttpUrl | None = Field(None, alias="linkProcessoEletronico")
+    electronic_process_link: HttpUrl | str | None = Field(
+        None, alias="linkProcessoEletronico"
+    )
     in_person_justification: str | None = Field(None, alias="justificativaPresencial")
     budgetary_sources: list = Field([], alias="fontesOrcamentarias")
 

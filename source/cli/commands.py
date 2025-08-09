@@ -32,7 +32,7 @@ def analysis_command(start_date: datetime, end_date: datetime):
         )
 
     click.echo(
-        f"Analyzing data from {start_date.strftime(DateProvider.DATE_FORMAT)} to"
+        f"Analyzing data from {start_date.strftime(DateProvider.DATE_FORMAT)} to "
         f"{end_date.strftime(DateProvider.DATE_FORMAT)}."
     )
 

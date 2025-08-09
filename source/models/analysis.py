@@ -65,3 +65,18 @@ class Analysis(BaseModel):
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
     )
+
+
+class AnalysisResult(BaseModel):
+    """Represents the complete, persistable result of a procurement analysis.
+
+    This model combines the original procurement identifier, the structured
+    output from the AI model, any warnings generated during the file
+
+    processing pipeline, and the storage URL of the artifact used for analysis.
+    """
+
+    procurement_control_number: str
+    ai_analysis: Analysis
+    gcs_document_url: str
+    warnings: List[str] = []
