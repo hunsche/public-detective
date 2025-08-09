@@ -1,7 +1,8 @@
 import io
 import json
 import time
-from typing import Generic, Type, TypeVar
+from mimetypes import guess_type
+from typing import Generic, Tuple, Type, TypeVar
 
 import google.generativeai as genai
 from google.ai.generativelanguage import File
@@ -43,10 +44,7 @@ class AiProvider(Generic[PydanticModel]):
         )
 
     def get_structured_analysis(
-        self,
-        prompt: str,
-        file_content: bytes,
-        file_display_name: str,
+        self, prompt: str, files: list[tuple[str, bytes]]
     ) -> PydanticModel:
         """
         Uploads a file, sends it with a prompt for analysis, and parses the
@@ -58,8 +56,9 @@ class AiProvider(Generic[PydanticModel]):
 
         Args:
             prompt: The instructional prompt for the AI model.
-            file_content: The raw byte content of the file to be analyzed.
-            file_display_name: A descriptive name for the uploaded file.
+            files: A list of tuples:
+                - A list of tuples with file paths and their byte content.
+                - A list of descriptive names for the uploaded files.
 
         Returns:
             An instance of the Pydantic model associated with this provider,
@@ -69,13 +68,21 @@ class AiProvider(Generic[PydanticModel]):
             ValueError: If the AI model returns a blocked, empty, or
                         unparsable response.
         """
-        uploaded_file = self._upload_file_to_gemini(file_content, file_display_name)
+        uploaded_files = []
+        for file in files:
+            file_display_name = file[0]
+            file_content = file[1]
+            self.logger.info(f"Sending request to Gemini API for '{file_display_name}'.")
+            uploaded_files.append(
+                self._upload_file_to_gemini(file_content, file_display_name)
+            )
+
+        contents = [prompt]
+        contents.extend(uploaded_files)
 
         try:
-            self.logger.info(f"Sending request to Gemini API for '{file_display_name}'.")
-
             response = self.model.generate_content(
-                [prompt, uploaded_file],
+                contents,
                 generation_config=genai.types.GenerationConfig(
                     response_schema=self.output_schema,
                     response_mime_type="application/json",
@@ -86,8 +93,9 @@ class AiProvider(Generic[PydanticModel]):
             return self._parse_and_validate_response(response)
 
         finally:
-            self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
-            genai.delete_file(uploaded_file.name)
+            for uploaded_file in uploaded_files:
+                self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
+                genai.delete_file(uploaded_file.name)
 
     def _parse_and_validate_response(
         self, response: genai.types.GenerateContentResponse
@@ -170,13 +178,7 @@ class AiProvider(Generic[PydanticModel]):
         try:
             file_stream = io.BytesIO(content)
 
-            # The mime type is determined by the file extension to handle
-            # both PDFs and ZIPs correctly.
-            mime_type = (
-                "application/zip"
-                if display_name.lower().endswith(".zip")
-                else "application/pdf"
-            )
+            mime_type = guess_type(display_name)[0]
 
             uploaded_file = genai.upload_file(
                 path=file_stream, display_name=display_name, mime_type=mime_type

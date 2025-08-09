@@ -7,6 +7,7 @@ import psycopg2
 from models.analysis import Analysis, AnalysisResult
 from models.procurement import Procurement
 from providers.ai import AiProvider
+from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from repositories.procurement import ProcurementRepository
@@ -37,6 +38,7 @@ class AnalysisService:
 
     procurement_repo: ProcurementRepository
     logger: Logger
+    config: Config
     ai_provider: AiProvider[Analysis]
     gcs_provider: GcsProvider
 
@@ -46,6 +48,7 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.ai_provider = AiProvider(Analysis)
         self.gcs_provider = GcsProvider()
+        self.config = ConfigProvider.get_config()
 
     def analyze_procurement(self, procurement: Procurement) -> None:
         """Executes the full analysis pipeline for a single procurement."""
@@ -65,38 +68,26 @@ class AnalysisService:
         files_for_ai, warnings = self._select_and_prepare_files_for_ai(all_final_files)
 
         if not files_for_ai:
-            self.logger.warning(
+            self.logger.error(
                 f"No supported files left after filtering for {control_number}. Aborting AI analysis."
             )
             return
-
-        master_zip_content = self.procurement_repo.create_zip_from_files(
-            files_for_ai, control_number
-        )
-        if not master_zip_content:
-            self.logger.error(
-                f"Failed to create master ZIP for {control_number}. Aborting AI analysis."
-            )
-            return
-
-        file_name_uuid = f"{uuid.uuid4()}.zip"
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             analysis_result = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
-                file_content=master_zip_content,
-                file_display_name=f"{control_number.replace('/', '_')}.zip",
+                files=files_for_ai,
             )
 
-            document_url = self._upload_document_to_gcs(
-                master_zip_content, file_name_uuid
-            )
+            # document_url = self._upload_document_to_gcs(
+            #     master_zip_content, file_name_uuid
+            # )
 
             final_result = AnalysisResult(
                 procurement_control_number=control_number,
                 ai_analysis=analysis_result,
-                gcs_document_url=document_url,
+                gcs_document_url="",
                 warnings=warnings,
             )
             self._persist_ai_analysis(final_result)
@@ -133,8 +124,8 @@ class AnalysisService:
         )
 
     def _select_and_prepare_files_for_ai(
-        self, all_files: List[Tuple[str, bytes]]
-    ) -> Tuple[List[Tuple[str, bytes]], List[str]]:
+        self, all_files: list[tuple[str, bytes]]
+    ) -> tuple[list[tuple[str, bytes]], list[str]]:
         """Applies business rules to filter, prioritize, and limit files for AI analysis."""
         warnings = []
 
@@ -186,7 +177,7 @@ class AnalysisService:
         return final_files, warnings
 
     def _build_analysis_prompt(
-        self, procurement: Procurement, warnings: List[str]
+        self, procurement: Procurement, warnings: list[str]
     ) -> str:
         """Constructs the prompt, including any warnings about excluded files."""
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
@@ -235,7 +226,7 @@ class AnalysisService:
         conn = None
         cursor = None
         try:
-            db_config = self.logger.config
+            db_config = self.config
             conn = psycopg2.connect(
                 dbname=db_config.POSTGRES_DB,
                 user=db_config.POSTGRES_USER,
@@ -328,7 +319,6 @@ class AnalysisService:
                 )
                 if published:
                     success_count += 1
-                    # break  # TO DO: Remove this break to process all procurements
                 else:
                     failure_count += 1
 

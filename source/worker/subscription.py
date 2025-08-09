@@ -1,4 +1,6 @@
 import json
+import threading
+from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
 from models.procurement import Procurement
@@ -18,26 +20,64 @@ class Subscription:
     robust message lifecycle management.
     """
 
+    _lock: threading.Lock | None = None
     config: Config
     logger: Logger
     analysis_service: AnalysisService
 
-    def __init__(self) -> None:
+    def __init__(self):
         """Initializes the worker, loading configuration and services."""
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
         self.analysis_service = AnalysisService()
 
-    def _message_callback(self, message: Message) -> None:
-        """Handles an incoming message from the Pub/Sub subscription.
+        if self.config.IS_DEBUG_MODE:
+            self._lock = threading.Lock()
 
-        This callback decodes, validates, and passes the message to the
-        analysis service. It manages the message's ack/nack lifecycle to ensure
-        that messages are re-processed in case of transient failures and sent
-        to a dead-letter queue for persistent errors.
+    @contextmanager
+    def _debug_context(self, message: Message):
+        """Serializes processing and extends ack deadline when in debug mode.
 
         Args:
-            message: The message object received from Pub/Sub.
+            message: The Pub/Sub message currently being processed.
+
+        Yields:
+            A context that guarantees single-message processing in debug mode.
+        """
+        assert self._lock is not None
+        with self._lock:
+            self._extend_ack_deadline(message, 600)
+            yield
+
+    def _extend_ack_deadline(self, message: Message, seconds: int):
+        """Attempts to extend the message ack deadline for safer debugging.
+
+        Args:
+            message: The Pub/Sub message to modify.
+            seconds: Number of seconds to extend the ack deadline.
+        """
+        try:
+            message.modify_ack_deadline(seconds)
+            self.logger.debug(f"Ack deadline extended by {seconds}s.")
+        except Exception:
+            self.logger.debug("Unable to extend ack deadline; continuing.")
+
+    def _debug_pause(self, prompt: str = ">> Press Enter to process...\n") -> None:
+        """Pauses execution in debug mode to allow step-by-step inspection.
+
+        Args:
+            prompt: Prompt displayed while waiting for user input.
+        """
+        try:
+            input(prompt)
+        except EOFError:
+            self.logger.debug("No TTY available; skipping pause.")
+
+    def _process_message(self, message: Message):
+        """Decodes, validates, analyzes the message, and manages ACK/NACK.
+
+        Args:
+            message: The Pub/Sub message to process.
         """
         message_id = message.message_id
         self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
@@ -49,12 +89,15 @@ class Subscription:
                 f"Validated message for procurement {procurement.pncp_control_number}."
             )
 
+            if self.config.IS_DEBUG_MODE:
+                self._debug_pause()
+
             self.analysis_service.analyze_procurement(procurement)
 
             self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
             message.ack()
 
-        except (json.JSONDecodeError, ValidationError) as e:
+        except (json.JSONDecodeError, ValidationError):
             self.logger.error(
                 f"Validation/decoding failed for message {message_id}. Sending NACK.",
                 exc_info=True,
@@ -67,7 +110,23 @@ class Subscription:
             )
             message.nack()
 
-    def run(self) -> None:
+    def _message_callback(self, message: Message):
+        """Entry-point callback invoked by Pub/Sub upon message delivery.
+
+        Applies a debug-only context (single-flight + extended deadline) and
+        delegates to the core processing function.
+
+        Args:
+            message: The Pub/Sub message received from the subscription.
+        """
+        if self.config.IS_DEBUG_MODE:
+            ctx = self._debug_context(message)
+            with ctx:
+                self._process_message(message)
+        else:
+            self._process_message(message)
+
+    def run(self):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
@@ -85,9 +144,7 @@ class Subscription:
         self.logger.info("Worker is now running and waiting for messages...")
 
         try:
-            streaming_pull_future.result(
-                # timeout=None
-            )  # TO DO: Remove timeout=None to allow graceful shutdown
+            streaming_pull_future.result(timeout=None)
         except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
