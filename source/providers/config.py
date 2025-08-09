@@ -14,6 +14,8 @@ class Config(BaseSettings):
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )
 
+    IS_DEBUG_MODE: bool = False
+
     POSTGRES_DRIVER: str = "postgresql"
     POSTGRES_ISOLATION_LEVEL: str = "AUTOCOMMIT"
     POSTGRES_HOST: str = "localhost"
