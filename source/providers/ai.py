@@ -69,11 +69,7 @@ class AiProvider(Generic[PydanticModel]):
             ValueError: If the AI model returns a blocked, empty, or
                         unparsable response.
         """
-        # uploaded_file = self._upload_file_to_gemini(file_content, file_display_name)
-
-        with open("/tmp/procurement_files/teste/edital_1.zip", "rb") as arquivo:
-            content = arquivo.read()
-            uploaded_file = self._upload_file_to_gemini(content, "edital_1.zip")
+        uploaded_file = self._upload_file_to_gemini(file_content, file_display_name)
 
         try:
             self.logger.info(f"Sending request to Gemini API for '{file_display_name}'.")
@@ -152,27 +148,42 @@ class AiProvider(Generic[PydanticModel]):
         """Uploads file content to the Gemini File API and waits for it to
         become active.
 
+        This method handles the conversion of in-memory byte content to a
+        file-like object, uploads it, and then polls the API until the file's
+        status is 'ACTIVE', ensuring it is ready for use in a generation
+        request.
+
         Args:
-            content: The raw byte content of the file.
-            display_name: The name to assign to the file in the API.
+            content: The raw byte content of the file to be uploaded.
+            display_name: The name to assign to the file in the API, which
+                          helps in identifying the artifact.
 
         Returns:
-            The file object representing the uploaded and processed file.
+            The file object representing the uploaded and successfully
+            processed file.
+
+        Raises:
+            Exception: If the file fails to become active after the upload
+                       or if any other API error occurs.
         """
         self.logger.info(f"Uploading file '{display_name}' to Gemini File API...")
         try:
             file_stream = io.BytesIO(content)
+
+            # The mime type is determined by the file extension to handle
+            # both PDFs and ZIPs correctly.
+            mime_type = (
+                "application/zip"
+                if display_name.lower().endswith(".zip")
+                else "application/pdf"
+            )
+
             uploaded_file = genai.upload_file(
-                path="/tmp/procurement_files/teste/edital_1.zip",
-                # display_name=display_name,
-                # mime_type=(
-                #     "application/pdf"
-                #     if display_name.lower().endswith(".pdf")
-                #     else "application/zip"
-                # ),
+                path=file_stream, display_name=display_name, mime_type=mime_type
             )
             self.logger.info(f"File uploaded successfully: {uploaded_file.name}")
 
+            # Actively wait for the file to be processed by the API.
             while uploaded_file.state.name == "PROCESSING":
                 time.sleep(2)
                 uploaded_file = genai.get_file(uploaded_file.name)
@@ -181,7 +192,7 @@ class AiProvider(Generic[PydanticModel]):
             if uploaded_file.state.name != "ACTIVE":
                 raise Exception(
                     f"File '{uploaded_file.name}' failed processing. "
-                    f"State: {uploaded_file.state.name}"
+                    f"Final state: {uploaded_file.state.name}"
                 )
             return uploaded_file
         except Exception as e:

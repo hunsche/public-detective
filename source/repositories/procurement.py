@@ -1,12 +1,18 @@
 import io
+import os
 import re
 import zipfile
+import tarfile
+import rarfile
+import py7zr
 from datetime import date
 from http import HTTPStatus
+from typing import List, Tuple
 from urllib.parse import urljoin
 
 import requests
 from google.api_core import exceptions
+from models.file_record import FileRecord
 from models.procurement import (
     DocumentType,
     Procurement,
@@ -22,10 +28,10 @@ from pydantic import ValidationError
 
 class ProcurementRepository:
     """Repository for fetching procurement data and related documents from the
-    PNCP API and for publishing procurement messages to a queue.
+    PNCP API, extracting file metadata, and creating aggregated ZIP archives.
 
-    It aggregates all procurement documents into a single, well-structured
-    ZIP archive for comprehensive analysis.
+    It is designed to handle multiple compression formats, including ZIP, RAR,
+    7z, and TAR archives, both at the root level and nested.
     """
 
     logger: Logger
@@ -34,140 +40,265 @@ class ProcurementRepository:
     def __init__(self) -> None:
         """Initializes the repository with a logger and configuration."""
         self.logger = LoggingProvider().get_logger()
-        self.config = ConfigProvider.get_config()
+        self.config = ConfigProvider().get_config()
 
-    def get_document_content_as_zip(self, procurement: Procurement) -> bytes | None:
-        """Finds all associated documents for a procurement, downloads them,
-        and aggregates them into a single ZIP archive in memory, with each
-        document or its extracted contents placed in a dedicated folder.
+    def process_procurement_documents(
+        self, procurement: Procurement
+    ) -> Tuple[List[FileRecord], List[Tuple[str, bytes]]]:
+        """Downloads all documents for a procurement, extracts metadata for every
+        file, and collects all final (non-archive) files.
+
+        This is the main entry point method that orchestrates all file
+        processing for a single procurement.
 
         Args:
-            procurement: The procurement object containing metadata.
+            procurement: The procurement object to process.
 
         Returns:
-            The raw byte content of the newly created ZIP archive, or None
-            if no documents could be processed.
+            A tuple containing:
+            - A list of FileRecord objects for every discovered file.
+            - A list of tuples for all final files (file_path, content).
         """
-        documents_to_process = self._get_all_documents_metadata(procurement)
-        if not documents_to_process:
-            self.logger.warning(
-                f"No active documents found for {procurement.pncp_control_number}."
+        documents_to_download = self._get_all_documents_metadata(procurement)
+        if not documents_to_download:
+            return [], []
+
+        all_records: List[FileRecord] = []
+        final_files_for_zip: List[Tuple[str, bytes]] = []
+
+        for doc in documents_to_download:
+            content = self._download_file_content(doc.url)
+            if not content:
+                continue
+
+            original_filename = self._determine_original_filename(doc.url) or doc.title
+
+            self._recursive_file_processing(
+                procurement_control_number=procurement.pncp_control_number,
+                root_document_sequence=doc.document_sequence,
+                root_document_type=doc.document_type_name,
+                root_document_is_active=doc.is_active,
+                content=content,
+                current_path=original_filename,
+                nesting_level=0,
+                record_collection=all_records,
+                file_collection=final_files_for_zip,
+            )
+
+        return all_records, final_files_for_zip
+
+    def _recursive_file_processing(
+        self,
+        procurement_control_number: str,
+        root_document_sequence: int,
+        root_document_type: str,
+        root_document_is_active: bool,
+        content: bytes,
+        current_path: str,
+        nesting_level: int,
+        record_collection: List[FileRecord],
+        file_collection: List[Tuple[str, bytes]],
+    ) -> None:
+        """Recursively processes byte content, dispatching to the correct
+        archive handler based on the file extension or content.
+
+        If the file is not a recognized archive type, it is treated as a
+        final file to be collected.
+        """
+        lower_path = current_path.lower()
+        handler = None
+
+        if lower_path.endswith(".zip"):
+            handler = self._extract_from_zip
+        elif lower_path.endswith(".rar"):
+            handler = self._extract_from_rar
+        elif lower_path.endswith(".7z"):
+            handler = self._extract_from_7z
+        # tarfile.is_tarfile can identify .tar, .tar.gz, .tgz, .tar.bz2
+        elif tarfile.is_tarfile(io.BytesIO(content)):
+            handler = self._extract_from_tar
+
+        if handler:
+            try:
+                nested_files = handler(content)
+                for member_name, member_content in nested_files:
+                    new_path = os.path.join(current_path, member_name)
+                    self._recursive_file_processing(
+                        procurement_control_number,
+                        root_document_sequence,
+                        root_document_type,
+                        root_document_is_active,
+                        member_content,
+                        new_path,
+                        nesting_level + 1,
+                        record_collection,
+                        file_collection,
+                    )
+            except Exception as e:
+                self.logger.warning(
+                    f"Could not process archive '{current_path}': {e}. Treating as a single file."
+                )
+                self._collect_final_file(
+                    procurement_control_number,
+                    root_document_sequence,
+                    root_document_type,
+                    root_document_is_active,
+                    content,
+                    current_path,
+                    nesting_level,
+                    record_collection,
+                    file_collection,
+                )
+        else:
+            self._collect_final_file(
+                procurement_control_number,
+                root_document_sequence,
+                root_document_type,
+                root_document_is_active,
+                content,
+                current_path,
+                nesting_level,
+                record_collection,
+                file_collection,
+            )
+
+    def _collect_final_file(
+        self,
+        procurement_control_number,
+        root_document_sequence,
+        root_document_type,
+        root_document_is_active,
+        content,
+        current_path,
+        nesting_level,
+        record_collection,
+        file_collection,
+    ):
+        """Adds a file's metadata to the record collection and its content to the file collection."""
+        file_name = os.path.basename(current_path)
+        _, extension = os.path.splitext(file_name)
+
+        record_collection.append(
+            FileRecord(
+                procurement_control_number=procurement_control_number,
+                root_document_sequence=root_document_sequence,
+                root_document_type=root_document_type,
+                root_document_is_active=root_document_is_active,
+                file_path=current_path,
+                file_name=file_name,
+                file_extension=extension.lower().lstrip(".") if extension else None,
+                nesting_level=nesting_level,
+                file_size=len(content),
+            )
+        )
+        file_collection.append((current_path, content))
+
+    def create_zip_from_files(
+        self, files: List[Tuple[str, bytes]], control_number: str
+    ) -> bytes | None:
+        """Creates a single, flat ZIP archive in memory from a list of files."""
+        if not files:
+            return None
+        self.logger.info(
+            f"Creating final ZIP archive with {len(files)} files for {control_number}..."
+        )
+        zip_stream = io.BytesIO()
+        try:
+            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+                for file_path, content in files:
+                    safe_path = re.sub(r'[<>:"\\|?*]', "_", file_path)
+                    zf.writestr(safe_path, content)
+            zip_bytes = zip_stream.getvalue()
+            self.logger.info(
+                f"Successfully created final ZIP archive of {len(zip_bytes)} bytes."
+            )
+            return zip_bytes
+        except Exception as e:
+            self.logger.error(
+                f"Failed to create final ZIP archive for {control_number}: {e}"
             )
             return None
 
-        return self._create_structured_zip(
-            documents_to_process, procurement.pncp_control_number
-        )
+    def _extract_from_zip(self, content: bytes) -> List[Tuple[str, bytes]]:
+        """Extracts all members from a ZIP archive."""
+        extracted = []
+        with io.BytesIO(content) as stream:
+            with zipfile.ZipFile(stream) as archive:
+                for member_info in archive.infolist():
+                    if not member_info.is_dir():
+                        extracted.append(
+                            (member_info.filename, archive.read(member_info.filename))
+                        )
+        return extracted
+
+    def _extract_from_rar(self, content: bytes) -> List[Tuple[str, bytes]]:
+        """Extracts all members from a RAR archive."""
+        extracted = []
+        with io.BytesIO(content) as stream:
+            with rarfile.RarFile(stream) as archive:
+                for member_info in archive.infolist():
+                    if not member_info.isdir():
+                        extracted.append(
+                            (member_info.filename, archive.read(member_info.filename))
+                        )
+        return extracted
+
+    def _extract_from_7z(self, content: bytes) -> List[Tuple[str, bytes]]:
+        """Extracts all members from a 7z archive."""
+        extracted = []
+        with io.BytesIO(content) as stream:
+            with py7zr.SevenZipFile(stream, mode="r") as archive:
+                all_files = archive.readall()
+                for filename, bio in all_files.items():
+                    extracted.append((filename, bio.read()))
+        return extracted
+
+    def _extract_from_tar(self, content: bytes) -> List[Tuple[str, bytes]]:
+        """Extracts all members from a TAR archive (including .gz, .bz2)."""
+        extracted = []
+        with io.BytesIO(content) as stream:
+            with tarfile.open(fileobj=stream, mode="r:*") as archive:
+                for member_info in archive.getmembers():
+                    if member_info.isfile():
+                        file_content = archive.extractfile(member_info).read()
+                        extracted.append((member_info.name, file_content))
+        return extracted
 
     def _get_all_documents_metadata(
         self, procurement: Procurement
-    ) -> list[ProcurementDocument]:
-        """Fetches and validates the metadata for all active documents associated
-        with a procurement, prioritizing the 'BID_NOTICE' (Edital).
-
-        Args:
-            procurement: The procurement object.
-
-        Returns:
-            A sorted list of active ProcurementDocument models.
-        """
+    ) -> List[ProcurementDocument]:
+        """Fetches and validates metadata for all active documents, prioritizing the 'BID_NOTICE'."""
         try:
             endpoint = (
                 f"orgaos/{procurement.government_entity.cnpj}/compras/"
                 f"{procurement.procurement_year}/{procurement.procurement_sequence}/arquivos"
             )
             api_url = urljoin(self.config.PNCP_INTEGRATION_API_URL, endpoint)
-            self.logger.info(f"Fetching document list from: {api_url}")
             response = requests.get(api_url, timeout=30)
-
             if response.status_code == HTTPStatus.NO_CONTENT:
-                self.logger.info(
-                    f"No documents found (204) for {procurement.pncp_control_number}."
-                )
                 return []
             response.raise_for_status()
 
-            all_documents = [
+            all_docs = [
                 ProcurementDocument.model_validate(doc) for doc in response.json()
             ]
-            active_documents = [doc for doc in all_documents if doc.is_active]
+            active_docs = [doc for doc in all_docs if doc.is_active]
 
-            if len(active_documents) < len(all_documents):
+            if len(active_docs) < len(all_docs):
                 self.logger.info(
-                    f"Filtered out {len(all_documents) - len(active_documents)} inactive documents."
+                    f"Filtered out {len(all_docs) - len(active_docs)} inactive documents."
                 )
 
-            active_documents.sort(
+            active_docs.sort(
                 key=lambda doc: doc.document_type_id != DocumentType.BID_NOTICE
             )
-
-            self.logger.info(
-                f"Found {len(active_documents)} active document(s) for processing."
-            )
-            return active_documents
+            self.logger.info(f"Found metadata for {len(active_docs)} active document(s).")
+            return active_docs
         except (requests.RequestException, ValidationError) as e:
             self.logger.error(
-                f"Failed to get or validate document list for {procurement.pncp_control_number}: {e}"
+                f"Failed to get/validate document list for {procurement.pncp_control_number}: {e}"
             )
             return []
-
-    def _create_structured_zip(
-        self, documents: list[ProcurementDocument], control_number: str
-    ) -> bytes | None:
-        """Creates a ZIP archive in memory, placing each document's contents
-        inside a dedicated folder.
-
-        If a downloaded document is a ZIP file, its contents are extracted into
-        the folder. Otherwise, the document itself is placed in the folder.
-
-        Args:
-            documents: A list of document metadata objects to process.
-            control_number: The procurement control number for logging.
-
-        Returns:
-            The byte content of the master ZIP file.
-        """
-        self.logger.info(f"Creating structured ZIP for {control_number}...")
-        zip_stream = io.BytesIO()
-        try:
-            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as master_zip:
-                for doc in documents:
-                    content = self._download_file_content(doc.url)
-                    if not content:
-                        continue
-
-                    folder_name = f"{doc.document_sequence}_{doc.document_type_name.lower().replace(' ', '_')}"
-
-                    if content.startswith(b"PK\x03\x04"):
-                        self.logger.info(f"Extracting content into folder: {folder_name}")
-                        with io.BytesIO(content) as inner_zip_stream:
-                            with zipfile.ZipFile(inner_zip_stream) as inner_zip:
-                                for member_name in inner_zip.namelist():
-                                    if member_name.startswith(
-                                        "__MACOSX"
-                                    ) or member_name.endswith("/"):
-                                        continue
-                                    member_content = inner_zip.read(member_name)
-                                    master_zip.writestr(
-                                        f"{folder_name}/{member_name}", member_content
-                                    )
-                    else:
-                        self.logger.info(f"Adding file to folder: {folder_name}")
-                        original_filename = (
-                            self._determine_original_filename(doc.url) or doc.title
-                        )
-                        master_zip.writestr(f"{folder_name}/{original_filename}", content)
-
-            zip_bytes = zip_stream.getvalue()
-            self.logger.info(
-                f"Successfully created structured ZIP of {len(zip_bytes)} bytes."
-            )
-            return zip_bytes
-        except Exception as e:
-            self.logger.error(
-                f"Failed to create structured ZIP for {control_number}: {e}"
-            )
-            return None
 
     def _download_file_content(self, url: str) -> bytes | None:
         """Downloads only the binary content of a file from a given URL."""
@@ -181,8 +312,8 @@ class ProcurementRepository:
             return None
 
     def _determine_original_filename(self, url: str) -> str | None:
-        """Determines the original filename by making a HEAD request and
-        checking the Content-Disposition header.
+        """Determines the original filename by making a HEAD request and checking
+        the Content-Disposition header.
         """
         try:
             response = requests.head(url, timeout=30, allow_redirects=True)
