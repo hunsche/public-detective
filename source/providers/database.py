@@ -15,8 +15,6 @@ class DatabaseProvider:
     _pool_creation_lock = threading.Lock()
 
     def __new__(cls):
-        # This implementation of Singleton is not strictly necessary with the
-        # get_pool class method, but it prevents accidental instantiation.
         if not hasattr(cls, "instance"):
             cls.instance = super(DatabaseProvider, cls).__new__(cls)
         return cls.instance
@@ -25,7 +23,6 @@ class DatabaseProvider:
     def get_pool(cls) -> ThreadedConnectionPool:
         """
         Retrieves a singleton instance of the PostgreSQL connection pool.
-        If a pool does not exist, it creates a new one in a thread-safe manner.
         """
         if cls._pool is None:
             with cls._pool_creation_lock:
