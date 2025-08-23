@@ -1,15 +1,16 @@
+import hashlib
 import json
 import uuid
 from datetime import date, timedelta
 from typing import List, Tuple
 
-import psycopg2
 from models.analysis import Analysis, AnalysisResult
 from models.procurement import Procurement
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
+from repositories.analysis import AnalysisRepository
 from repositories.procurement import ProcurementRepository
 
 
@@ -37,6 +38,7 @@ class AnalysisService:
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024  # 20MB
 
     procurement_repo: ProcurementRepository
+    analysis_repo: AnalysisRepository
     logger: Logger
     config: Config
     ai_provider: AiProvider[Analysis]
@@ -45,7 +47,8 @@ class AnalysisService:
     def __init__(self) -> None:
         """Initializes the service and its dependencies."""
         self.procurement_repo = ProcurementRepository()
-        self.logger = LoggingProvider().get_logger()
+        self.analysis_repo = AnalysisRepository()
+        self.logger = LoggingProvider.get_logger()
         self.ai_provider = AiProvider(Analysis)
         self.gcs_provider = GcsProvider()
         self.config = ConfigProvider.get_config()
@@ -73,6 +76,17 @@ class AnalysisService:
             )
             return
 
+        # Idempotency check
+        combined_content = b"".join(content for _, content in files_for_ai)
+        document_hash = hashlib.sha256(combined_content).hexdigest()
+
+        existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
+        if existing_analysis:
+            self.logger.info(
+                f"Analysis for document hash {document_hash} already exists. Skipping."
+            )
+            return
+
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             analysis_result = self.ai_provider.get_structured_analysis(
@@ -89,8 +103,9 @@ class AnalysisService:
                 ai_analysis=analysis_result,
                 gcs_document_url="",
                 warnings=warnings,
+                document_hash=document_hash,
             )
-            self._persist_ai_analysis(final_result)
+            self.analysis_repo.save_analysis(final_result)
 
         except Exception as e:
             self.logger.error(f"AI analysis pipeline failed for {control_number}: {e}")
@@ -216,66 +231,6 @@ class AnalysisService:
         Your response must be a JSON object that strictly adheres to the
         provided schema.
         """
-
-    def _persist_ai_analysis(self, result: AnalysisResult) -> None:
-        """Connects to the PostgreSQL database and inserts the complete analysis result."""
-        self.logger.info(
-            f"Persisting AI analysis for {result.procurement_control_number}..."
-        )
-
-        conn = None
-        cursor = None
-        try:
-            db_config = self.config
-            conn = psycopg2.connect(
-                dbname=db_config.POSTGRES_DB,
-                user=db_config.POSTGRES_USER,
-                password=db_config.POSTGRES_PASSWORD,
-                host=db_config.POSTGRES_HOST,
-                port=db_config.POSTGRES_PORT,
-            )
-            cursor = conn.cursor()
-
-            sql_insert = """
-                INSERT INTO procurement_analysis (
-                    procurement_control_number, risk_score, summary,
-                    red_flags, warnings, gcs_document_url
-                ) VALUES (%s, %s, %s, %s, %s, %s)
-                ON CONFLICT (procurement_control_number) DO UPDATE SET
-                    risk_score = EXCLUDED.risk_score,
-                    summary = EXCLUDED.summary,
-                    red_flags = EXCLUDED.red_flags,
-                    warnings = EXCLUDED.warnings,
-                    gcs_document_url = EXCLUDED.gcs_document_url,
-                    analysis_date = CURRENT_TIMESTAMP;
-            """
-
-            # Use model_dump to get a dictionary, then json.dumps for the JSONB field
-            red_flags_json = json.dumps(
-                result.ai_analysis.model_dump(include={"red_flags"})
-            )
-
-            data = (
-                result.procurement_control_number,
-                result.ai_analysis.risk_score,
-                result.ai_analysis.summary,
-                red_flags_json,
-                result.warnings,
-                result.gcs_document_url,
-            )
-
-            cursor.execute(sql_insert, data)
-            conn.commit()
-            self.logger.info("AI analysis successfully persisted.")
-        except psycopg2.Error as e:
-            self.logger.error(f"Database error during AI analysis insertion: {e}")
-            if conn:
-                conn.rollback()
-        finally:
-            if cursor:
-                cursor.close()
-            if conn:
-                conn.close()
 
     def run_analysis(self, start_date: date, end_date: date):
         """

@@ -57,9 +57,13 @@ class Analysis(BaseModel):
         ...,
         description="An integer from 0 to 10 representing the calculated risk level based on the findings.",
     )
+    risk_score_rationale: str = Field(
+        ...,
+        description="A detailed rationale (in pt-br) explaining the reasoning behind the assigned risk score.",
+    )
     summary: str = Field(
         ...,
-        description="A concise summary (maximum of 3 sentences) of the overall analysis.",
+        description="A concise summary (maximum of 3 sentences, in pt-br) of the overall analysis.",
     )
     red_flags: list[RedFlag] = Field(
         default_factory=list,
@@ -80,3 +84,4 @@ class AnalysisResult(BaseModel):
     ai_analysis: Analysis
     gcs_document_url: str
     warnings: List[str] = []
+    document_hash: str | None = None
