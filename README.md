@@ -33,8 +33,9 @@ The system follows a clear pipeline:
 
 ## Tech Stack
 
-- **Language:** Python 3.12+
+- **Language:** Python 3.13+
 - **AI / NLP:** Google Gemini API
+- **File Conversion:** LibreOffice
 
 ## Getting Started
 
@@ -42,15 +43,16 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-- Python 3.12+
-- Node.js 18+
+- Python 3.13+
+- Poetry
 - Docker
+- LibreOffice
 
 ### Installation
 
 1.  Clone the repo
     ```sh
-    git clone [https://github.com/](https://github.com/)[hunsche]/public-detective.git
+    git clone https://github.com/hunsche/public-detective.git
     ```
 2.  Navigate to the project directory
     ```sh
@@ -60,10 +62,10 @@ To get a local copy up and running, follow these simple steps.
     ```sh
     poetry install
     ```
-4.  Set up your environment variables (e.g., for API keys)
+4.  Set up your environment variables
     ```sh
-    # Create a .env file and add your keys
-    # AI_API_KEY='YOUR_API_KEY'
+    # Create a .env file and add your Gemini API key
+    echo "GCP_GEMINI_API_KEY='YOUR_API_KEY'" > .env
     ```
 
 ### Running Migrations
