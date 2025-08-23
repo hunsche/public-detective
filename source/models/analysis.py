@@ -29,7 +29,7 @@ class RedFlag(BaseModel):
         description="The category of the irregularity, which must be one of the allowed values.",
     )
     description: str = Field(
-        ..., description="A short, objective description of the identified issue."
+        ..., description="A short, objective description (in pt-br) of the identified issue."
     )
     evidence_quote: str = Field(
         ...,
@@ -37,7 +37,7 @@ class RedFlag(BaseModel):
     )
     auditor_reasoning: str = Field(
         ...,
-        description="A technical justification from the auditor's perspective, explaining why the quote represents a risk.",
+        description="A technical justification (in pt-br) from the auditor's perspective, explaining why the quote represents a risk.",
     )
 
 
@@ -46,11 +46,6 @@ class Analysis(BaseModel):
 
     This model serves as the definitive schema for the analysis results,
     ensuring type safety and a predictable data structure.
-
-    Attributes:
-        risk_score: An integer from 0 to 10 representing the calculated risk.
-        summary: A concise summary of the overall analysis.
-        red_flags: A list of all red flag objects identified.
     """
 
     risk_score: int = Field(
@@ -72,16 +67,11 @@ class Analysis(BaseModel):
 
 
 class AnalysisResult(BaseModel):
-    """Represents the complete, persistable result of a procurement analysis.
-
-    This model combines the original procurement identifier, the structured
-    output from the AI model, any warnings generated during the file
-
-    processing pipeline, and the storage URL of the artifact used for analysis.
-    """
+    """Represents the complete, persistable result of a procurement analysis."""
 
     procurement_control_number: str
     ai_analysis: Analysis
-    gcs_document_url: str
     warnings: List[str] = []
     document_hash: str | None = None
+    original_documents_url: str | None = None
+    processed_documents_url: str | None = None
