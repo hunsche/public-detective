@@ -36,7 +36,6 @@ def mock_gemini_client():
         yield mock_genai
 
 
-
 @pytest.mark.usefixtures("mock_gemini_client")
 def test_ai_provider_instantiation():
     """Tests that the AiProvider can be instantiated correctly."""
