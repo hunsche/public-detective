@@ -39,7 +39,8 @@ class ProcurementRepository:
     def __init__(self) -> None:
         """Initializes the repository with a logger and configuration."""
         self.logger = LoggingProvider().get_logger()
-        self.config = ConfigProvider().get_config()
+        self.config = ConfigProvider.get_config()
+        self.pubsub_provider = PubSubProvider()
 
     def process_procurement_documents(
         self, procurement: Procurement
@@ -364,7 +365,7 @@ class ProcurementRepository:
         try:
             message_json = procurement.model_dump_json(by_alias=True)
             message_bytes = message_json.encode()
-            message_id = PubSubProvider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
+            message_id = self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
             self.logger.debug(f"Successfully published message {message_id} for " f"{procurement.pncp_control_number}.")
             return True
         except exceptions.GoogleAPICallError as e:

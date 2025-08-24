@@ -8,7 +8,7 @@ from providers.logging import Logger, LoggingProvider
 
 
 class GcsProvider:
-    """Provides static methods to interact with Google Cloud Storage (GCS).
+    """Provides methods to interact with Google Cloud Storage (GCS).
 
     This provider centralizes client management and abstracts away the
     details of uploading files to a GCS bucket in a thread-safe manner. It
@@ -16,14 +16,15 @@ class GcsProvider:
     GCP_GCS_HOST environment variable is set.
     """
 
-    logger: Logger = LoggingProvider().get_logger()
-    config: Config = ConfigProvider.get_config()
-
     _client: storage.Client | None = None
-    _client_creation_lock = threading.Lock()
+    _client_creation_lock: threading.Lock
 
-    @staticmethod
-    def _get_or_create_client() -> storage.Client:
+    def __init__(self) -> None:
+        self.logger: Logger = LoggingProvider().get_logger()
+        self.config: Config = ConfigProvider.get_config()
+        self._client_creation_lock = threading.Lock()
+
+    def _get_or_create_client(self) -> storage.Client:
         """Retrieves a singleton instance of the GCS Client.
 
         If a client instance does not exist, it creates a new one in a
@@ -33,25 +34,24 @@ class GcsProvider:
         Returns:
             A singleton instance of google.cloud.storage.Client.
         """
-        if GcsProvider._client is None:
-            with GcsProvider._client_creation_lock:
-                if GcsProvider._client is None:
-                    GcsProvider.logger.info("GCS client not found in cache, creating new instance...")
+        if self._client is None:
+            with self._client_creation_lock:
+                if self._client is None:
+                    self.logger.info("GCS client not found in cache, creating new instance...")
 
-                    emulator_host = GcsProvider.config.GCP_GCS_HOST
+                    emulator_host = self.config.GCP_GCS_HOST
                     if emulator_host:
                         os.environ["STORAGE_EMULATOR_HOST"] = emulator_host
-                        GcsProvider.logger.info(f"GCS client configured for emulator at {emulator_host}")
-                        GcsProvider._client = storage.Client()
+                        self.logger.info(f"GCS client configured for emulator at {emulator_host}")
+                        self._client = storage.Client()
                     else:
-                        GcsProvider.logger.info("GCS client configured for Google Cloud production.")
-                        GcsProvider._client = storage.Client(project=GcsProvider.config.GCP_PROJECT)
+                        self.logger.info("GCS client configured for Google Cloud production.")
+                        self._client = storage.Client(project=self.config.GCP_PROJECT)
 
-                    GcsProvider.logger.info("GCS client created successfully.")
-        return cast(storage.Client, GcsProvider._client)
+                    self.logger.info("GCS client created successfully.")
+        return cast(storage.Client, self._client)
 
-    @staticmethod
-    def upload_file(bucket_name: str, destination_blob_name: str, content: bytes, content_type: str) -> str:
+    def upload_file(self, bucket_name: str, destination_blob_name: str, content: bytes, content_type: str) -> str:
         """Uploads byte content to a specified GCS bucket.
 
         Args:
@@ -67,16 +67,16 @@ class GcsProvider:
             Exception: If the upload process fails.
         """
         try:
-            client = GcsProvider._get_or_create_client()
+            client = self._get_or_create_client()
             bucket = client.bucket(bucket_name)
             blob = bucket.blob(destination_blob_name)
 
-            GcsProvider.logger.info(f"Uploading file to GCS: gs://{bucket_name}/{destination_blob_name}")
+            self.logger.info(f"Uploading file to GCS: gs://{bucket_name}/{destination_blob_name}")
 
             blob.upload_from_string(content, content_type=content_type)
 
-            GcsProvider.logger.info("File uploaded successfully.")
+            self.logger.info("File uploaded successfully.")
             return str(blob.public_url)
         except Exception as e:
-            GcsProvider.logger.error(f"Failed to upload file to GCS bucket '{bucket_name}': {e}")
+            self.logger.error(f"Failed to upload file to GCS bucket '{bucket_name}': {e}")
             raise

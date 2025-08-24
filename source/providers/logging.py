@@ -25,14 +25,17 @@ class LoggingProvider:
         """
         if not cls._instance:
             cls._instance = super().__new__(cls)
-            cls._instance._configure_logger()
         return cls._instance
 
-    def _configure_logger(self):
+    def _configure_logger(self) -> Logger:
         """
         Private method to configure the logger. This is called only once.
         """
         logger = getLogger("public_detective")
+
+        # Avoid re-configuring if already configured by another part of the app
+        if getattr(logger, "_configured", False):
+            return logger
 
         config = ConfigProvider.get_config()
         log_level_str = config.LOG_LEVEL
@@ -48,13 +51,19 @@ class LoggingProvider:
             handler.setFormatter(formatter)
             logger.addHandler(handler)
 
-        self._logger = logger
-        self._logger.info(f"Logger configured with level: {log_level_str}")
+        setattr(logger, "_configured", True)
+        logger.info(f"Logger configured with level: {log_level_str}")
+        return logger
 
     def get_logger(self) -> Logger:
         """
         Returns the configured logger instance.
+
+        If the logger has not been configured yet, this method will trigger
+        the configuration. This lazy initialization ensures that the logger is
+        only set up when it's first needed, preventing issues in test setups
+        or module imports.
         """
         if not self._logger:
-            raise RuntimeError("Logger not initialized. The constructor must be called first.")
+            self._logger = self._configure_logger()
         return self._logger
