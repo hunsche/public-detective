@@ -6,15 +6,15 @@ Revises:
 Create Date: 2025-07-26 17:30:11.111111
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
 
-
-revision: str = 'ce0a16ca8b96'
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "ce0a16ca8b96"
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -22,7 +22,8 @@ def upgrade() -> None:
     Creates the procurement_analysis table with all necessary columns
     and indexes using raw SQL commands for full control.
     """
-    op.execute("""
+    op.execute(
+        """
         CREATE TABLE procurement_analysis (
             procurement_control_number VARCHAR(255) NOT NULL,
             analysis_date TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
@@ -36,11 +37,14 @@ def upgrade() -> None:
             processed_documents_url VARCHAR(1024),
             PRIMARY KEY (procurement_control_number)
         );
-    """)
-    op.execute("""
+    """
+    )
+    op.execute(
+        """
         CREATE INDEX ix_document_hash
         ON procurement_analysis (document_hash);
-    """)
+    """
+    )
 
 
 def downgrade() -> None:

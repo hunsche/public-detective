@@ -40,23 +40,20 @@ class PubSubProvider:
 
         Args:
             client_class: The class of the GCP client to instantiate (e.g.,
-                          pubsub_v1.PublisherClient, pubsub_v1.SubscriberClient).
+                          pubsub_v1.PublisherClient,
+                          pubsub_v1.SubscriberClient).
 
         Returns:
             An instance of the specified GCP client class.
         """
         class_name = client_class.__name__
-        PubSubProvider.logger.info(
-            f"{class_name} not found in cache, creating a new instance..."
-        )
+        PubSubProvider.logger.info(f"{class_name} not found in cache, creating a new instance...")
         emulator_host = PubSubProvider.config.GCP_PUBSUB_HOST
 
         if emulator_host:
             os.environ["PUBSUB_EMULATOR_HOST"] = emulator_host
             client = client_class()
-            PubSubProvider.logger.info(
-                f"{class_name} instance created for emulator at {emulator_host}"
-            )
+            PubSubProvider.logger.info(f"{class_name} instance created for emulator at {emulator_host}")
         else:
             client = client_class()
             PubSubProvider.logger.info(f"{class_name} instance created for Google Cloud")
@@ -78,9 +75,8 @@ class PubSubProvider:
         if client_key not in PubSubProvider._clients:
             with PubSubProvider._client_creation_lock:
                 if client_key not in PubSubProvider._clients:
-                    PubSubProvider._clients[client_key] = (
-                        PubSubProvider._create_client_instance(pubsub_v1.PublisherClient)
-                    )
+                    client = PubSubProvider._create_client_instance(pubsub_v1.PublisherClient)
+                    PubSubProvider._clients[client_key] = client
         return cast(pubsub_v1.PublisherClient, PubSubProvider._clients[client_key])
 
     @staticmethod
@@ -99,9 +95,8 @@ class PubSubProvider:
         if client_key not in PubSubProvider._clients:
             with PubSubProvider._client_creation_lock:
                 if client_key not in PubSubProvider._clients:
-                    PubSubProvider._clients[client_key] = (
-                        PubSubProvider._create_client_instance(pubsub_v1.SubscriberClient)
-                    )
+                    client = PubSubProvider._create_client_instance(pubsub_v1.SubscriberClient)
+                    PubSubProvider._clients[client_key] = client
         return cast(pubsub_v1.SubscriberClient, PubSubProvider._clients[client_key])
 
     @staticmethod
@@ -136,33 +131,31 @@ class PubSubProvider:
             PubSubProvider.logger.debug(f"Message {message_id} published to {topic_path}")
             return cast(str, message_id)
         except TimeoutError:
-            PubSubProvider.logger.error(
-                f"Publishing to topic {topic_id} timed out after {timeout_seconds} seconds."
-            )
+            PubSubProvider.logger.error(f"Publishing to topic {topic_id} timed out after {timeout_seconds} seconds.")
             raise
         except Exception as e:
             PubSubProvider.logger.error(f"Failed to publish to topic {topic_id}: {e}")
             raise
 
     @staticmethod
-    def subscribe(
-        subscription_id: str, callback: Callable[[Message], None]
-    ) -> StreamingPullFuture:
+    def subscribe(subscription_id: str, callback: Callable[[Message], None]) -> StreamingPullFuture:
         """
         Starts listening to a Pub/Sub subscription and executes a callback for each message.
 
-        This method retrieves a cached SubscriberClient and initiates a streaming
-        pull request to the specified subscription. The provided callback function
-        will be invoked for each message received.
+        This method retrieves a cached SubscriberClient and initiates a
+        streaming pull request to the specified subscription. The provided
+        callback function will be invoked for each message received.
 
-        The method returns a `StreamingPullFuture` object, which must be managed
-        by the caller (e.g., by calling `future.result()` to block the main
-        thread or `future.cancel()` to stop the subscription).
+        The method returns a `StreamingPullFuture` object, which must be
+        managed by the caller (e.g., by calling `future.result()` to block
+        the main thread or `future.cancel()` to stop the subscription).
 
         Args:
             subscription_id: The ID of the Pub/Sub subscription to listen to.
-            callback: The function to execute for each received message.
-                      It should accept one argument: a `google.cloud.pubsub_v1.subscriber.message.Message` object.
+            callback: The function to execute for each received message. It
+                      should accept one argument: a
+                      `google.cloud.pubsub_v1.subscriber.message.Message`
+                      object.
 
         Returns:
             A `google.cloud.pubsub_v1.subscriber.futures.StreamingPullFuture`
@@ -174,18 +167,12 @@ class PubSubProvider:
         """
         try:
             client = PubSubProvider._get_or_create_subscriber_client()
-            subscription_path = client.subscription_path(
-                PubSubProvider.config.GCP_PROJECT, subscription_id
-            )
+            subscription_path = client.subscription_path(PubSubProvider.config.GCP_PROJECT, subscription_id)
 
             streaming_pull_future = client.subscribe(subscription_path, callback=callback)
 
-            PubSubProvider.logger.info(
-                f"Successfully subscribed to {subscription_path}. Waiting for messages..."
-            )
+            PubSubProvider.logger.info(f"Successfully subscribed to {subscription_path}. Waiting for messages...")
             return streaming_pull_future
         except Exception as e:
-            PubSubProvider.logger.error(
-                f"Failed to start subscription on {subscription_id}: {e}"
-            )
+            PubSubProvider.logger.error(f"Failed to start subscription on {subscription_id}: {e}")
             raise

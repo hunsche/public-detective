@@ -3,7 +3,6 @@ This module defines the Pydantic models for the analysis data structures.
 """
 
 from enum import StrEnum
-from typing import List, Optional
 
 from pydantic import BaseModel, Field
 
@@ -23,18 +22,22 @@ class RedFlag(BaseModel):
 
     category: RedFlagCategory = Field(
         ...,
-        description="The category of the irregularity, which must be one of the allowed values.",
+        description=("The category of the irregularity, which must be one of the allowed " "values."),
     )
     description: str = Field(
-        ..., description="A short, objective description (in pt-br) of the identified issue."
+        ...,
+        description=("A short, objective description (in pt-br) of the identified issue."),
     )
     evidence_quote: str = Field(
         ...,
-        description="The exact, literal quote from the document that serves as evidence for the finding.",
+        description=("The exact, literal quote from the document that serves as evidence " "for the finding."),
     )
     auditor_reasoning: str = Field(
         ...,
-        description="A technical justification (in pt-br) from the auditor's perspective, explaining why the quote represents a risk.",
+        description=(
+            "A technical justification (in pt-br) from the auditor's "
+            "perspective, explaining why the quote represents a risk."
+        ),
     )
 
 
@@ -47,17 +50,17 @@ class Analysis(BaseModel):
         ...,
         ge=0,
         le=10,
-        description="An integer from 0 to 10 representing the calculated risk level based on the findings.",
+        description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
     risk_score_rationale: str = Field(
         ...,
-        description="A detailed rationale (in pt-br) explaining the reasoning behind the assigned risk score.",
+        description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
     )
     summary: str = Field(
         ...,
-        description="A concise summary (maximum of 3 sentences, in pt-br) of the overall analysis.",
+        description=("A concise summary (maximum of 3 sentences, in pt-br) of the overall " "analysis."),
     )
-    red_flags: List[RedFlag] = Field(
+    red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
     )
@@ -70,7 +73,7 @@ class AnalysisResult(BaseModel):
 
     procurement_control_number: str
     ai_analysis: Analysis
-    warnings: List[str] = []
-    document_hash: Optional[str] = None
-    original_documents_url: Optional[str] = None
-    processed_documents_url: Optional[str] = None
+    warnings: list[str] = []
+    document_hash: str | None = None
+    original_documents_url: str | None = None
+    processed_documents_url: str | None = None

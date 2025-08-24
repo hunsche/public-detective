@@ -56,7 +56,5 @@ class LoggingProvider:
         Returns the configured logger instance.
         """
         if not self._logger:
-            raise RuntimeError(
-                "Logger not initialized. The constructor must be called first."
-            )
+            raise RuntimeError("Logger not initialized. The constructor must be called first.")
         return self._logger

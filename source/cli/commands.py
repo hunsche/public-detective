@@ -27,9 +27,7 @@ def analysis_command(start_date: datetime, end_date: datetime):
     """
 
     if start_date.date() > end_date.date():
-        raise click.BadParameter(
-            "Start date cannot be after end date. Please provide a valid date range."
-        )
+        raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
     click.echo(
         f"Analyzing data from {start_date.strftime(DateProvider.DATE_FORMAT)} to "

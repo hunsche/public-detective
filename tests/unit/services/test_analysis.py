@@ -1,10 +1,10 @@
 """
 Unit tests for the AnalysisService.
 """
-from unittest.mock import MagicMock, patch
+
+from unittest.mock import patch
 
 import pytest
-from models.analysis import Analysis
 from models.procurement import Procurement
 from services.analysis import AnalysisService
 
@@ -38,7 +38,7 @@ def mock_procurement_repo():
 
 
 def test_analysis_service_instantiation(
-    mock_ai_provider, mock_gcs_provider, mock_analysis_repo, mock_procurement_repo
+    _mock_ai_provider, _mock_gcs_provider, _mock_analysis_repo, _mock_procurement_repo
 ):
     """Tests that the AnalysisService can be instantiated correctly."""
     service = AnalysisService()

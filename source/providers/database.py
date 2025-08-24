@@ -4,9 +4,9 @@ This module provides a singleton database connection pool for the application.
 
 import threading
 
-from psycopg2.pool import ThreadedConnectionPool
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
+from psycopg2.pool import ThreadedConnectionPool
 
 
 class DatabaseProvider:
@@ -26,7 +26,7 @@ class DatabaseProvider:
         Ensures that only one instance of this class can be created.
         """
         if not hasattr(cls, "instance"):
-            cls.instance = super(DatabaseProvider, cls).__new__(cls)
+            cls.instance = super().__new__(cls)
         return cls.instance
 
     @classmethod

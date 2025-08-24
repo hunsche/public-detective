@@ -175,9 +175,7 @@ class Procurement(BaseModel):
     total_estimated_value: float | None = Field(None, alias="valorTotalEstimado")
     procurement_status: ProcurementStatus | int = Field(..., alias="situacaoCompraId")
     user_name: str = Field(..., alias="usuarioNome")
-    electronic_process_link: HttpUrl | str | None = Field(
-        None, alias="linkProcessoEletronico"
-    )
+    electronic_process_link: HttpUrl | str | None = Field(None, alias="linkProcessoEletronico")
     in_person_justification: str | None = Field(None, alias="justificativaPresencial")
     budgetary_sources: list = Field([], alias="fontesOrcamentarias")
 

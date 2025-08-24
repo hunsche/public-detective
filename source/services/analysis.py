@@ -2,18 +2,18 @@
 This module defines the service responsible for orchestrating the procurement
 analysis pipeline.
 """
+
 import hashlib
 import io
 import zipfile
 from datetime import date, timedelta
-from typing import List, Tuple
 
 from models.analysis import Analysis, AnalysisResult
 from models.procurement import Procurement
 from providers.ai import AiProvider
-from providers.config import Config, ConfigProvider
+from providers.config import ConfigProvider
 from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
+from providers.logging import LoggingProvider
 from repositories.analysis import AnalysisRepository
 from repositories.procurement import ProcurementRepository
 
@@ -25,8 +25,14 @@ class AnalysisService:
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
     _FILE_PRIORITY_ORDER = [
-        "edital", "termo de referencia", "projeto basico", "planilha",
-        "orcamento", "custos", "contrato", "ata de registro"
+        "edital",
+        "termo de referencia",
+        "projeto basico",
+        "planilha",
+        "orcamento",
+        "custos",
+        "contrato",
+        "ata de registro",
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
@@ -65,9 +71,7 @@ class AnalysisService:
             return
 
         try:
-            original_zip_url = self._archive_and_upload(
-                f"{control_number}-original.zip", all_original_files
-            )
+            original_zip_url = self._archive_and_upload(f"{control_number}-original.zip", all_original_files)
 
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis = self.ai_provider.get_structured_analysis(
@@ -105,11 +109,13 @@ class AnalysisService:
                     zf.writestr(filename, content)
             zip_content = zip_buffer.getvalue()
 
-        return self.gcs_provider.upload_file(
-            bucket_name=self.gcs_provider.config.GCP_GCS_BUCKET_PROCUREMENTS,
-            destination_blob_name=zip_name,
-            content=zip_content,
-            content_type="application/zip",
+        return str(
+            self.gcs_provider.upload_file(
+                bucket_name=self.gcs_provider.config.GCP_GCS_BUCKET_PROCUREMENTS,
+                destination_blob_name=zip_name,
+                content=zip_content,
+                content_type="application/zip",
+            )
         )
 
     def _select_and_prepare_files_for_ai(
@@ -120,20 +126,16 @@ class AnalysisService:
         """
         warnings = []
         supported_files = [
-            (path, content)
-            for path, content in all_files
-            if path.lower().endswith(self._SUPPORTED_EXTENSIONS)
+            (path, content) for path, content in all_files if path.lower().endswith(self._SUPPORTED_EXTENSIONS)
         ]
 
         supported_files.sort(key=lambda item: self._get_priority(item[0]))
 
         selected_files = supported_files
         if len(supported_files) > self._MAX_FILES_FOR_AI:
-            excluded_by_count = [path for path, _ in supported_files[self._MAX_FILES_FOR_AI:]]
-            warnings.append(
-                f"Limite de arquivos excedido. Os seguintes arquivos foram ignorados: {', '.join(excluded_by_count)}"
-            )
-            selected_files = supported_files[:self._MAX_FILES_FOR_AI]
+            excluded_paths = [path for path, _ in supported_files[self._MAX_FILES_FOR_AI :]]
+            warnings.append("Limite de arquivos excedido. Ignorados: " f"{', '.join(excluded_paths)}")
+            selected_files = supported_files[: self._MAX_FILES_FOR_AI]
 
         final_files, excluded_by_size = [], []
         current_size = 0
@@ -145,10 +147,8 @@ class AnalysisService:
                 current_size += len(content)
 
         if excluded_by_size:
-            warnings.append(
-                f"O limite de tamanho total de {self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024:.1f}MB foi excedido. "
-                f"Os seguintes arquivos foram ignorados: {', '.join(excluded_by_size)}"
-            )
+            max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
+            warnings.append(f"Limite de {max_size_mb:.1f}MB excedido. Ignorados: " f"{', '.join(excluded_by_size)}")
 
         for warning_msg in warnings:
             self.logger.warning(warning_msg)
@@ -163,9 +163,7 @@ class AnalysisService:
                 return i
         return len(self._FILE_PRIORITY_ORDER)
 
-    def _build_analysis_prompt(
-        self, procurement: Procurement, warnings: list[str]
-    ) -> str:
+    def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
         """Constructs the prompt for the AI, including contextual warnings."""
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
         warnings_section = ""
@@ -184,30 +182,37 @@ class AnalysisService:
         Sua tarefa é analisar os documentos em anexo para identificar
         possíveis irregularidades no processo de licitação.
         {warnings_section}
-        Primeiro, revise os metadados da licitação em formato JSON para obter o contexto.
-        Em seguida, inspecione todos os arquivos anexados.
+        Primeiro, revise os metadados da licitação em formato JSON para obter o
+        contexto. Em seguida, inspecione todos os arquivos anexados.
 
         --- METADADOS DA LICITAÇÃO (JSON) ---
         {procurement_json}
         --- FIM DOS METADADOS ---
 
         Com base em todas as informações disponíveis, analise a licitação em
-        busca de irregularidades nas seguintes categorias. Para cada achado, você deve
-        extrair a citação exata de um dos documentos que embase sua análise.
+        busca de irregularidades nas seguintes categorias. Para cada achado,
+        você deve extrair a citação exata de um dos documentos que embase sua
+        análise.
 
         1.  Direcionamento para Fornecedor Específico (DIRECIONAMENTO)
         2.  Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE)
         3.  Potencial de Sobrepreço (SOBREPRECO)
 
-        Após a análise, atribua uma nota de risco de 0 a 10 e forneça uma justificativa detalhada para essa nota (em pt-br).
+        Após a análise, atribua uma nota de risco de 0 a 10 e forneça uma
+        justificativa detalhada para essa nota (em pt-br).
 
         **Critérios para a Nota de Risco:**
-        - **0-2 (Risco Baixo):** Nenhuma irregularidade significativa encontrada.
-        - **3-5 (Risco Moderado):** Foram encontrados indícios de irregularidades, mas sem evidências conclusivas.
-        - **6-8 (Risco Alto):** Evidências claras de irregularidades em uma ou mais categorias.
-        - **9-10 (Risco Crítico):** Irregularidades graves e generalizadas, com forte suspeita de fraude.
+        - **0-2 (Risco Baixo):** Nenhuma irregularidade significativa
+          encontrada.
+        - **3-5 (Risco Moderado):** Foram encontrados indícios de
+          irregularidades, mas sem evidências conclusivas.
+        - **6-8 (Risco Alto):** Evidências claras de irregularidades em uma ou
+          mais categorias.
+        - **9-10 (Risco Crítico):** Irregularidades graves e generalizadas, com
+          forte suspeita de fraude.
 
-        Sua resposta deve ser um objeto JSON que siga estritamente o esquema fornecido, incluindo o campo `risk_score_rationale`.
+        Sua resposta deve ser um objeto JSON que siga estritamente o esquema
+        fornecido, incluindo o campo `risk_score_rationale`.
         """
 
     def run_analysis(self, start_date: date, end_date: date):
@@ -221,11 +226,11 @@ class AnalysisService:
             updated_procurements = self.procurement_repo.get_updated_procurements(target_date=current_date)
 
             if not updated_procurements:
-                self.logger.info(f"No procurements were updated on {current_date}. Moving to next day.")
+                self.logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
                 current_date += timedelta(days=1)
                 continue
 
-            self.logger.info(f"Found {len(updated_procurements)} updated procurements. Publishing to message queue.")
+            self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
             success_count, failure_count = 0, 0
             for procurement in updated_procurements:
                 published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
@@ -233,6 +238,8 @@ class AnalysisService:
                     success_count += 1
                 else:
                     failure_count += 1
-            self.logger.info(f"Finished processing for {current_date}. Success: {success_count}, Failures: {failure_count}")
+            self.logger.info(
+                f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
+            )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")

@@ -85,9 +85,7 @@ class Subscription:
         try:
             data_str = message.data.decode()
             procurement = Procurement.model_validate_json(data_str)
-            self.logger.info(
-                f"Validated message for procurement {procurement.pncp_control_number}."
-            )
+            self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
 
             if self.config.IS_DEBUG_MODE:
                 self._debug_pause()
@@ -138,9 +136,7 @@ class Subscription:
             self.logger.critical("Subscription name not configured. Worker cannot start.")
             return
 
-        streaming_pull_future = PubSubProvider.subscribe(
-            subscription_name, self._message_callback
-        )
+        streaming_pull_future = PubSubProvider.subscribe(subscription_name, self._message_callback)
         self.logger.info("Worker is now running and waiting for messages...")
 
         try:
@@ -148,9 +144,7 @@ class Subscription:
         except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
-            self.logger.critical(
-                f"A critical error stopped the worker: {e}", exc_info=True
-            )
+            self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
         finally:
             self.logger.info("Stopping worker...")
             streaming_pull_future.cancel()

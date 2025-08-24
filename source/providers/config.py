@@ -10,9 +10,7 @@ class Config(BaseSettings):
     providing type validation and default values.
     """
 
-    model_config = SettingsConfigDict(
-        env_file=".env", env_file_encoding="utf-8", extra="ignore"
-    )
+    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
     IS_DEBUG_MODE: bool = False
 
@@ -56,14 +54,10 @@ class Config(BaseSettings):
         after the initial values have been loaded.
         """
         if self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS is None:
-            self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS = (
-                f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-dlq"
-            )
+            self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS = f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-dlq"
 
         if self.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS is None:
-            self.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = (
-                f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-subscription"
-            )
+            self.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-subscription"
 
         return self
 

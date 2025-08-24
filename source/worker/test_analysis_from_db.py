@@ -1,14 +1,12 @@
 import io
 import os
 import sys
-from typing import List
 
 import google.generativeai as genai
 import psycopg2
 import requests
 from dotenv import load_dotenv
 from google.ai import generativelanguage as glm
-
 from models.analysis import Analysis, RedFlagCategory
 
 
@@ -28,13 +26,13 @@ def get_gcs_url_from_db(control_number: str) -> str | None:
         )
         cursor = conn.cursor()
 
-        # ASSUMINDO que a sua tabela se chama 'procurement_analysis' e a coluna 'gcs_document_url'
-        # Ajuste se os nomes forem diferentes.
+        # ASSUMINDO que a sua tabela se chama 'procurement_analysis' e a
+        # coluna 'gcs_document_url'. Ajuste se os nomes forem diferentes.
         sql_query = """
-            SELECT gcs_document_url 
-            FROM procurement_analysis 
-            WHERE procurement_control_number = %s 
-            ORDER BY created_at DESC 
+            SELECT gcs_document_url
+            FROM procurement_analysis
+            WHERE procurement_control_number = %s
+            ORDER BY created_at DESC
             LIMIT 1;
         """
         cursor.execute(sql_query, (control_number,))
@@ -138,9 +136,7 @@ def analyze_file_content(file_content: bytes, file_name: str) -> None:
         )
 
         print("\n--- INÍCIO DA ANÁLISE DA IA ---")
-        analysis_result = Analysis.model_validate(
-            response.candidates[0].content.parts[0].function_call.args
-        )
+        analysis_result = Analysis.model_validate(response.candidates[0].content.parts[0].function_call.args)
         print(analysis_result.model_dump_json(indent=2))
         print("--- FIM DA ANÁLISE DA IA ---")
 

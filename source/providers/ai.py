@@ -2,10 +2,10 @@ import io
 import json
 import time
 from mimetypes import guess_type
-from typing import Generic, Tuple, Type, TypeVar
+from typing import Generic, TypeVar
 
 import google.generativeai as genai
-from google.ai.generativelanguage import File
+from google.generativeai.types import File
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
@@ -39,13 +39,9 @@ class AiProvider(Generic[PydanticModel]):
 
         genai.configure(api_key=self.config.GCP_GEMINI_API_KEY)
         self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
-        self.logger.info(
-            f"Google Gemini client configured successfully for schema '{self.output_schema.__name__}'."
-        )
+        self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
 
-    def get_structured_analysis(
-        self, prompt: str, files: list[tuple[str, bytes]]
-    ) -> PydanticModel:
+    def get_structured_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> PydanticModel:
         """
         Uploads a file, sends it with a prompt for analysis, and parses the
         structured response into the Pydantic model instance defined for this provider.
@@ -73,14 +69,10 @@ class AiProvider(Generic[PydanticModel]):
             file_display_name = file[0]
             file_content = file[1]
             self.logger.info(f"Sending request to Gemini API for '{file_display_name}'.")
-            uploaded_files.append(
-                self._upload_file_to_gemini(file_content, file_display_name)
-            )
-
-        contents = [prompt]
-        contents.extend(uploaded_files)
+            uploaded_files.append(self._upload_file_to_gemini(file_content, file_display_name))
 
         try:
+            contents = [prompt, *uploaded_files]
             response = self.model.generate_content(
                 contents,
                 generation_config=genai.types.GenerationConfig(
@@ -97,9 +89,7 @@ class AiProvider(Generic[PydanticModel]):
                 self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
                 genai.delete_file(uploaded_file.name)
 
-    def _parse_and_validate_response(
-        self, response: genai.types.GenerateContentResponse
-    ) -> PydanticModel:
+    def _parse_and_validate_response(self, response: genai.types.GenerateContentResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.
 
         This method provides a robust, multi-step process to extract and validate
@@ -117,26 +107,18 @@ class AiProvider(Generic[PydanticModel]):
         if not response.candidates:
             if response.prompt_feedback and response.prompt_feedback.block_reason:
                 block_reason = response.prompt_feedback.block_reason.name
-                self.logger.error(
-                    f"Gemini API blocked the prompt. Reason: {block_reason}"
-                )
+                self.logger.error(f"Gemini API blocked the prompt. Reason: {block_reason}")
                 raise ValueError(f"AI model blocked the response due to: {block_reason}")
 
-            self.logger.error(
-                f"Gemini API returned no candidates. Full response: {response}"
-            )
+            self.logger.error(f"Gemini API returned no candidates. Full response: {response}")
             raise ValueError("AI model returned an empty response.")
 
         try:
             if response.candidates[0].content.parts[0].function_call.args:
                 self.logger.info("Successfully found structured data in function_call.")
-                return self.output_schema.model_validate(
-                    response.candidates[0].content.parts[0].function_call.args
-                )
+                return self.output_schema.model_validate(response.candidates[0].content.parts[0].function_call.args)
 
-            self.logger.warning(
-                "No direct function_call found, attempting to parse from text response."
-            )
+            self.logger.warning("No direct function_call found, attempting to parse from text response.")
             text_content = response.text
             if text_content.strip().startswith("```json"):
                 text_content = text_content.strip()[7:-3]
@@ -145,11 +127,16 @@ class AiProvider(Generic[PydanticModel]):
             self.logger.info("Successfully parsed JSON data from text response.")
             return self.output_schema.model_validate(json_data)
 
-        except (AttributeError, IndexError, json.JSONDecodeError, ValidationError) as e:
+        except (
+            AttributeError,
+            IndexError,
+            json.JSONDecodeError,
+            ValidationError,
+        ) as e:
             self.logger.error(f"Failed to parse or validate the AI's response: {e}")
             self.logger.error(f"Full API Response: {response}")
             raise ValueError(
-                "AI model returned a response that could not be parsed into the expected structure."
+                "AI model returned a response that could not be parsed into the " "expected structure."
             ) from e
 
     def _upload_file_to_gemini(self, content: bytes, display_name: str) -> File:
@@ -180,9 +167,7 @@ class AiProvider(Generic[PydanticModel]):
 
             mime_type = guess_type(display_name)[0]
 
-            uploaded_file = genai.upload_file(
-                path=file_stream, display_name=display_name, mime_type=mime_type
-            )
+            uploaded_file = genai.upload_file(path=file_stream, display_name=display_name, mime_type=mime_type)
             self.logger.info(f"File uploaded successfully: {uploaded_file.name}")
 
             # Actively wait for the file to be processed by the API.
@@ -193,8 +178,7 @@ class AiProvider(Generic[PydanticModel]):
 
             if uploaded_file.state.name != "ACTIVE":
                 raise Exception(
-                    f"File '{uploaded_file.name}' failed processing. "
-                    f"Final state: {uploaded_file.state.name}"
+                    f"File '{uploaded_file.name}' failed processing. " f"Final state: {uploaded_file.state.name}"
                 )
             return uploaded_file
         except Exception as e:

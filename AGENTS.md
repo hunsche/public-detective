@@ -71,4 +71,20 @@ These require the Docker services to be running.
 - **No Inline Comments:** Code should be self-documenting through clear variable and method names. Use docstrings for classes and methods, not `#` comments.
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 
+## 6. Pre-commit Hooks
+
+This project uses pre-commit hooks to enforce code quality and consistency. Before submitting any changes, you **must** run the pre-commit checks.
+
+To install the hooks, run:
+```bash
+poetry run pre-commit install
+```
+
+To run the checks on all files, use:
+```bash
+poetry run pre-commit run --all-files
+```
+
+If any hooks fail, they may automatically fix the files. If they still fail, you will need to manually fix the issues before you can commit.
+
 Thank you for your contribution!

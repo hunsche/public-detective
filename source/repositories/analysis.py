@@ -5,7 +5,6 @@ related to procurement analysis results.
 
 import json
 from contextlib import contextmanager
-from typing import Optional
 
 from models.analysis import Analysis, AnalysisResult
 from providers.database import DatabaseProvider
@@ -36,7 +35,7 @@ class AnalysisRepository:
         finally:
             self.pool.putconn(conn)
 
-    def _parse_row_to_model(self, row: tuple, columns: list[str]) -> Optional[AnalysisResult]:
+    def _parse_row_to_model(self, row: tuple, columns: list[str]) -> AnalysisResult | None:
         """
         Parses a database row into an AnalysisResult Pydantic model.
         """
@@ -104,7 +103,7 @@ class AnalysisRepository:
 
         self.logger.info("Analysis saved successfully.")
 
-    def get_analysis_by_hash(self, document_hash: str) -> Optional[AnalysisResult]:
+    def get_analysis_by_hash(self, document_hash: str) -> AnalysisResult | None:
         """
         Retrieves an analysis result from the database by its document hash.
         """

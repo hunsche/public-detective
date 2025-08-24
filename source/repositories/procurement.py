@@ -1,15 +1,14 @@
 import io
 import os
 import re
-import zipfile
 import tarfile
-import rarfile
-import py7zr
+import zipfile
 from datetime import date
 from http import HTTPStatus
-from typing import List, Tuple
 from urllib.parse import urljoin
 
+import py7zr
+import rarfile
 import requests
 from google.api_core import exceptions
 from models.file_record import FileRecord
@@ -44,7 +43,7 @@ class ProcurementRepository:
 
     def process_procurement_documents(
         self, procurement: Procurement
-    ) -> Tuple[List[FileRecord], List[Tuple[str, bytes]]]:
+    ) -> tuple[list[FileRecord], list[tuple[str, bytes]]]:
         """Downloads all documents for a procurement, extracts metadata for every
         file, and collects all final (non-archive) files.
 
@@ -63,8 +62,8 @@ class ProcurementRepository:
         if not documents_to_download:
             return [], []
 
-        all_records: List[FileRecord] = []
-        final_files_for_zip: List[Tuple[str, bytes]] = []
+        all_records: list[FileRecord] = []
+        final_files_for_zip: list[tuple[str, bytes]] = []
 
         for doc in documents_to_download:
             content = self._download_file_content(doc.url)
@@ -96,8 +95,8 @@ class ProcurementRepository:
         content: bytes,
         current_path: str,
         nesting_level: int,
-        record_collection: List[FileRecord],
-        file_collection: List[Tuple[str, bytes]],
+        record_collection: list[FileRecord],
+        file_collection: list[tuple[str, bytes]],
     ) -> None:
         """Recursively processes byte content, dispatching to the correct
         archive handler based on the file extension or content.
@@ -135,9 +134,7 @@ class ProcurementRepository:
                         file_collection,
                     )
             except Exception as e:
-                self.logger.warning(
-                    f"Could not process archive '{current_path}': {e}. Treating as a single file."
-                )
+                self.logger.warning(f"Could not process archive '{current_path}': {e}. Treating " "as a single file.")
                 self._collect_final_file(
                     procurement_control_number,
                     root_document_sequence,
@@ -186,22 +183,18 @@ class ProcurementRepository:
                 root_document_is_active=root_document_is_active,
                 file_path=current_path,
                 file_name=file_name,
-                file_extension=extension.lower().lstrip(".") if extension else None,
+                file_extension=(extension.lower().lstrip(".") if extension else None),
                 nesting_level=nesting_level,
                 file_size=len(content),
             )
         )
         file_collection.append((current_path, content))
 
-    def create_zip_from_files(
-        self, files: List[Tuple[str, bytes]], control_number: str
-    ) -> bytes | None:
+    def create_zip_from_files(self, files: list[tuple[str, bytes]], control_number: str) -> bytes | None:
         """Creates a single, flat ZIP archive in memory from a list of files."""
         if not files:
             return None
-        self.logger.info(
-            f"Creating final ZIP archive with {len(files)} files for {control_number}..."
-        )
+        self.logger.info(f"Creating final ZIP archive with {len(files)} files for " f"{control_number}...")
         zip_stream = io.BytesIO()
         try:
             with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -209,41 +202,33 @@ class ProcurementRepository:
                     safe_path = re.sub(r'[<>:"\\|?*]', "_", file_path)
                     zf.writestr(safe_path, content)
             zip_bytes = zip_stream.getvalue()
-            self.logger.info(
-                f"Successfully created final ZIP archive of {len(zip_bytes)} bytes."
-            )
+            self.logger.info(f"Successfully created final ZIP archive of {len(zip_bytes)} bytes.")
             return zip_bytes
         except Exception as e:
-            self.logger.error(
-                f"Failed to create final ZIP archive for {control_number}: {e}"
-            )
+            self.logger.error(f"Failed to create final ZIP archive for {control_number}: {e}")
             return None
 
-    def _extract_from_zip(self, content: bytes) -> List[Tuple[str, bytes]]:
+    def _extract_from_zip(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a ZIP archive."""
         extracted = []
         with io.BytesIO(content) as stream:
             with zipfile.ZipFile(stream) as archive:
                 for member_info in archive.infolist():
                     if not member_info.is_dir():
-                        extracted.append(
-                            (member_info.filename, archive.read(member_info.filename))
-                        )
+                        extracted.append((member_info.filename, archive.read(member_info.filename)))
         return extracted
 
-    def _extract_from_rar(self, content: bytes) -> List[Tuple[str, bytes]]:
+    def _extract_from_rar(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a RAR archive."""
         extracted = []
         with io.BytesIO(content) as stream:
             with rarfile.RarFile(stream) as archive:
                 for member_info in archive.infolist():
                     if not member_info.isdir():
-                        extracted.append(
-                            (member_info.filename, archive.read(member_info.filename))
-                        )
+                        extracted.append((member_info.filename, archive.read(member_info.filename)))
         return extracted
 
-    def _extract_from_7z(self, content: bytes) -> List[Tuple[str, bytes]]:
+    def _extract_from_7z(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a 7z archive."""
         extracted = []
         with io.BytesIO(content) as stream:
@@ -253,21 +238,22 @@ class ProcurementRepository:
                     extracted.append((filename, bio.read()))
         return extracted
 
-    def _extract_from_tar(self, content: bytes) -> List[Tuple[str, bytes]]:
+    def _extract_from_tar(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a TAR archive (including .gz, .bz2)."""
         extracted = []
         with io.BytesIO(content) as stream:
             with tarfile.open(fileobj=stream, mode="r:*") as archive:
                 for member_info in archive.getmembers():
                     if member_info.isfile():
-                        file_content = archive.extractfile(member_info).read()
-                        extracted.append((member_info.name, file_content))
+                        file_obj = archive.extractfile(member_info)
+                        if file_obj:
+                            file_content = file_obj.read()
+                            extracted.append((member_info.name, file_content))
         return extracted
 
-    def _get_all_documents_metadata(
-        self, procurement: Procurement
-    ) -> List[ProcurementDocument]:
-        """Fetches and validates metadata for all active documents, prioritizing the 'BID_NOTICE'."""
+    def _get_all_documents_metadata(self, procurement: Procurement) -> list[ProcurementDocument]:
+        """Fetches and validates metadata for all active documents, prioritizing
+        the 'BID_NOTICE'."""
         try:
             endpoint = (
                 f"orgaos/{procurement.government_entity.cnpj}/compras/"
@@ -279,25 +265,17 @@ class ProcurementRepository:
                 return []
             response.raise_for_status()
 
-            all_docs = [
-                ProcurementDocument.model_validate(doc) for doc in response.json()
-            ]
+            all_docs = [ProcurementDocument.model_validate(doc) for doc in response.json()]
             active_docs = [doc for doc in all_docs if doc.is_active]
 
             if len(active_docs) < len(all_docs):
-                self.logger.info(
-                    f"Filtered out {len(all_docs) - len(active_docs)} inactive documents."
-                )
+                self.logger.info(f"Filtered out {len(all_docs) - len(active_docs)} inactive documents.")
 
-            active_docs.sort(
-                key=lambda doc: doc.document_type_id != DocumentType.BID_NOTICE
-            )
+            active_docs.sort(key=lambda doc: doc.document_type_id != DocumentType.BID_NOTICE)
             self.logger.info(f"Found metadata for {len(active_docs)} active document(s).")
             return active_docs
         except (requests.RequestException, ValidationError) as e:
-            self.logger.error(
-                f"Failed to get/validate document list for {procurement.pncp_control_number}: {e}"
-            )
+            self.logger.error(f"Failed to get/validate document list for {procurement.pncp_control_number}: {e}")
             return []
 
     def _download_file_content(self, url: str) -> bytes | None:
@@ -320,20 +298,16 @@ class ProcurementRepository:
             response.raise_for_status()
             content_disposition = response.headers.get("Content-Disposition")
             if content_disposition:
-                match = re.search(
-                    r'filename="?([^"]+)"?', content_disposition, re.IGNORECASE
-                )
+                match = re.search(r'filename="?([^"]+)"?', content_disposition, re.IGNORECASE)
                 if match:
                     return match.group(1)
         except requests.RequestException as e:
-            self.logger.warning(
-                f"Could not determine filename from headers for {url}: {e}"
-            )
+            self.logger.warning(f"Could not determine filename from headers for {url}: {e}")
         return None
 
     def get_updated_procurements(self, target_date: date) -> list[Procurement]:
-        """Fetches all procurements updated on a specific date by iterating
-        through relevant modalities and configured city codes.
+        """Fetches all procurements updated on a specific date by iterating through
+        relevant modalities and configured city codes.
         """
         all_procurements: list[Procurement] = []
         modalities_to_check = [
@@ -344,9 +318,7 @@ class ProcurementRepository:
         ]
         self.logger.info(f"Fetching all procurements updated on {target_date}...")
         if not self.config.TARGET_IBGE_CODES:
-            self.logger.warning(
-                "No TARGET_IBGE_CODES configured. The search will be nationwide."
-            )
+            self.logger.warning("No TARGET_IBGE_CODES configured. The search will be nationwide.")
         for city_code in self.config.TARGET_IBGE_CODES:
             if city_code:
                 self.logger.info(f"Searching for city with IBGE code: {city_code}")
@@ -371,9 +343,7 @@ class ProcurementRepository:
                         if response.status_code == HTTPStatus.NO_CONTENT:
                             break
                         response.raise_for_status()
-                        parsed_data = ProcurementListResponse.model_validate(
-                            response.json()
-                        )
+                        parsed_data = ProcurementListResponse.model_validate(response.json())
                         if not parsed_data.data:
                             break
                         all_procurements.extend(parsed_data.data)
@@ -386,9 +356,7 @@ class ProcurementRepository:
                     except ValidationError as e:
                         self.logger.error(f"Data validation error on page {page}: {e}")
                         break
-        self.logger.info(
-            f"Finished fetching. Total procurements: {len(all_procurements)}"
-        )
+        self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
         return all_procurements
 
     def publish_procurement_to_pubsub(self, procurement: Procurement) -> bool:
@@ -396,15 +364,9 @@ class ProcurementRepository:
         try:
             message_json = procurement.model_dump_json(by_alias=True)
             message_bytes = message_json.encode()
-            message_id = PubSubProvider.publish(
-                self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes
-            )
-            self.logger.debug(
-                f"Successfully published message {message_id} for {procurement.pncp_control_number}."
-            )
+            message_id = PubSubProvider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
+            self.logger.debug(f"Successfully published message {message_id} for " f"{procurement.pncp_control_number}.")
             return True
         except exceptions.GoogleAPICallError as e:
-            self.logger.error(
-                f"Failed to publish message for {procurement.pncp_control_number}: {e}"
-            )
+            self.logger.error(f"Failed to publish message for {procurement.pncp_control_number}: {e}")
             return False

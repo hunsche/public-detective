@@ -2,15 +2,14 @@
 Integration tests for the full analysis pipeline.
 """
 
-import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
+from alembic import command
+from alembic.config import Config
 from models.analysis import Analysis
 from models.procurement import Procurement
 from services.analysis import AnalysisService
-from alembic.config import Config
-from alembic import command
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -32,9 +31,7 @@ def run_migrations(monkeypatch):
 @patch("services.analysis.AiProvider")
 @patch("services.analysis.ProcurementRepository")
 @patch("services.analysis.AnalysisRepository")
-def test_full_analysis_and_idempotency(
-    mock_analysis_repo, mock_proc_repo, mock_ai_provider, monkeypatch
-):
+def test_full_analysis_and_idempotency(mock_analysis_repo, mock_proc_repo, mock_ai_provider, monkeypatch):
     """
     Tests the full analysis flow, including saving to the database
     and the idempotency check on a second run.
@@ -51,7 +48,8 @@ def test_full_analysis_and_idempotency(
     )
 
     mock_proc_repo.return_value.process_procurement_documents.return_value = (
-        [("test.docx", file_content)], [("test.docx", file_content)]
+        [("test.docx", file_content)],
+        [("test.docx", file_content)],
     )
     mock_ai_provider.return_value.get_structured_analysis.return_value = ai_response
 
