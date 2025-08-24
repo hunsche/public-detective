@@ -36,7 +36,7 @@ def mock_gemini_client():
         yield mock_genai
 
 
-def test_ai_provider_instantiation(_mock_gemini_client):
+def test_ai_provider_instantiation(mock_gemini_client):
     """Tests that the AiProvider can be instantiated correctly."""
     provider = AiProvider(MockOutputSchema)
     assert provider is not None
