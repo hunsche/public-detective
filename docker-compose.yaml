@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:16.9
+    image: postgres:16-alpine
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -11,7 +11,7 @@ services:
       - postgres_data:/var/lib/postgresql/data
 
   pubsub:
-    image: gcr.io/google.com/cloudsdktool/cloud-sdk:477.0.0
+    image: google/cloud-sdk:emulators
     command: >
       gcloud beta emulators pubsub start
       --project=public-detective
@@ -31,7 +31,7 @@ services:
       - gcs_data:/data
 
   gcp-init:
-    image: gcr.io/google.com/cloudsdktool/cloud-sdk:477.0.0
+    image: google/cloud-sdk:emulators
     command: >
       sh -c "
         echo 'Configuring gcloud CLI...';

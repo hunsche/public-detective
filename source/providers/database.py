@@ -37,7 +37,7 @@ class DatabaseProvider:
         if cls._pool is None:
             with cls._pool_creation_lock:
                 if cls._pool is None:
-                    logger: Logger = LoggingProvider.get_logger()
+                    logger: Logger = LoggingProvider().get_logger()
                     logger.info("Connection pool not found, creating new instance...")
                     config: Config = ConfigProvider.get_config()
 
@@ -59,7 +59,7 @@ class DatabaseProvider:
         Closes all connections in the pool and resets the singleton instance.
         """
         if cls._pool:
-            logger: Logger = LoggingProvider.get_logger()
+            logger: Logger = LoggingProvider().get_logger()
             logger.info("Closing all connections in the pool.")
             cls._pool.closeall()
             cls._pool = None

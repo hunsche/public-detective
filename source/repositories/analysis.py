@@ -22,7 +22,7 @@ class AnalysisRepository:
         """
         Initializes the repository and gets a reference to the connection pool.
         """
-        self.logger: Logger = LoggingProvider.get_logger()
+        self.logger: Logger = LoggingProvider().get_logger()
         self.pool = DatabaseProvider.get_pool()
 
     @contextmanager

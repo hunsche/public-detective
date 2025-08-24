@@ -35,7 +35,7 @@ class AnalysisService:
         """Initializes the service and its dependencies."""
         self.procurement_repo = ProcurementRepository()
         self.analysis_repo = AnalysisRepository()
-        self.logger = LoggingProvider.get_logger()
+        self.logger = LoggingProvider().get_logger()
         self.ai_provider = AiProvider(Analysis)
         self.gcs_provider = GcsProvider()
         self.config = ConfigProvider.get_config()
@@ -65,7 +65,7 @@ class AnalysisService:
             return
 
         try:
-            processed_files = self.ai_provider.convert_files(files_for_ai)
+            processed_files = files_for_ai
 
             original_zip_url = self._archive_and_upload(
                 f"{control_number}-original.zip", all_original_files
