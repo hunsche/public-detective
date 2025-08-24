@@ -1,3 +1,8 @@
+"""
+This module defines the repository for handling database operations
+related to procurement analysis results.
+"""
+
 import json
 from contextlib import contextmanager
 from typing import Optional
@@ -13,21 +18,28 @@ class AnalysisRepository:
     Handles all database operations related to procurement analysis.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
+        """
+        Initializes the repository and gets a reference to the connection pool.
+        """
         self.logger: Logger = LoggingProvider.get_logger()
         self.pool = DatabaseProvider.get_pool()
 
     @contextmanager
     def get_connection(self):
-        """Provides a managed database connection from the pool."""
+        """
+        Provides a managed database connection from the pool.
+        """
         conn = self.pool.getconn()
         try:
             yield conn
         finally:
             self.pool.putconn(conn)
 
-    def _parse_row_to_model(self, row, columns) -> Optional[AnalysisResult]:
-        """Parses a database row into an AnalysisResult Pydantic model."""
+    def _parse_row_to_model(self, row: tuple, columns: list[str]) -> Optional[AnalysisResult]:
+        """
+        Parses a database row into an AnalysisResult Pydantic model.
+        """
         if not row:
             return None
 
@@ -51,23 +63,21 @@ class AnalysisRepository:
         """
         Saves a complete analysis result to the database using an 'upsert' operation.
         """
-        self.logger.info(
-            f"Saving analysis for procurement {result.procurement_control_number}."
-        )
+        self.logger.info(f"Saving analysis for {result.procurement_control_number}.")
+
         sql = """
             INSERT INTO procurement_analysis (
-                procurement_control_number, risk_score, risk_score_rationale, summary,
-                red_flags, warnings, gcs_document_url, document_hash,
+                procurement_control_number, document_hash, risk_score,
+                risk_score_rationale, summary, red_flags, warnings,
                 original_documents_url, processed_documents_url
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT (procurement_control_number) DO UPDATE SET
+                document_hash = EXCLUDED.document_hash,
                 risk_score = EXCLUDED.risk_score,
                 risk_score_rationale = EXCLUDED.risk_score_rationale,
                 summary = EXCLUDED.summary,
                 red_flags = EXCLUDED.red_flags,
                 warnings = EXCLUDED.warnings,
-                gcs_document_url = EXCLUDED.gcs_document_url,
-                document_hash = EXCLUDED.document_hash,
                 original_documents_url = EXCLUDED.original_documents_url,
                 processed_documents_url = EXCLUDED.processed_documents_url,
                 analysis_date = CURRENT_TIMESTAMP;
@@ -77,13 +87,12 @@ class AnalysisRepository:
 
         params = (
             result.procurement_control_number,
+            result.document_hash,
             result.ai_analysis.risk_score,
             result.ai_analysis.risk_score_rationale,
             result.ai_analysis.summary,
             red_flags_json,
             result.warnings,
-            result.gcs_document_url,
-            result.document_hash,
             result.original_documents_url,
             result.processed_documents_url,
         )
@@ -96,7 +105,9 @@ class AnalysisRepository:
         self.logger.info("Analysis saved successfully.")
 
     def get_analysis_by_hash(self, document_hash: str) -> Optional[AnalysisResult]:
-        """Retrieves an analysis result from the database by its document hash."""
+        """
+        Retrieves an analysis result from the database by its document hash.
+        """
         sql = "SELECT * FROM procurement_analysis WHERE document_hash = %s LIMIT 1;"
 
         with self.get_connection() as conn:

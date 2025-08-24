@@ -1,7 +1,9 @@
+"""
+This module defines the service responsible for orchestrating the procurement
+analysis pipeline.
+"""
 import hashlib
 import io
-import json
-import uuid
 import zipfile
 from datetime import date, timedelta
 from typing import List, Tuple
@@ -19,10 +21,6 @@ from repositories.procurement import ProcurementRepository
 class AnalysisService:
     """
     Orchestrates the analysis of individual procurements.
-
-    This service contains the core business logic for file filtering,
-    prioritization, hashing for idempotency, and archiving, before
-    sending artifacts for AI analysis.
     """
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
@@ -31,7 +29,7 @@ class AnalysisService:
         "orcamento", "custos", "contrato", "ata de registro"
     ]
     _MAX_FILES_FOR_AI = 10
-    _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024  # 20MB
+    _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
 
     def __init__(self) -> None:
         """Initializes the service and its dependencies."""
@@ -44,8 +42,7 @@ class AnalysisService:
 
     def analyze_procurement(self, procurement: Procurement) -> None:
         """
-        Executes the full analysis pipeline for a single procurement,
-        including idempotency checks and artifact archiving.
+        Executes the full analysis pipeline for a single procurement.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number}...")
@@ -125,8 +122,7 @@ class AnalysisService:
         self, all_files: list[tuple[str, bytes]]
     ) -> tuple[list[tuple[str, bytes]], list[str]]:
         """
-        Applies business rules to filter, prioritize, and limit files for AI analysis,
-        generating detailed warnings for excluded files.
+        Applies business rules to filter, prioritize, and limit files for AI analysis.
         """
         warnings = []
         supported_files = [

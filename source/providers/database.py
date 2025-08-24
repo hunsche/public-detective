@@ -1,3 +1,7 @@
+"""
+This module provides a singleton database connection pool for the application.
+"""
+
 import threading
 
 from psycopg2.pool import ThreadedConnectionPool
@@ -8,13 +12,19 @@ from providers.logging import Logger, LoggingProvider
 class DatabaseProvider:
     """
     Manages a thread-safe connection pool for PostgreSQL.
-    Implements the Singleton pattern to ensure only one pool is created.
+
+    This class implements the Singleton pattern to ensure that only one
+    instance of the connection pool is created and shared across the
+    application.
     """
 
     _pool: ThreadedConnectionPool | None = None
     _pool_creation_lock = threading.Lock()
 
     def __new__(cls):
+        """
+        Ensures that only one instance of this class can be created.
+        """
         if not hasattr(cls, "instance"):
             cls.instance = super(DatabaseProvider, cls).__new__(cls)
         return cls.instance
@@ -45,7 +55,9 @@ class DatabaseProvider:
 
     @classmethod
     def release_pool(cls) -> None:
-        """Closes all connections in the pool."""
+        """
+        Closes all connections in the pool and resets the singleton instance.
+        """
         if cls._pool:
             logger: Logger = LoggingProvider.get_logger()
             logger.info("Closing all connections in the pool.")

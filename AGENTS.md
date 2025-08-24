@@ -8,13 +8,13 @@ This project, named "Public Detective", is an AI-powered tool for analyzing publ
 
 Key architectural features:
 - **File Conversion:** Handled by a local **LibreOffice** installation.
-- **Database Access:** Uses a `psycopg2` connection pool and raw SQL queries for performance. It does **not** use a high-level ORM.
+- **Database Access:** Uses a `psycopg2` connection pool and raw SQL queries for performance and control. It does **not** use a high-level ORM.
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
 
 ## 2. Environment Setup
 
-The project is standardized on **Python 3.12** for compatibility with the execution environment.
+The project is standardized on **Python 3.12**.
 
 ### A. Prerequisites
 - Python 3.12
