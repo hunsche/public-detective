@@ -1,36 +1,52 @@
+"""
+Creates the initial procurement_analysis table.
+
+Revision ID: ce0a16ca8b96
+Revises:
+Create Date: 2025-07-26 17:30:11.111111
+
+"""
 from typing import Sequence, Union
 
 from alembic import op
 
 
-revision: str = "ce0a16ca8b96"
+revision: str = 'ce0a16ca8b96'
 down_revision: Union[str, None] = None
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    op.execute(
-        """
+    """
+    Creates the procurement_analysis table with all necessary columns
+    and indexes using raw SQL commands for full control.
+    """
+    op.execute("""
         CREATE TABLE procurement_analysis (
-            id SERIAL PRIMARY KEY,
-            procurement_control_number TEXT UNIQUE NOT NULL,
-            risk_score INT,
+            procurement_control_number VARCHAR(255) NOT NULL,
+            analysis_date TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
+            risk_score SMALLINT,
+            risk_score_rationale TEXT,
             summary TEXT,
             red_flags JSONB,
             warnings TEXT[],
-            gcs_document_url TEXT,
-            analysis_date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+            document_hash VARCHAR(64),
+            original_documents_url VARCHAR(1024),
+            processed_documents_url VARCHAR(1024),
+            PRIMARY KEY (procurement_control_number)
         );
-
-        CREATE INDEX idx_procurement_analysis_control_number ON procurement_analysis (procurement_control_number);
-        """
-    )
+    """)
+    op.execute("""
+        CREATE INDEX ix_document_hash
+        ON procurement_analysis (document_hash);
+    """)
 
 
 def downgrade() -> None:
-    op.execute(
-        """
-        DROP TABLE IF EXISTS procurement_analysis;
-        """
-    )
+    """
+    Renames the table to a dropped state instead of permanently deleting it.
+    This provides a safety net for rollbacks.
+    """
+    op.execute("DROP INDEX IF EXISTS ix_document_hash;")
+    op.execute("ALTER TABLE procurement_analysis RENAME TO procurement_analysis_dropped;")

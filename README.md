@@ -28,7 +28,7 @@ This is a research and extension project developed at the **Pontifical Catholic 
 
 ## Tech Stack
 
-- **Language:** Python 3.12+ (officially), developed for `^3.13`
+- **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
 - **File Conversion:** LibreOffice
 - **Database:** PostgreSQL with Psycopg2 (raw SQL and connection pooling)
@@ -40,7 +40,7 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-- **Python 3.12+** (see `AGENTS.md` for `asdf` setup)
+- **Python 3.12+**
 - **Poetry** for dependency management
 - **Docker** and **Docker Compose** for running services
 - **LibreOffice** for file conversion
