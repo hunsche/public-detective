@@ -20,6 +20,7 @@ def run_migrations(monkeypatch):
     monkeypatch.setenv("POSTGRES_DB", "public_detective")
     monkeypatch.setenv("POSTGRES_USER", "postgres")
     monkeypatch.setenv("POSTGRES_PASSWORD", "postgres")
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
 
     alembic_cfg = Config("alembic.ini")
     command.upgrade(alembic_cfg, "head")
@@ -37,7 +38,6 @@ def test_full_analysis_and_idempotency(mock_analysis_repo, mock_proc_repo, mock_
     """
     from services.analysis import AnalysisService
 
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
     monkeypatch.setenv("GCP_GCS_HOST", "http://localhost:8086")
 
     file_content = b"This is a test document."
