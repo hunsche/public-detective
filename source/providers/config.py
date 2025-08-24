@@ -44,7 +44,7 @@ class Config(BaseSettings):
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_PUBSUB_HOST: str | None = None
-    GCP_GEMINI_API_KEY: str
+    GCP_GEMINI_API_KEY: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
 
     @model_validator(mode="after")
