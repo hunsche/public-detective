@@ -1,20 +1,25 @@
-from typing import Sequence, Union
+"""change analysis_date to timestamp with timezone
+
+Revision ID: 98d6cf46a2cc
+Revises: ce0a16ca8b96
+Create Date: 2025-08-24 16:28:38.204523
+
+"""
 
 from alembic import op
-import sqlalchemy as sa
 
-
-revision: str = '98d6cf46a2cc'
-down_revision: Union[str, None] = 'ce0a16ca8b96'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+# revision identifiers, used by Alembic.
+revision: str = "98d6cf46a2cc"
+down_revision: str | None = "ce0a16ca8b96"
+branch_labels: str | None = None
+depends_on: str | None = None
 
 
 def upgrade() -> None:
     """
-    Changes the analysis_date column from TIMESTAMP to TIMESTAMPZ.
+    Changes the analysis_date column from DATE to TIMESTAMP WITH TIME ZONE.
     The USING clause is necessary to cast the existing data correctly, assuming
-    the naive timestamps were stored in UTC.
+    the naive dates were stored in UTC.
     """
     op.execute(
         """
@@ -27,11 +32,12 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """
-    Reverts the analysis_date column from TIMESTAMPZ back to TIMESTAMP.
+    Reverts the analysis_date column from TIMESTAMP WITH TIME ZONE back to DATE.
+    This is a destructive operation as it will truncate the time part of the timestamp.
     """
     op.execute(
         """
         ALTER TABLE procurement_analysis
-        ALTER COLUMN analysis_date TYPE TIMESTAMP WITHOUT TIME ZONE;
+        ALTER COLUMN analysis_date TYPE DATE;
     """
     )

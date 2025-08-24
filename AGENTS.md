@@ -7,7 +7,30 @@ Hello! This document provides instructions on how to work on this project.
 This project, named "Public Detective", is an AI-powered tool for analyzing public procurement documents in Brazil to find irregularities. It uses the Google Gemini API for text analysis.
 
 Key architectural features:
-- **Database Access:** Uses a `psycopg2` connection pool and raw SQL queries for performance and control. It does **not** use a high-level ORM.
+- **Database Access:** All database access, both in migrations and in the application code, **must** be done through raw SQL queries. This is to ensure performance and full control. The project uses **SQLAlchemy Core** to execute these raw queries, but it does **not** use the high-level SQLAlchemy ORM for defining models or relationships.
+
+    - **Example of an application query (`source/repositories/analysis.py`):**
+      ```python
+      sql = """
+          INSERT INTO procurement_analysis (
+              procurement_control_number, document_hash, risk_score,
+              risk_score_rationale, summary, red_flags, warnings,
+              original_documents_url, processed_documents_url
+          ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+          ON CONFLICT (procurement_control_number) DO UPDATE SET
+              document_hash = EXCLUDED.document_hash,
+              risk_score = EXCLUDED.risk_score,
+              risk_score_rationale = EXCLUDED.risk_score_rationale,
+              summary = EXCLUDED.summary,
+              red_flags = EXCLUDED.red_flags,
+              warnings = EXCLUDED.warnings,
+              original_documents_url = EXCLUDED.original_documents_url,
+              processed_documents_url = EXCLUDED.processed_documents_url,
+              analysis_date = CURRENT_TIMESTAMP;
+      """
+      # ... cursor execution ...
+      ```
+
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
 
@@ -71,20 +94,38 @@ These require the Docker services to be running.
 - **No Inline Comments:** Code should be self-documenting through clear variable and method names. Use docstrings for classes and methods, not `#` comments.
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 
-## 6. Pre-commit Hooks
+## 6. Database Migrations
 
-This project uses pre-commit hooks to enforce code quality and consistency. Before submitting any changes, you **must** run the pre-commit checks.
+### A. Raw SQL Only
+**All database migrations MUST be written in raw SQL using `op.execute()`**. Do not use Alembic's ORM-based helpers like `op.alter_column()`, `op.create_table()`, etc.
 
-To install the hooks, run:
+### B. Non-Destructive Downgrades
+The `downgrade` function of a migration **must never be destructive**. Instead of dropping a table or column, you must rename it with a `_dropped` suffix. This provides a safety mechanism for rollbacks.
+
+**Example of a non-destructive downgrade:**
+```python
+def downgrade() -> None:
+    op.execute("ALTER TABLE old_table_name RENAME TO old_table_name_dropped;")
+```
+
+## 7. Pre-commit Hooks
+
+This project uses pre-commit hooks to enforce code quality and consistency. You **must** ensure your code passes these checks before submitting.
+
+### A. Installation
+First, install the hooks so they run automatically before each commit:
 ```bash
 poetry run pre-commit install
 ```
 
-To run the checks on all files, use:
+### B. Usage and Troubleshooting
+The hooks will run on changed files when you run `git commit`. However, the CI pipeline runs the checks on **all files**. This can cause the pipeline to fail even if your local commit succeeds.
+
+To avoid this, it is **highly recommended** to occasionally run the checks on all files locally:
 ```bash
 poetry run pre-commit run --all-files
 ```
 
-If any hooks fail, they may automatically fix the files. If they still fail, you will need to manually fix the issues before you can commit.
+This command simulates the CI environment and helps you find and fix issues in files you didn't directly modify.
 
 Thank you for your contribution!
