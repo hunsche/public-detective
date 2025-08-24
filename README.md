@@ -13,7 +13,6 @@ This is a research and extension project developed at the **Pontifical Catholic 
 ## Key Features
 
 - **Automated Data Retrieval:** Fetches procurement data directly from the official PNCP APIs.
-- **In-depth Document Analysis:** Converts various document formats (DOCX, XLSX, etc.) using LibreOffice and analyzes their full text.
 - **AI-Powered Irregularity Detection:** Uses a Generative AI model to flag potential red flags and provide a detailed risk score with a rationale.
 - **Traceability:** Archives both original and processed documents in Google Cloud Storage for every analysis.
 - **Idempotency:** Avoids re-analyzing unchanged documents by checking a content hash.
@@ -21,16 +20,15 @@ This is a research and extension project developed at the **Pontifical Catholic 
 ## How It Works
 
 1.  **Fetch:** Queries the public PNCP API to find recent or open bids.
-2.  **Retrieve & Process:** Downloads all documents for a bid. Converts office-suite documents to PDF or CSV using LibreOffice.
-3.  **Archive:** Zips and uploads both the original and the processed documents to Google Cloud Storage.
-4.  **Analyze:** Submits the processed file contents to a Generative AI model with a specialized prompt.
+2.  **Retrieve:** Downloads all documents for a bid.
+3.  **Archive:** Zips and uploads the original documents to Google Cloud Storage.
+4.  **Analyze:** Submits the file contents to a Generative AI model with a specialized prompt.
 5.  **Report:** Processes the AI's analysis, including a risk score and rationale, and saves it to a PostgreSQL database.
 
 ## Tech Stack
 
 - **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
-- **File Conversion:** LibreOffice
 - **Database:** PostgreSQL with Psycopg2 (raw SQL and connection pooling)
 - **Infrastructure:** Docker, GCS, Pub/Sub
 
@@ -43,7 +41,6 @@ To get a local copy up and running, follow these simple steps.
 - **Python 3.12+**
 - **Poetry** for dependency management
 - **Docker** and **Docker Compose** for running services
-- **LibreOffice** for file conversion
 
 ### Installation & Setup
 
@@ -63,7 +60,7 @@ To get a local copy up and running, follow these simple steps.
     ```
 4.  **Start services:**
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
 5.  **Run database migrations:**
     ```bash

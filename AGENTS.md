@@ -7,7 +7,6 @@ Hello! This document provides instructions on how to work on this project.
 This project, named "Public Detective", is an AI-powered tool for analyzing public procurement documents in Brazil to find irregularities. It uses the Google Gemini API for text analysis.
 
 Key architectural features:
-- **File Conversion:** Handled by a local **LibreOffice** installation.
 - **Database Access:** Uses a `psycopg2` connection pool and raw SQL queries for performance and control. It does **not** use a high-level ORM.
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
@@ -20,7 +19,6 @@ The project is standardized on **Python 3.12**.
 - Python 3.12
 - Poetry
 - Docker
-- LibreOffice
 
 ### B. Installation Steps
 
@@ -41,7 +39,7 @@ This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS
 
 1.  **Start all services:**
     ```bash
-    docker-compose up -d
+    docker compose up -d
     ```
 2.  **Apply database migrations:**
     ```bash
@@ -57,15 +55,15 @@ This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS
 ### Unit Tests
 These do not require any external services.
 ```bash
-poetry run pytest tests/
+poetry run pytest tests/unit/
 ```
 
 ### Integration Tests
 These require the Docker services to be running.
-1.  Ensure services are up: `docker-compose up -d`
+1.  Ensure services are up: `docker compose up -d`
 2.  Run the integration tests:
     ```bash
-    poetry run pytest tests/integration/
+    poetry run pytest tests/integrations/
     ```
 
 ## 5. Code Philosophy

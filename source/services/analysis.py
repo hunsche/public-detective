@@ -65,19 +65,14 @@ class AnalysisService:
             return
 
         try:
-            processed_files = files_for_ai
-
             original_zip_url = self._archive_and_upload(
                 f"{control_number}-original.zip", all_original_files
-            )
-            processed_zip_url = self._archive_and_upload(
-                f"{control_number}-processed.zip", processed_files
             )
 
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
-                files=processed_files,
+                files=files_for_ai,
             )
 
             final_result = AnalysisResult(
@@ -86,7 +81,6 @@ class AnalysisService:
                 warnings=warnings,
                 document_hash=document_hash,
                 original_documents_url=original_zip_url,
-                processed_documents_url=processed_zip_url,
             )
             self.analysis_repo.save_analysis(final_result)
             self.logger.info(f"Successfully completed analysis for {control_number}.")

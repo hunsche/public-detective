@@ -94,7 +94,7 @@ class AnalysisRepository:
             red_flags_json,
             result.warnings,
             result.original_documents_url,
-            result.processed_documents_url,
+            None,  # processed_documents_url is no longer used
         )
 
         with self.get_connection() as conn:
