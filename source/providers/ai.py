@@ -37,6 +37,10 @@ class AiProvider(Generic[PydanticModel]):
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
 
+        if not self.config.GCP_GEMINI_API_KEY:
+            self.logger.error("GCP_GEMINI_API_KEY is missing. The AI provider cannot be initialized.")
+            raise ValueError("GCP_GEMINI_API_KEY must be configured to use the AI provider.")
+
         genai.configure(api_key=self.config.GCP_GEMINI_API_KEY)
         self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
