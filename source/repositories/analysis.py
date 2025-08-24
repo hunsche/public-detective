@@ -43,13 +43,18 @@ class AnalysisRepository:
             return None
 
         row_dict = dict(zip(columns, row))
+        red_flags_data = row_dict.get("red_flags", "[]")
+        if isinstance(red_flags_data, str):
+            red_flags = json.loads(red_flags_data)
+        else:
+            red_flags = red_flags_data
 
         try:
             ai_analysis_data = {
                 "risk_score": row_dict.get("risk_score"),
                 "risk_score_rationale": row_dict.get("risk_score_rationale"),
                 "summary": row_dict.get("summary"),
-                "red_flags": json.loads(row_dict.get("red_flags", "[]")),
+                "red_flags": red_flags,
             }
             row_dict["ai_analysis"] = Analysis(**ai_analysis_data)
 

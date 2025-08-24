@@ -1,8 +1,10 @@
 import json
 import threading
 from contextlib import contextmanager
+from typing import Optional
 
 from google.api_core.exceptions import GoogleAPICallError
+from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.procurement import Procurement
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
@@ -24,12 +26,17 @@ class Subscription:
     config: Config
     logger: Logger
     analysis_service: AnalysisService
+    processed_messages_count: int
+    streaming_pull_future: StreamingPullFuture | None
 
     def __init__(self):
         """Initializes the worker, loading configuration and services."""
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
         self.analysis_service = AnalysisService()
+        self.pubsub_provider = PubSubProvider()
+        self.processed_messages_count = 0
+        self.streaming_pull_future = None
 
         if self.config.IS_DEBUG_MODE:
             self._lock = threading.Lock()
@@ -108,7 +115,7 @@ class Subscription:
             )
             message.nack()
 
-    def _message_callback(self, message: Message):
+    def _message_callback(self, message: Message, max_messages: int | None):
         """Entry-point callback invoked by Pub/Sub upon message delivery.
 
         Applies a debug-only context (single-flight + extended deadline) and
@@ -116,6 +123,7 @@ class Subscription:
 
         Args:
             message: The Pub/Sub message received from the subscription.
+            max_messages: The maximum number of messages to process.
         """
         if self.config.IS_DEBUG_MODE:
             ctx = self._debug_context(message)
@@ -124,7 +132,13 @@ class Subscription:
         else:
             self._process_message(message)
 
-    def run(self):
+        self.processed_messages_count += 1
+        if max_messages and self.processed_messages_count >= max_messages:
+            self.logger.info(f"Reached message limit ({max_messages}). Stopping worker...")
+            if self.streaming_pull_future:
+                self.streaming_pull_future.cancel()
+
+    def run(self, max_messages: int | None = None):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
@@ -136,17 +150,20 @@ class Subscription:
             self.logger.critical("Subscription name not configured. Worker cannot start.")
             return
 
-        streaming_pull_future = PubSubProvider.subscribe(subscription_name, self._message_callback)
+        callback = lambda message: self._message_callback(message, max_messages)
+        self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
         self.logger.info("Worker is now running and waiting for messages...")
 
         try:
-            streaming_pull_future.result(timeout=None)
+            self.streaming_pull_future.result(timeout=None)
         except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
-            self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
+            if "cancelled" not in str(e).lower():
+                self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
         finally:
             self.logger.info("Stopping worker...")
-            streaming_pull_future.cancel()
-            streaming_pull_future.result()
+            if self.streaming_pull_future and not self.streaming_pull_future.cancelled():
+                self.streaming_pull_future.cancel()
+                self.streaming_pull_future.result()  # Wait for cancellation to complete
             self.logger.info("Worker has stopped gracefully.")

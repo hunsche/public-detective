@@ -48,8 +48,6 @@ class Analysis(BaseModel):
 
     risk_score: int = Field(
         ...,
-        ge=0,
-        le=10,
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
     risk_score_rationale: str = Field(
