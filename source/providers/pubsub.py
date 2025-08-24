@@ -13,7 +13,7 @@ from providers.logging import Logger, LoggingProvider
 
 class PubSubProvider:
     """
-    Provides static methods to interact with Google Cloud Pub/Sub.
+    Provides methods to interact with Google Cloud Pub/Sub.
 
     This provider centralizes client management, abstracting away the
     instantiation and caching of both Publisher and Subscriber clients in a
@@ -21,14 +21,17 @@ class PubSubProvider:
     publishing and subscribing to topics.
     """
 
-    logger: Logger = LoggingProvider().get_logger()
-    config: Config = ConfigProvider.get_config()
+    _clients: dict[str, pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient]
+    _client_creation_lock: threading.Lock
 
-    _clients: dict[str, pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient] = {}
-    _client_creation_lock = threading.Lock()
+    def __init__(self) -> None:
+        self.logger: Logger = LoggingProvider().get_logger()
+        self.config: Config = ConfigProvider.get_config()
+        self._clients = {}
+        self._client_creation_lock = threading.Lock()
 
-    @staticmethod
     def _create_client_instance(
+        self,
         client_class: type[pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient],
     ) -> pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient:
         """
@@ -47,20 +50,19 @@ class PubSubProvider:
             An instance of the specified GCP client class.
         """
         class_name = client_class.__name__
-        PubSubProvider.logger.info(f"{class_name} not found in cache, creating a new instance...")
-        emulator_host = PubSubProvider.config.GCP_PUBSUB_HOST
+        self.logger.info(f"{class_name} not found in cache, creating a new instance...")
+        emulator_host = self.config.GCP_PUBSUB_HOST
 
         if emulator_host:
             os.environ["PUBSUB_EMULATOR_HOST"] = emulator_host
             client = client_class()
-            PubSubProvider.logger.info(f"{class_name} instance created for emulator at {emulator_host}")
+            self.logger.info(f"{class_name} instance created for emulator at {emulator_host}")
         else:
             client = client_class()
-            PubSubProvider.logger.info(f"{class_name} instance created for Google Cloud")
+            self.logger.info(f"{class_name} instance created for Google Cloud")
         return client
 
-    @staticmethod
-    def _get_or_create_publisher_client() -> pubsub_v1.PublisherClient:
+    def _get_or_create_publisher_client(self) -> pubsub_v1.PublisherClient:
         """
         Retrieves a singleton instance of the Pub/Sub PublisherClient.
 
@@ -72,15 +74,14 @@ class PubSubProvider:
         """
         client_key = pubsub_v1.PublisherClient.__name__
 
-        if client_key not in PubSubProvider._clients:
-            with PubSubProvider._client_creation_lock:
-                if client_key not in PubSubProvider._clients:
-                    client = PubSubProvider._create_client_instance(pubsub_v1.PublisherClient)
-                    PubSubProvider._clients[client_key] = client
-        return cast(pubsub_v1.PublisherClient, PubSubProvider._clients[client_key])
+        if client_key not in self._clients:
+            with self._client_creation_lock:
+                if client_key not in self._clients:
+                    client = self._create_client_instance(pubsub_v1.PublisherClient)
+                    self._clients[client_key] = client
+        return cast(pubsub_v1.PublisherClient, self._clients[client_key])
 
-    @staticmethod
-    def _get_or_create_subscriber_client() -> pubsub_v1.SubscriberClient:
+    def _get_or_create_subscriber_client(self) -> pubsub_v1.SubscriberClient:
         """
         Retrieves a singleton instance of the Pub/Sub SubscriberClient.
 
@@ -92,15 +93,14 @@ class PubSubProvider:
         """
         client_key = pubsub_v1.SubscriberClient.__name__
 
-        if client_key not in PubSubProvider._clients:
-            with PubSubProvider._client_creation_lock:
-                if client_key not in PubSubProvider._clients:
-                    client = PubSubProvider._create_client_instance(pubsub_v1.SubscriberClient)
-                    PubSubProvider._clients[client_key] = client
-        return cast(pubsub_v1.SubscriberClient, PubSubProvider._clients[client_key])
+        if client_key not in self._clients:
+            with self._client_creation_lock:
+                if client_key not in self._clients:
+                    client = self._create_client_instance(pubsub_v1.SubscriberClient)
+                    self._clients[client_key] = client
+        return cast(pubsub_v1.SubscriberClient, self._clients[client_key])
 
-    @staticmethod
-    def publish(topic_id: str, data: bytes, timeout_seconds: int = 15) -> str:
+    def publish(self, topic_id: str, data: bytes, timeout_seconds: int = 15) -> str:
         """
         Publishes a message to a specific Pub/Sub topic.
 
@@ -122,23 +122,22 @@ class PubSubProvider:
             Exception: For any other errors during the publish operation.
         """
         try:
-            client = PubSubProvider._get_or_create_publisher_client()
-            topic_path = client.topic_path(PubSubProvider.config.GCP_PROJECT, topic_id)
+            client = self._get_or_create_publisher_client()
+            topic_path = client.topic_path(self.config.GCP_PROJECT, topic_id)
 
             future = cast(Future, client.publish(topic_path, data))
             message_id = future.result(timeout=timeout_seconds)
 
-            PubSubProvider.logger.debug(f"Message {message_id} published to {topic_path}")
+            self.logger.debug(f"Message {message_id} published to {topic_path}")
             return cast(str, message_id)
         except TimeoutError:
-            PubSubProvider.logger.error(f"Publishing to topic {topic_id} timed out after {timeout_seconds} seconds.")
+            self.logger.error(f"Publishing to topic {topic_id} timed out after {timeout_seconds} seconds.")
             raise
         except Exception as e:
-            PubSubProvider.logger.error(f"Failed to publish to topic {topic_id}: {e}")
+            self.logger.error(f"Failed to publish to topic {topic_id}: {e}")
             raise
 
-    @staticmethod
-    def subscribe(subscription_id: str, callback: Callable[[Message], None]) -> StreamingPullFuture:
+    def subscribe(self, subscription_id: str, callback: Callable[[Message], None]) -> StreamingPullFuture:
         """
         Starts listening to a Pub/Sub subscription and executes a callback for each message.
 
@@ -166,13 +165,13 @@ class PubSubProvider:
                        the subscription.
         """
         try:
-            client = PubSubProvider._get_or_create_subscriber_client()
-            subscription_path = client.subscription_path(PubSubProvider.config.GCP_PROJECT, subscription_id)
+            client = self._get_or_create_subscriber_client()
+            subscription_path = client.subscription_path(self.config.GCP_PROJECT, subscription_id)
 
             streaming_pull_future = client.subscribe(subscription_path, callback=callback)
 
-            PubSubProvider.logger.info(f"Successfully subscribed to {subscription_path}. Waiting for messages...")
+            self.logger.info(f"Successfully subscribed to {subscription_path}. Waiting for messages...")
             return streaming_pull_future
         except Exception as e:
-            PubSubProvider.logger.error(f"Failed to start subscription on {subscription_id}: {e}")
+            self.logger.error(f"Failed to start subscription on {subscription_id}: {e}")
             raise

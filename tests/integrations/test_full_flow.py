@@ -9,7 +9,6 @@ from alembic import command
 from alembic.config import Config
 from models.analysis import Analysis
 from models.procurement import Procurement
-from services.analysis import AnalysisService
 
 
 @pytest.fixture(scope="function", autouse=True)
@@ -36,8 +35,10 @@ def test_full_analysis_and_idempotency(mock_analysis_repo, mock_proc_repo, mock_
     Tests the full analysis flow, including saving to the database
     and the idempotency check on a second run.
     """
+    from services.analysis import AnalysisService
+
     monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    monkeypatch.setenv("STORAGE_EMULATOR_HOST", "http://localhost:8086")
+    monkeypatch.setenv("GCP_GCS_HOST", "http://localhost:8086")
 
     file_content = b"This is a test document."
     ai_response = Analysis(
