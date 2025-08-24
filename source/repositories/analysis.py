@@ -87,7 +87,7 @@ class AnalysisRepository:
                 analysis_date = CURRENT_TIMESTAMP;
         """
 
-        red_flags_json = result.ai_analysis.model_dump_json(include={"red_flags"})
+        red_flags_json = json.dumps([rf.model_dump() for rf in result.ai_analysis.red_flags])
 
         params = (
             result.procurement_control_number,
