@@ -48,23 +48,43 @@ def db_session():
     os.environ["POSTGRES_PORT"] = db_port
     os.environ["POSTGRES_DB"] = db_name
 
-    def get_container_ip(container_name):
+    def get_container_ip_by_service(service_name):
         import subprocess  # nosec B404
-
         try:
-            result = subprocess.run(  # nosec B603
-                ["/usr/bin/sudo", "/usr/bin/docker", "inspect", container_name],
+            # Find the container ID using its docker-compose service label
+            container_id_result = subprocess.run(  # nosec B603
+                [
+                    "/usr/bin/sudo",
+                    "/usr/bin/docker",
+                    "ps",
+                    "-q",
+                    "--filter",
+                    f"label=com.docker.compose.service={service_name}",
+                ],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            data = json.loads(result.stdout)
-            return data[0]["NetworkSettings"]["Networks"]["app_default"]["IPAddress"]
-        except (subprocess.CalledProcessError, KeyError, IndexError) as e:
-            pytest.fail(f"Could not get IP for container {container_name}: {e}")
+            container_id = container_id_result.stdout.strip()
+            if not container_id:
+                pytest.fail(f"Could not find container for service {service_name}")
 
-    pubsub_ip = get_container_ip("app-pubsub-1")
-    gcs_ip = get_container_ip("app-gcs-1")
+            # Inspect the container using its ID to get the IP address
+            inspect_result = subprocess.run(  # nosec B603
+                ["/usr/bin/sudo", "/usr/bin/docker", "inspect", container_id],
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            data = json.loads(inspect_result.stdout)
+            # The network name might change based on the project directory name
+            network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
+            return data[0]["NetworkSettings"]["Networks"][network_name]["IPAddress"]
+        except (subprocess.CalledProcessError, KeyError, IndexError) as e:
+            pytest.fail(f"Could not get IP for service {service_name}: {e}")
+
+    pubsub_ip = get_container_ip_by_service("pubsub")
+    gcs_ip = get_container_ip_by_service("gcs")
 
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
