@@ -13,29 +13,15 @@ services:
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
-  postgres-test:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: public_detective_test
-      POSTGRES_INITDB_ARGS: "--encoding=UTF-8 --lc-collate=en_US.UTF-8 --lc-ctype=en_US.UTF-8"
-      LANG: en_US.UTF-8
-      LC_ALL: en_US.UTF-8
-    ports:
-      - "5433:5432"
-    volumes:
-      - postgres_test_data:/var/lib/postgresql/data
-
   pubsub:
     image: google/cloud-sdk:emulators
     command: >
       gcloud beta emulators pubsub start
       --project=public-detective
       --host-port=0.0.0.0:8085
-      --data-dir=/data
+      --log-http
     ports:
-      - "8085"
+      - "8085:8085"
     volumes:
       - pubsub_data:/data
 
@@ -43,7 +29,7 @@ services:
     image: fsouza/fake-gcs-server:latest
     command: -scheme http -host 0.0.0.0 -port 8086
     ports:
-      - "8086"
+      - "8086:8086"
     volumes:
       - gcs_data:/data
 
@@ -94,6 +80,5 @@ services:
 
 volumes:
   postgres_data:
-  postgres_test_data:
   pubsub_data:
   gcs_data:

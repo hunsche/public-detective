@@ -10,6 +10,7 @@ import pytest
 import requests
 from click.testing import CliRunner
 from google.api_core import exceptions
+from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1
 from models.analysis import Analysis
 from sqlalchemy import create_engine, text
@@ -19,10 +20,10 @@ from source.worker.subscription import Subscription
 
 
 @pytest.fixture(scope="session", autouse=True)
-def docker_services_session():
+def db_session():
     """
-    Starts and stops the docker-compose services once for the entire test session.
-    Ensures all containers are ready before any tests run.
+    Connects to the database and creates a unique schema for the test session.
+    Ensures that the database is clean before and after the tests.
     """
     # --- Create dummy fixture file if it doesn't exist ---
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
@@ -34,127 +35,149 @@ def docker_services_session():
             zf.writestr("dummy_document.pdf", b"dummy pdf content")
         print("Fixture created successfully.")
 
-    # Use a unique project name to avoid conflicts in CI environments
-    project_name = f"publicdetective-test-{uuid.uuid4().hex[:8]}"
-    os.environ["COMPOSE_PROJECT_NAME"] = project_name
+    # --- Database Connection Setup ---
+    db_user = "postgres"
+    db_password = "postgres"  # nosec B105
+    db_host = "localhost"
+    db_port = "5432"
+    db_name = "public_detective"
 
-    # Check if docker is installed and running
-    import subprocess  # nosec B404
+    os.environ["POSTGRES_USER"] = db_user
+    os.environ["POSTGRES_PASSWORD"] = db_password
+    os.environ["POSTGRES_HOST"] = db_host
+    os.environ["POSTGRES_PORT"] = db_port
+    os.environ["POSTGRES_DB"] = db_name
 
-    try:
-        subprocess.run(["sudo", "docker", "info"], check=True, capture_output=True)  # nosec B603, B607
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        pytest.skip("Docker is not running or not installed. Skipping integration tests.")
-
-    print("Starting Docker services for the test session...")
-    subprocess.run(["sudo", "docker", "compose", "up", "-d"], check=True)  # nosec B603, B607
-
-    # --- Get Dynamic Ports ---
-    def get_service_port(service_name, internal_port):
+    def get_container_ip(container_name):
+        import subprocess  # nosec B404
         try:
-            command = ["sudo", "docker", "compose", "port", service_name, str(internal_port)]
             result = subprocess.run(  # nosec B603
-                command,
+                ["sudo", "docker", "inspect", container_name],
                 check=True,
                 capture_output=True,
                 text=True,
             )
-            # Output is typically in the format '0.0.0.0:PORT' or '::1:PORT'
-            return result.stdout.strip().split(":")[-1]
-        except subprocess.CalledProcessError as e:
-            print(f"Could not get port for {service_name}:{internal_port}. Error: {e.stderr}")
-            pytest.fail(f"Failed to get dynamic port for {service_name}.")
+            data = json.loads(result.stdout)
+            return data[0]["NetworkSettings"]["Networks"]["app_default"]["IPAddress"]
+        except (subprocess.CalledProcessError, KeyError, IndexError) as e:
+            pytest.fail(f"Could not get IP for container {container_name}: {e}")
 
-    postgres_port = get_service_port("postgres-test", 5432)
-    pubsub_port = get_service_port("pubsub", 8085)
-    gcs_port = get_service_port("gcs", 8086)
+    pubsub_ip = get_container_ip("app-pubsub-1")
+    gcs_ip = get_container_ip("app-gcs-1")
 
-    print(f"Postgres-test running on port: {postgres_port}")
-    print(f"Pub/Sub emulator running on port: {pubsub_port}")
-    print(f"GCS emulator running on port: {gcs_port}")
+    os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
+    os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
 
-    # Set environment variables for the entire session
-    os.environ["POSTGRES_HOST"] = "localhost"
-    os.environ["POSTGRES_PORT"] = postgres_port
-    os.environ["POSTGRES_DB"] = "public_detective_test"
-    os.environ["POSTGRES_USER"] = "postgres"
-    os.environ["POSTGRES_PASSWORD"] = "postgres"  # nosec B105
-    os.environ["PUBSUB_EMULATOR_HOST"] = f"localhost:{pubsub_port}"
-    os.environ["GCP_GCS_HOST"] = f"http://localhost:{gcs_port}"
 
-    print("Waiting for services to become healthy...")
-    time.sleep(10)
+    # --- Schema Creation ---
+    schema_name = f"test_schema_{uuid.uuid4().hex}"
+    os.environ["POSTGRES_DB_SCHEMA"] = schema_name
 
-    print("Applying database migrations...")
-    migration_result = subprocess.run(
-        ["poetry", "run", "alembic", "upgrade", "head"], check=False, capture_output=True
-    )  # nosec B603, B607
-    if migration_result.returncode != 0:
-        print("Alembic migration failed!")
-        print(migration_result.stdout.decode())
-        print(migration_result.stderr.decode())
-        subprocess.run(
-            ["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True
-        )  # nosec B603, B607
-        pytest.fail("Database migration failed, aborting tests.")
+    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    engine = create_engine(db_url)
 
-    yield
+    try:
+        with engine.connect() as connection:
+            print(f"Creating test schema: {schema_name}")
+            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
+            connection.commit()
 
-    print("Stopping Docker services for the test session...")
-    subprocess.run(
-        ["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True
-    )  # nosec B603, B607
+        # --- Run Migrations ---
+        print(f"Applying Alembic migrations to schema: {schema_name}")
+        from alembic.config import Config
+        from alembic import command
+
+        alembic_cfg = Config("alembic.ini")
+        # The programmatic call to alembic will use the environment variables
+        # that have already been set, including POSTGRES_DB_SCHEMA
+        command.upgrade(alembic_cfg, "head")
+
+        yield  # Tests run at this point
+
+    finally:
+        # --- Teardown ---
+        with engine.connect() as connection:
+            print(f"Dropping test schema: {schema_name}")
+            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+            connection.commit()
+        engine.dispose()
 
 
 @pytest.fixture(scope="function")
-def integration_test_setup(docker_services_session):  # noqa: F841
+def integration_test_setup(db_session):  # noqa: F841
     """
     Creates and tears down isolated resources for a single integration test function.
     -   Unique Pub/Sub topic and subscription.
     -   Sets environment variables for the test run.
     """
-    project_id = "public-detective-test"
+    project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
     os.environ["GCP_GEMINI_API_KEY"] = "dummy-key-for-testing"
 
-    # --- Unique Topic/Subscription ---
+    # --- Unique Identifiers for Isolation ---
     run_id = uuid.uuid4().hex
+
+    # Pub/Sub
     topic_name = f"procurements-topic-{run_id}"
     subscription_name = f"procurements-subscription-{run_id}"
     os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
     os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
 
-    # Create Topic and Subscription
-    publisher = pubsub_v1.PublisherClient()
-    subscriber = pubsub_v1.SubscriberClient()
+    # GCS
+    gcs_prefix = f"test-run-{run_id}"
+    os.environ["GCP_GCS_TEST_PREFIX"] = gcs_prefix
+
+
+    # --- Service Client Setup ---
+    publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
+    subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
+
+    # We need a GCS client for cleanup
+    from google.cloud import storage
+    gcs_client = storage.Client(credentials=AnonymousCredentials(), project=project_id)
+
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
 
     try:
+        # --- Resource Creation ---
+        print(f"Creating Pub/Sub topic: {topic_path}")
         publisher.create_topic(request={"name": topic_path})
-        print(f"Created Pub/Sub topic: {topic_path}")
+
+        print(f"Creating Pub/Sub subscription: {subscription_path}")
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
-        print(f"Created Pub/Sub subscription: {subscription_path}")
 
         # Add a delay to ensure the subscription is fully propagated in the emulator
         time.sleep(5)
 
-    except exceptions.AlreadyExists:
-        print("Topic/Subscription already exist, which is unexpected in a clean test run.")
-        pass  # Should not happen with unique names
+        yield topic_name, subscription_name
 
-    yield topic_name, subscription_name
+    finally:
+        # --- Teardown ---
+        print("Tearing down test resources...")
 
-    # --- Teardown ---
-    print("Tearing down test resources...")
-    try:
-        subscriber.delete_subscription(request={"subscription": subscription_path})
-        print(f"Deleted subscription: {subscription_path}")
-        publisher.delete_topic(request={"topic": topic_path})
-        print(f"Deleted topic: {topic_path}")
-    except exceptions.NotFound:
-        print("Could not find topic/subscription to delete. They may have been cleaned up already.")
+        # GCS Cleanup
+        try:
+            bucket = gcs_client.bucket(os.environ["GCP_GCS_BUCKET_PROCUREMENTS"])
+            blobs_to_delete = list(bucket.list_blobs(prefix=gcs_prefix))
+            if blobs_to_delete:
+                print(f"Deleting {len(blobs_to_delete)} objects from GCS with prefix '{gcs_prefix}'...")
+                for blob in blobs_to_delete:
+                    blob.delete()
+                print("GCS cleanup complete.")
+        except Exception as e:
+            print(f"Error during GCS cleanup: {e}")
+
+        # Pub/Sub Cleanup
+        try:
+            print(f"Deleting subscription: {subscription_path}")
+            subscriber.delete_subscription(request={"subscription": subscription_path})
+
+            print(f"Deleting topic: {topic_path}")
+            publisher.delete_topic(request={"topic": topic_path})
+        except exceptions.NotFound:
+            print("Could not find topic/subscription to delete. They may have been cleaned up already.")
 
 
 def load_fixture(path):
@@ -214,6 +237,7 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
                 print(f"Mocked PNCP document list URL: {url}")
             else:
                 mock_response._content = attachments_fixture
+                mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
                 print(f"Mocked PNCP document download URL: {url}")
         else:
             mock_response.status_code = 404
@@ -265,11 +289,13 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
     )
     engine = create_engine(db_url)
     with engine.connect() as connection:
-        query = text(
-            "SELECT risk_score, summary, document_hash FROM procurement_analysis "
-            "WHERE procurement_control_number = :pcn"
-        )
-        db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
+            schema_name = os.environ["POSTGRES_DB_SCHEMA"]
+            connection.execute(text(f"SET search_path TO {schema_name}"))
+            query = text(
+                "SELECT risk_score, summary, document_hash FROM procurement_analysis "
+                "WHERE procurement_control_number = :pcn"
+            )
+            db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
 
     assert db_result is not None, f"No analysis found in the database for {procurement_control_number}"
 

@@ -7,6 +7,7 @@ Create Date: 2025-07-26 17:30:11.111111
 
 """
 
+import os
 from collections.abc import Sequence
 
 from alembic import op
@@ -22,9 +23,14 @@ def upgrade() -> None:
     Creates the procurement_analysis table with all necessary columns
     and indexes using raw SQL commands for full control.
     """
+    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
+    table_name = "procurement_analysis"
+    if schema_name:
+        table_name = f"{schema_name}.{table_name}"
+
     op.execute(
-        """
-        CREATE TABLE procurement_analysis (
+        f"""
+        CREATE TABLE {table_name} (
             procurement_control_number VARCHAR(255) NOT NULL,
             analysis_date TIMESTAMP WITHOUT TIME ZONE DEFAULT now() NOT NULL,
             risk_score SMALLINT,
@@ -40,9 +46,9 @@ def upgrade() -> None:
     """
     )
     op.execute(
-        """
+        f"""
         CREATE INDEX ix_document_hash
-        ON procurement_analysis (document_hash);
+        ON {table_name} (document_hash);
     """
     )
 
@@ -52,5 +58,12 @@ def downgrade() -> None:
     Renames the table to a dropped state instead of permanently deleting it.
     This provides a safety net for rollbacks.
     """
-    op.execute("DROP INDEX IF EXISTS ix_document_hash;")
-    op.execute("ALTER TABLE procurement_analysis RENAME TO procurement_analysis_dropped;")
+    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
+    table_name = "procurement_analysis"
+    if schema_name:
+        table_name = f"{schema_name}.{table_name}"
+        op.execute(f"DROP INDEX IF EXISTS {schema_name}.ix_document_hash;")
+    else:
+        op.execute("DROP INDEX IF EXISTS ix_document_hash;")
+
+    op.execute(f"ALTER TABLE {table_name} RENAME TO procurement_analysis_dropped;")

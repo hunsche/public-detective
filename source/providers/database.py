@@ -41,6 +41,11 @@ class DatabaseProvider:
                     logger.info("Connection pool not found, creating new instance...")
                     config: Config = ConfigProvider.get_config()
 
+                    connection_options = ""
+                    if config.POSTGRES_DB_SCHEMA:
+                        logger.info(f"Using isolated schema: {config.POSTGRES_DB_SCHEMA}")
+                        connection_options = f"-c search_path={config.POSTGRES_DB_SCHEMA}"
+
                     cls._pool = ThreadedConnectionPool(
                         minconn=1,
                         maxconn=10,
@@ -49,6 +54,7 @@ class DatabaseProvider:
                         password=config.POSTGRES_PASSWORD,
                         host=config.POSTGRES_HOST,
                         port=config.POSTGRES_PORT,
+                        options=connection_options,
                     )
                     logger.info("PostgreSQL connection pool created successfully.")
         return cls._pool
