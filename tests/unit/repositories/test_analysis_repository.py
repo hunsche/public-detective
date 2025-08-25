@@ -1,8 +1,7 @@
 import json
-from unittest.mock import MagicMock
 
 import pytest
-from models.analysis import Analysis, AnalysisResult, RedFlag, RedFlagCategory
+from models.analysis import AnalysisResult, RedFlag, RedFlagCategory
 from repositories.analysis import AnalysisRepository
 
 

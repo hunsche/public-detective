@@ -3,6 +3,7 @@ import threading
 from collections.abc import Callable
 from typing import cast
 
+from google.api_core.client_options import ClientOptions
 from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.publisher.futures import Future
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
@@ -51,11 +52,11 @@ class PubSubProvider:
         """
         class_name = client_class.__name__
         self.logger.info(f"{class_name} not found in cache, creating a new instance...")
-        emulator_host = self.config.GCP_PUBSUB_HOST
+        emulator_host = os.environ.get("PUBSUB_EMULATOR_HOST")
 
         if emulator_host:
-            os.environ["PUBSUB_EMULATOR_HOST"] = emulator_host
-            client = client_class()
+            client_options = ClientOptions(api_endpoint=emulator_host)
+            client = client_class(client_options=client_options)
             self.logger.info(f"{class_name} instance created for emulator at {emulator_host}")
         else:
             client = client_class()
@@ -124,6 +125,7 @@ class PubSubProvider:
         try:
             client = self._get_or_create_publisher_client()
             topic_path = client.topic_path(self.config.GCP_PROJECT, topic_id)
+            self.logger.info(f"Publishing to topic: {topic_path}")
 
             future = cast(Future, client.publish(topic_path, data))
             message_id = future.result(timeout=timeout_seconds)
@@ -167,6 +169,7 @@ class PubSubProvider:
         try:
             client = self._get_or_create_subscriber_client()
             subscription_path = client.subscription_path(self.config.GCP_PROJECT, subscription_id)
+            self.logger.info(f"Subscribing to subscription: {subscription_path}")
 
             streaming_pull_future = client.subscribe(subscription_path, callback=callback)
 

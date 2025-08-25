@@ -45,7 +45,9 @@ class GcsProvider:
 
                         os.environ["STORAGE_EMULATOR_HOST"] = emulator_host
                         self.logger.info(f"GCS client configured for emulator at {emulator_host}")
-                        self._client = storage.Client(credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT)
+                        self._client = storage.Client(
+                            credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT
+                        )
                     else:
                         self.logger.info("GCS client configured for Google Cloud production.")
                         self._client = storage.Client(project=self.config.GCP_PROJECT)

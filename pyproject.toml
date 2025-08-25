@@ -37,6 +37,8 @@ google-cloud-storage = "^3.2.0"
 rarfile = "^4.2"
 py7zr = "^1.0.0"
 python-dotenv = "^1.1.1"
+grpcio = "^1.65.1"
+google-auth-oauthlib = "^1.2.1"
 
 [tool.poetry.group.tests.dependencies]
 pytest-dotenv = "^0.5.2"

@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 from google.auth.credentials import AnonymousCredentials
 from providers.gcs import GcsProvider
 

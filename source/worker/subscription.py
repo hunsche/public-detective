@@ -1,7 +1,6 @@
 import json
 import threading
 from contextlib import contextmanager
-from typing import Optional
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
@@ -155,7 +154,9 @@ class Subscription:
             self.logger.critical("Subscription name not configured. Worker cannot start.")
             return
 
-        callback = lambda message: self._message_callback(message, max_messages)
+        def callback(message: Message):
+            self._message_callback(message, max_messages)
+
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
         self.logger.info("Worker is now running and waiting for messages...")
 
