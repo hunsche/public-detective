@@ -50,6 +50,7 @@ def db_session():
 
     def get_container_ip_by_service(service_name):
         import subprocess  # nosec B404
+
         try:
             # Find the container ID using its docker-compose service label
             container_id_result = subprocess.run(  # nosec B603
