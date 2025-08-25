@@ -11,19 +11,16 @@ class MockOutputSchema(BaseModel):
     summary: str
 
 
-@patch("providers.config.ConfigProvider")
 @patch("google.generativeai.GenerativeModel")
 @patch("google.generativeai.configure")
-def test_get_structured_analysis_uses_valid_schema(mock_configure, mock_gen_model, mock_config_provider):  # noqa: F841
+def test_get_structured_analysis_uses_valid_schema(mock_configure, mock_gen_model, monkeypatch):  # noqa: F841
     """
     Should generate content with a response schema compatible with the Gemini API,
     ensuring Pydantic validation fields like 'ge' and 'le' are not present.
     """
     # Arrange
-    mock_config = MagicMock()
-    mock_config.GCP_GEMINI_API_KEY = "fake-api-key"
-    mock_config.GCP_GEMINI_MODEL = "gemini-test"
-    mock_config_provider.get_config.return_value = mock_config
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "fake-api-key")
+    monkeypatch.setenv("GCP_GEMINI_MODEL", "gemini-test")
 
     # Mock the model's response to simulate a function call
     mock_model_instance = MagicMock()
