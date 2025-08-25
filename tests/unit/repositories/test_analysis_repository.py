@@ -8,9 +8,9 @@ from repositories.analysis import AnalysisRepository
 @pytest.fixture
 def analysis_repository(mocker):
     """
-    Fixture to create an AnalysisRepository with a mocked connection pool.
+    Fixture to create an AnalysisRepository with a mocked database engine.
     """
-    mocker.patch("providers.database.DatabaseProvider.get_pool")
+    mocker.patch("providers.database.DatabaseManager.get_engine")
     return AnalysisRepository()
 
 
