@@ -7,28 +7,24 @@ Hello! This document provides instructions on how to work on this project.
 This project, named "Public Detective", is an AI-powered tool for analyzing public procurement documents in Brazil to find irregularities. It uses the Google Gemini API for text analysis.
 
 Key architectural features:
-- **Database Access:** All database access, both in migrations and in the application code, **must** be done through raw SQL queries. This is to ensure performance and full control. The project uses **SQLAlchemy Core** to execute these raw queries, but it does **not** use the high-level SQLAlchemy ORM for defining models or relationships.
+- **Database Access:** All database access is managed through a singleton class, `DatabaseManager`, which provides a SQLAlchemy engine for connection pooling. It is mandatory to use this manager for all database interactions.
+    - **Raw SQL and Parameter Binding:** Queries must be written as raw SQL strings and executed using SQLAlchemy's `text()` construct. To prevent SQL injection, all parameters must be passed as named bind parameters (e.g., `:param_name`), never with f-strings or `%s` formatting.
+    - **No ORM:** This project uses SQLAlchemy Core for executing queries but does **not** use the high-level SQLAlchemy ORM for defining models or relationships.
 
-    - **Example of an application query (`source/repositories/analysis.py`):**
+    - **Example of a repository query:**
       ```python
-      sql = """
-          INSERT INTO procurement_analysis (
-              procurement_control_number, document_hash, risk_score,
-              risk_score_rationale, summary, red_flags, warnings,
-              original_documents_url, processed_documents_url
-          ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-          ON CONFLICT (procurement_control_number) DO UPDATE SET
-              document_hash = EXCLUDED.document_hash,
-              risk_score = EXCLUDED.risk_score,
-              risk_score_rationale = EXCLUDED.risk_score_rationale,
-              summary = EXCLUDED.summary,
-              red_flags = EXCLUDED.red_flags,
-              warnings = EXCLUDED.warnings,
-              original_documents_url = EXCLUDED.original_documents_url,
-              processed_documents_url = EXCLUDED.processed_documents_url,
-              analysis_date = CURRENT_TIMESTAMP;
-      """
-      # ... cursor execution ...
+      from sqlalchemy import text
+      from providers.database import DatabaseManager
+
+      class MyRepository:
+          def __init__(self):
+              self.engine = DatabaseManager.get_engine()
+
+          def get_user(self, user_id: int):
+              sql = text("SELECT * FROM users WHERE id = :user_id")
+              with self.engine.connect() as conn:
+                  result = conn.execute(sql, {"user_id": user_id}).first()
+              return result
       ```
 
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
@@ -88,6 +84,8 @@ These require the Docker services to be running.
     ```bash
     poetry run pytest tests/integrations/
     ```
+#### Test Database Schema
+Integration tests run on a separate, temporary database schema to ensure isolation from the development data. This is handled automatically by setting the `POSTGRES_DB_SCHEMA` environment variable during the test run (see `pytest.ini`). The `DatabaseManager` and Alembic migrations will use this schema if the variable is present.
 
 ## 5. Code Philosophy
 

@@ -4,12 +4,12 @@ related to procurement analysis results.
 """
 
 import json
-from contextlib import contextmanager
 
 from models.analysis import Analysis, AnalysisResult
-from providers.database import DatabaseProvider
+from providers.database import DatabaseManager
 from providers.logging import Logger, LoggingProvider
 from pydantic import ValidationError
+from sqlalchemy import text
 
 
 class AnalysisRepository:
@@ -19,21 +19,10 @@ class AnalysisRepository:
 
     def __init__(self) -> None:
         """
-        Initializes the repository and gets a reference to the connection pool.
+        Initializes the repository and gets a reference to the database engine.
         """
         self.logger: Logger = LoggingProvider().get_logger()
-        self.pool = DatabaseProvider.get_pool()
-
-    @contextmanager
-    def get_connection(self):
-        """
-        Provides a managed database connection from the pool.
-        """
-        conn = self.pool.getconn()
-        try:
-            yield conn
-        finally:
-            self.pool.putconn(conn)
+        self.engine = DatabaseManager.get_engine()
 
     def _parse_row_to_model(self, row: tuple, columns: list[str]) -> AnalysisResult | None:
         """
@@ -69,12 +58,17 @@ class AnalysisRepository:
         """
         self.logger.info(f"Saving analysis for {result.procurement_control_number}.")
 
-        sql = """
+        sql = text(
+            """
             INSERT INTO procurement_analysis (
                 procurement_control_number, document_hash, risk_score,
                 risk_score_rationale, summary, red_flags, warnings,
                 original_documents_url, processed_documents_url
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ) VALUES (
+                :procurement_control_number, :document_hash, :risk_score,
+                :risk_score_rationale, :summary, :red_flags, :warnings,
+                :original_documents_url, :processed_documents_url
+            )
             ON CONFLICT (procurement_control_number) DO UPDATE SET
                 document_hash = EXCLUDED.document_hash,
                 risk_score = EXCLUDED.risk_score,
@@ -86,24 +80,24 @@ class AnalysisRepository:
                 processed_documents_url = EXCLUDED.processed_documents_url,
                 analysis_date = CURRENT_TIMESTAMP;
         """
+        )
 
         red_flags_json = json.dumps([rf.model_dump() for rf in result.ai_analysis.red_flags])
 
-        params = (
-            result.procurement_control_number,
-            result.document_hash,
-            result.ai_analysis.risk_score,
-            result.ai_analysis.risk_score_rationale,
-            result.ai_analysis.summary,
-            red_flags_json,
-            result.warnings,
-            result.original_documents_url,
-            None,  # processed_documents_url is no longer used
-        )
+        params = {
+            "procurement_control_number": result.procurement_control_number,
+            "document_hash": result.document_hash,
+            "risk_score": result.ai_analysis.risk_score,
+            "risk_score_rationale": result.ai_analysis.risk_score_rationale,
+            "summary": result.ai_analysis.summary,
+            "red_flags": red_flags_json,
+            "warnings": result.warnings,
+            "original_documents_url": result.original_documents_url,
+            "processed_documents_url": None,
+        }
 
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, params)
+        with self.engine.connect() as conn:
+            conn.execute(sql, params)
             conn.commit()
 
         self.logger.info("Analysis saved successfully.")
@@ -112,14 +106,13 @@ class AnalysisRepository:
         """
         Retrieves an analysis result from the database by its document hash.
         """
-        sql = "SELECT * FROM procurement_analysis WHERE document_hash = %s LIMIT 1;"
+        sql = text("SELECT * FROM procurement_analysis WHERE document_hash = :document_hash LIMIT 1;")
 
-        with self.get_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(sql, (document_hash,))
-                if cur.rowcount == 0:
-                    return None
-                columns = [desc[0] for desc in cur.description]
-                row = cur.fetchone()
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"document_hash": document_hash}).fetchone()
+            if not result:
+                return None
+            columns = result._fields
+            row = tuple(result)
 
         return self._parse_row_to_model(row, columns)

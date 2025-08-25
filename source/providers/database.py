@@ -1,25 +1,26 @@
 """
-This module provides a singleton database connection pool for the application.
+This module provides a singleton database connection manager for the application.
 """
 
 import threading
 
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
-from psycopg2.pool import ThreadedConnectionPool
+from sqlalchemy import create_engine
+from sqlalchemy.engine import Engine
 
 
-class DatabaseProvider:
+class DatabaseManager:
     """
-    Manages a thread-safe connection pool for PostgreSQL.
+    Manages a thread-safe connection pool for PostgreSQL using SQLAlchemy.
 
     This class implements the Singleton pattern to ensure that only one
-    instance of the connection pool is created and shared across the
+    instance of the connection engine is created and shared across the
     application.
     """
 
-    _pool: ThreadedConnectionPool | None = None
-    _pool_creation_lock = threading.Lock()
+    _engine: Engine | None = None
+    _engine_creation_lock = threading.Lock()
 
     def __new__(cls):
         """
@@ -30,42 +31,45 @@ class DatabaseProvider:
         return cls.instance
 
     @classmethod
-    def get_pool(cls) -> ThreadedConnectionPool:
+    def get_engine(cls) -> Engine:
         """
-        Retrieves a singleton instance of the PostgreSQL connection pool.
+        Retrieves a singleton instance of the SQLAlchemy engine.
         """
-        if cls._pool is None:
-            with cls._pool_creation_lock:
-                if cls._pool is None:
+        if cls._engine is None:
+            with cls._engine_creation_lock:
+                if cls._engine is None:
                     logger: Logger = LoggingProvider().get_logger()
-                    logger.info("Connection pool not found, creating new instance...")
+                    logger.info("Database engine not found, creating new instance...")
                     config: Config = ConfigProvider.get_config()
 
-                    connection_options = ""
+                    url = (
+                        f"{config.POSTGRES_DRIVER}://"
+                        f"{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
+                        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/"
+                        f"{config.POSTGRES_DB}"
+                    )
+
+                    connect_args = {}
                     if config.POSTGRES_DB_SCHEMA:
                         logger.info(f"Using isolated schema: {config.POSTGRES_DB_SCHEMA}")
-                        connection_options = f"-c search_path={config.POSTGRES_DB_SCHEMA}"
+                        connect_args["options"] = f"-csearch_path={config.POSTGRES_DB_SCHEMA}"
 
-                    cls._pool = ThreadedConnectionPool(
-                        minconn=1,
-                        maxconn=10,
-                        dbname=config.POSTGRES_DB,
-                        user=config.POSTGRES_USER,
-                        password=config.POSTGRES_PASSWORD,
-                        host=config.POSTGRES_HOST,
-                        port=config.POSTGRES_PORT,
-                        options=connection_options,
+                    cls._engine = create_engine(
+                        url,
+                        pool_size=10,
+                        max_overflow=20,
+                        connect_args=connect_args,
                     )
-                    logger.info("PostgreSQL connection pool created successfully.")
-        return cls._pool
+                    logger.info("SQLAlchemy engine created successfully.")
+        return cls._engine
 
     @classmethod
-    def release_pool(cls) -> None:
+    def release_engine(cls) -> None:
         """
-        Closes all connections in the pool and resets the singleton instance.
+        Disposes of the engine's connection pool and resets the singleton instance.
         """
-        if cls._pool:
+        if cls._engine:
             logger: Logger = LoggingProvider().get_logger()
-            logger.info("Closing all connections in the pool.")
-            cls._pool.closeall()
-            cls._pool = None
+            logger.info("Disposing of the database engine.")
+            cls._engine.dispose()
+            cls._engine = None
