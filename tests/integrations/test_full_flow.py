@@ -30,19 +30,19 @@ def docker_services_session():
     import subprocess
 
     try:
-        subprocess.run("sudo docker info", shell=True, check=True, capture_output=True)
+        subprocess.run(["sudo", "docker", "info"], check=True, capture_output=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("Docker is not running or not installed. Skipping integration tests.")
 
     print("Starting Docker services for the test session...")
-    subprocess.run("sudo docker compose up -d", shell=True, check=True)
+    subprocess.run(["sudo", "docker", "compose", "up", "-d"], check=True)
 
     # --- Get Dynamic Ports ---
     def get_service_port(service_name, internal_port):
         try:
+            command = ["sudo", "docker", "compose", "port", service_name, str(internal_port)]
             result = subprocess.run(
-                f"sudo docker compose port {service_name} {internal_port}",
-                shell=True,
+                command,
                 check=True,
                 capture_output=True,
                 text=True,
@@ -66,7 +66,7 @@ def docker_services_session():
     os.environ["POSTGRES_PORT"] = postgres_port
     os.environ["POSTGRES_DB"] = "public_detective_test"
     os.environ["POSTGRES_USER"] = "postgres"
-    os.environ["POSTGRES_PASSWORD"] = "postgres"
+    os.environ["POSTGRES_PASSWORD"] = "postgres"  # nosec B105
     os.environ["PUBSUB_EMULATOR_HOST"] = f"localhost:{pubsub_port}"
     os.environ["GCP_GCS_HOST"] = f"http://localhost:{gcs_port}"
 
@@ -74,18 +74,18 @@ def docker_services_session():
     time.sleep(10)
 
     print("Applying database migrations...")
-    migration_result = subprocess.run("poetry run alembic upgrade head", shell=True, check=False, capture_output=True)
+    migration_result = subprocess.run(["poetry", "run", "alembic", "upgrade", "head"], check=False, capture_output=True)
     if migration_result.returncode != 0:
         print("Alembic migration failed!")
         print(migration_result.stdout.decode())
         print(migration_result.stderr.decode())
-        subprocess.run(f"sudo docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
+        subprocess.run(["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True)
         pytest.fail("Database migration failed, aborting tests.")
 
     yield
 
     print("Stopping Docker services for the test session...")
-    subprocess.run(f"sudo docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
+    subprocess.run(["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True)
 
 
 @pytest.fixture(scope="function")
