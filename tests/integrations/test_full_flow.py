@@ -30,18 +30,18 @@ def docker_services_session():
     import subprocess
 
     try:
-        subprocess.run("docker info", shell=True, check=True, capture_output=True)
+        subprocess.run("sudo docker info", shell=True, check=True, capture_output=True)
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("Docker is not running or not installed. Skipping integration tests.")
 
     print("Starting Docker services for the test session...")
-    subprocess.run("docker compose up -d --build --force-recreate", shell=True, check=True)
+    subprocess.run("sudo docker compose up -d", shell=True, check=True)
 
     # --- Get Dynamic Ports ---
     def get_service_port(service_name, internal_port):
         try:
             result = subprocess.run(
-                f"docker compose port {service_name} {internal_port}",
+                f"sudo docker compose port {service_name} {internal_port}",
                 shell=True,
                 check=True,
                 capture_output=True,
@@ -79,13 +79,13 @@ def docker_services_session():
         print("Alembic migration failed!")
         print(migration_result.stdout.decode())
         print(migration_result.stderr.decode())
-        subprocess.run(f"docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
+        subprocess.run(f"sudo docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
         pytest.fail("Database migration failed, aborting tests.")
 
     yield
 
     print("Stopping Docker services for the test session...")
-    subprocess.run(f"docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
+    subprocess.run(f"sudo docker compose -p {project_name} down -v --remove-orphans", shell=True, check=True)
 
 
 @pytest.fixture(scope="function")
@@ -97,14 +97,15 @@ def integration_test_setup(docker_services_session):  # noqa: F841
     """
     project_id = "public-detective-test"
     os.environ["GCP_PROJECT"] = project_id
-    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "test-procurements-bucket"
+    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
+    os.environ["GCP_GEMINI_API_KEY"] = "dummy-key-for-testing"
 
     # --- Unique Topic/Subscription ---
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
     subscription_name = f"procurements-subscription-{run_id}"
     os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
-    os.environ["GCP_PUBSUB_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
+    os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
 
     # Create Topic and Subscription
     publisher = pubsub_v1.PublisherClient()
@@ -150,11 +151,7 @@ def load_binary_fixture(path):
         return f.read()
 
 
-@pytest.mark.xfail(
-    reason="This test is flaky and needs to be investigated. "
-    "It seems there is a race condition with the Pub/Sub emulator."
-)
-@pytest.mark.timeout(60)
+@pytest.mark.timeout(180)
 def test_full_flow_integration(integration_test_setup):  # noqa: F841
     """
     Tests the full, integrated flow from CLI to Worker to Database.
@@ -191,36 +188,30 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
                 "numeroPagina": 1,
             }
             print(f"Mocked PNCP procurement list URL: {url}")
-        # Mock for fetching the document list for the specific procurement
+            # Mock for fetching the document list for a specific procurement
         elif f"compras/{target_procurement['anoCompra']}/{target_procurement['sequencialCompra']}/arquivos" in url:
-            mock_response.json = lambda: document_list_fixture
-            print(f"Mocked PNCP document list URL: {url}")
+            # Differentiate between listing documents and downloading a single file
+            if url.endswith("/arquivos"):
+                mock_response.json = lambda: document_list_fixture
+                print(f"Mocked PNCP document list URL: {url}")
+            else:
+                mock_response._content = attachments_fixture
+                print(f"Mocked PNCP document download URL: {url}")
         else:
             mock_response.status_code = 404
             print(f"Unhandled URL in mock_requests_get: {url}")
 
         return mock_response
 
-    # This mock intercepts the file download
-    def mock_download_file_content(self, url):
-        # In a real scenario with multiple documents, you might need more logic here.
-        # For this test, we assume any download returns the single fixture zip.
-        print(f"Mocked download from URL: {url}")
-        return attachments_fixture
-
     with (
         patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
         patch(
-            "source.repositories.procurement.ProcurementRepository._download_file_content",
-            mock_download_file_content,
-        ),
-        patch(
-            "source.providers.ai.AiProvider.get_structured_analysis",
+            "source.services.analysis.AiProvider.get_structured_analysis",
             return_value=gemini_response_fixture,
         ),
         patch(
             "source.worker.subscription.Subscription._debug_pause",
-            lambda self, prompt: None,
+            lambda self, prompt=None: None,
         ),
     ):
 
@@ -237,7 +228,7 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
         )
 
         assert result.exit_code == 0, f"CLI command failed: {result.output}"
-        assert "Finished processing" in result.output
+        assert "Analysis completed successfully!" in result.output
         print("CLI command finished successfully.")
 
         # Add a small delay to ensure messages are available for the worker
@@ -250,7 +241,10 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
         subscription.run(max_messages=1)
         print("Worker finished processing.")
     print("Verifying results in the database...")
-    db_url = f"postgresql://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+    db_url = (
+        f"postgresql://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
+        f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+    )
     engine = create_engine(db_url)
     with engine.connect() as connection:
         query = text(

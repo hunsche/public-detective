@@ -21,7 +21,7 @@ class Subscription:
     robust message lifecycle management.
     """
 
-    _lock: threading.Lock | None = None
+    _lock: threading.Lock
     config: Config
     logger: Logger
     analysis_service: AnalysisService
@@ -37,9 +37,7 @@ class Subscription:
         self.processed_messages_count = 0
         self.streaming_pull_future = None
         self._stop_event = threading.Event()
-
-        if self.config.IS_DEBUG_MODE:
-            self._lock = threading.Lock()
+        self._lock = threading.Lock()
 
     @contextmanager
     def _debug_context(self, message: Message):
@@ -125,22 +123,20 @@ class Subscription:
             message: The Pub/Sub message received from the subscription.
             max_messages: The maximum number of messages to process.
         """
-        if self._stop_event.is_set():
-            return
+        # This lock ensures that the message count and stop condition are
+        # handled atomically, preventing race conditions in tests.
+        with self._lock:
+            if self._stop_event.is_set():
+                return
 
-        if self.config.IS_DEBUG_MODE:
-            ctx = self._debug_context(message)
-            with ctx:
-                self._process_message(message)
-        else:
             self._process_message(message)
 
-        self.processed_messages_count += 1
-        if max_messages and self.processed_messages_count >= max_messages:
-            self.logger.info(f"Reached message limit ({max_messages}). Stopping worker...")
-            self._stop_event.set()
-            if self.streaming_pull_future:
-                self.streaming_pull_future.cancel()
+            self.processed_messages_count += 1
+            if max_messages and self.processed_messages_count >= max_messages:
+                self.logger.info(f"Reached message limit ({max_messages}). Stopping worker...")
+                self._stop_event.set()
+                if self.streaming_pull_future:
+                    self.streaming_pull_future.cancel()
 
     def run(self, max_messages: int | None = None):
         """Starts the worker's message consumption loop.
