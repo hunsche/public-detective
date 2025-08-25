@@ -53,14 +53,30 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # Get the schema from the environment variable, if it exists
+    schema_name = project_config.POSTGRES_DB_SCHEMA
+
+    # Create a new engine configuration that includes the schema in the search path
+    config_section = sqlalchemy_config.get_section(sqlalchemy_config.config_ini_section, {})
+
+    if schema_name:
+        print(f"Alembic: Migrating within schema: {schema_name}")
+        # This tells SQLAlchemy to issue a SET search_path command on new connections
+        config_section["connect_args"] = {"options": f"-csearch_path={schema_name}"}  # type: ignore
+
     connectable = engine_from_config(
-        sqlalchemy_config.get_section(sqlalchemy_config.config_ini_section, {}),
+        config_section,
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table_schema=schema_name,  # Create alembic_version in the schema
+            include_schemas=True,  # Important for multi-schema support
+        )
 
         with context.begin_transaction():
             context.run_migrations()

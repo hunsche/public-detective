@@ -21,6 +21,7 @@ class Config(BaseSettings):
     POSTGRES_USER: str = "postgres"
     POSTGRES_PASSWORD: str = "postgres"
     POSTGRES_DB: str = "public_detective"
+    POSTGRES_DB_SCHEMA: str | None = None
 
     PNCP_PUBLIC_QUERY_API_URL: str = "https://pncp.gov.br/api/consulta/v1/"
     PNCP_INTEGRATION_API_URL: str = "https://pncp.gov.br/api/pncp/v1/"
@@ -40,6 +41,7 @@ class Config(BaseSettings):
     GCP_PROJECT: str = "public-detective"
     GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
     GCP_GCS_HOST: str | None = None
+    GCP_GCS_TEST_PREFIX: str | None = None
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None

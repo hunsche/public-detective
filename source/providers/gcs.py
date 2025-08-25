@@ -73,6 +73,11 @@ class GcsProvider:
         try:
             client = self._get_or_create_client()
             bucket = client.bucket(bucket_name)
+
+            # If a test prefix is configured, prepend it to the blob name
+            if self.config.GCP_GCS_TEST_PREFIX:
+                destination_blob_name = f"{self.config.GCP_GCS_TEST_PREFIX}/{destination_blob_name}"
+
             blob = bucket.blob(destination_blob_name)
 
             self.logger.info(f"Uploading file to GCS: gs://{bucket_name}/{destination_blob_name}")

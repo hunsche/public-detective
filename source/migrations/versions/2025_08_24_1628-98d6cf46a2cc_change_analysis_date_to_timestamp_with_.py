@@ -6,6 +6,8 @@ Create Date: 2025-08-24 16:28:38.204523
 
 """
 
+import os
+
 from alembic import op
 
 # revision identifiers, used by Alembic.
@@ -21,9 +23,14 @@ def upgrade() -> None:
     The USING clause is necessary to cast the existing data correctly, assuming
     the naive dates were stored in UTC.
     """
+    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
+    table_name = "procurement_analysis"
+    if schema_name:
+        table_name = f"{schema_name}.{table_name}"
+
     op.execute(
-        """
-        ALTER TABLE procurement_analysis
+        f"""
+        ALTER TABLE {table_name}
         ALTER COLUMN analysis_date TYPE TIMESTAMP WITH TIME ZONE
         USING (analysis_date AT TIME ZONE 'UTC');
     """
@@ -35,9 +42,14 @@ def downgrade() -> None:
     Reverts the analysis_date column from TIMESTAMP WITH TIME ZONE back to DATE.
     This is a destructive operation as it will truncate the time part of the timestamp.
     """
+    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
+    table_name = "procurement_analysis"
+    if schema_name:
+        table_name = f"{schema_name}.{table_name}"
+
     op.execute(
-        """
-        ALTER TABLE procurement_analysis
+        f"""
+        ALTER TABLE {table_name}
         ALTER COLUMN analysis_date TYPE DATE;
     """
     )
