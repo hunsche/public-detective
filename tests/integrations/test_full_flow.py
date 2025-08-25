@@ -50,9 +50,10 @@ def db_session():
 
     def get_container_ip(container_name):
         import subprocess  # nosec B404
+
         try:
             result = subprocess.run(  # nosec B603
-                ["sudo", "docker", "inspect", container_name],
+                ["/usr/bin/sudo", "/usr/bin/docker", "inspect", container_name],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -67,7 +68,6 @@ def db_session():
 
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
-
 
     # --- Schema Creation ---
     schema_name = f"test_schema_{uuid.uuid4().hex}"
@@ -84,8 +84,8 @@ def db_session():
 
         # --- Run Migrations ---
         print(f"Applying Alembic migrations to schema: {schema_name}")
-        from alembic.config import Config
         from alembic import command
+        from alembic.config import Config
 
         alembic_cfg = Config("alembic.ini")
         # The programmatic call to alembic will use the environment variables
@@ -128,13 +128,13 @@ def integration_test_setup(db_session):  # noqa: F841
     gcs_prefix = f"test-run-{run_id}"
     os.environ["GCP_GCS_TEST_PREFIX"] = gcs_prefix
 
-
     # --- Service Client Setup ---
     publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
     subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
 
     # We need a GCS client for cleanup
     from google.cloud import storage
+
     gcs_client = storage.Client(credentials=AnonymousCredentials(), project=project_id)
 
     topic_path = publisher.topic_path(project_id, topic_name)
@@ -289,13 +289,13 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
     )
     engine = create_engine(db_url)
     with engine.connect() as connection:
-            schema_name = os.environ["POSTGRES_DB_SCHEMA"]
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            query = text(
-                "SELECT risk_score, summary, document_hash FROM procurement_analysis "
-                "WHERE procurement_control_number = :pcn"
-            )
-            db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
+        schema_name = os.environ["POSTGRES_DB_SCHEMA"]
+        connection.execute(text(f"SET search_path TO {schema_name}"))
+        query = text(
+            "SELECT risk_score, summary, document_hash FROM procurement_analysis "
+            "WHERE procurement_control_number = :pcn"
+        )
+        db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
 
     assert db_result is not None, f"No analysis found in the database for {procurement_control_number}"
 

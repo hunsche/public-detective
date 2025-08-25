@@ -62,7 +62,7 @@ def run_migrations_online() -> None:
     if schema_name:
         print(f"Alembic: Migrating within schema: {schema_name}")
         # This tells SQLAlchemy to issue a SET search_path command on new connections
-        config_section["connect_args"] = {"options": f"-csearch_path={schema_name}"}
+        config_section["connect_args"] = {"options": f"-csearch_path={schema_name}"}  # type: ignore
 
     connectable = engine_from_config(
         config_section,
