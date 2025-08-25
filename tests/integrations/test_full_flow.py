@@ -2,6 +2,8 @@ import json
 import os
 import time
 import uuid
+import zipfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -22,6 +24,16 @@ def docker_services_session():
     Starts and stops the docker-compose services once for the entire test session.
     Ensures all containers are ready before any tests run.
     """
+    # --- Create dummy fixture file if it doesn't exist ---
+    fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
+    fixture_path = fixture_dir / "Anexos.zip"
+    if not fixture_path.exists():
+        print(f"Fixture {fixture_path} not found, creating it...")
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        with zipfile.ZipFile(fixture_path, "w") as zf:
+            zf.writestr("dummy_document.pdf", b"dummy pdf content")
+        print("Fixture created successfully.")
+
     # Use a unique project name to avoid conflicts in CI environments
     project_name = f"publicdetective-test-{uuid.uuid4().hex[:8]}"
     os.environ["COMPOSE_PROJECT_NAME"] = project_name
