@@ -27,21 +27,21 @@ def docker_services_session():
     os.environ["COMPOSE_PROJECT_NAME"] = project_name
 
     # Check if docker is installed and running
-    import subprocess
+    import subprocess  # nosec B404
 
     try:
-        subprocess.run(["sudo", "docker", "info"], check=True, capture_output=True)
+        subprocess.run(["sudo", "docker", "info"], check=True, capture_output=True)  # nosec B603, B607
     except (subprocess.CalledProcessError, FileNotFoundError):
         pytest.skip("Docker is not running or not installed. Skipping integration tests.")
 
     print("Starting Docker services for the test session...")
-    subprocess.run(["sudo", "docker", "compose", "up", "-d"], check=True)
+    subprocess.run(["sudo", "docker", "compose", "up", "-d"], check=True)  # nosec B603, B607
 
     # --- Get Dynamic Ports ---
     def get_service_port(service_name, internal_port):
         try:
             command = ["sudo", "docker", "compose", "port", service_name, str(internal_port)]
-            result = subprocess.run(
+            result = subprocess.run(  # nosec B603
                 command,
                 check=True,
                 capture_output=True,
@@ -74,18 +74,24 @@ def docker_services_session():
     time.sleep(10)
 
     print("Applying database migrations...")
-    migration_result = subprocess.run(["poetry", "run", "alembic", "upgrade", "head"], check=False, capture_output=True)
+    migration_result = subprocess.run(
+        ["poetry", "run", "alembic", "upgrade", "head"], check=False, capture_output=True
+    )  # nosec B603, B607
     if migration_result.returncode != 0:
         print("Alembic migration failed!")
         print(migration_result.stdout.decode())
         print(migration_result.stderr.decode())
-        subprocess.run(["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True)
+        subprocess.run(
+            ["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True
+        )  # nosec B603, B607
         pytest.fail("Database migration failed, aborting tests.")
 
     yield
 
     print("Stopping Docker services for the test session...")
-    subprocess.run(["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True)
+    subprocess.run(
+        ["sudo", "docker", "compose", "-p", project_name, "down", "-v", "--remove-orphans"], check=True
+    )  # nosec B603, B607
 
 
 @pytest.fixture(scope="function")
