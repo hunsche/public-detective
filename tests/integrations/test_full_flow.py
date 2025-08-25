@@ -16,6 +16,7 @@ from models.analysis import Analysis
 from sqlalchemy import create_engine, text
 
 from source.cli.commands import analysis_command as cli_main
+from source.providers.config import ConfigProvider
 from source.worker.subscription import Subscription
 
 
@@ -35,18 +36,7 @@ def db_session():
             zf.writestr("dummy_document.pdf", b"dummy pdf content")
         print("Fixture created successfully.")
 
-    # --- Database Connection Setup ---
-    db_user = "postgres"
-    db_password = "postgres"  # nosec B105
-    db_host = "localhost"
-    db_port = "5432"
-    db_name = "public_detective"
-
-    os.environ["POSTGRES_USER"] = db_user
-    os.environ["POSTGRES_PASSWORD"] = db_password
-    os.environ["POSTGRES_HOST"] = db_host
-    os.environ["POSTGRES_PORT"] = db_port
-    os.environ["POSTGRES_DB"] = db_name
+    config = ConfigProvider.get_config()
 
     def get_container_ip_by_service(service_name):
         import subprocess  # nosec B404
@@ -84,17 +74,20 @@ def db_session():
         except (subprocess.CalledProcessError, KeyError, IndexError) as e:
             pytest.fail(f"Could not get IP for service {service_name}: {e}")
 
+    # Dynamically set emulator hosts
     pubsub_ip = get_container_ip_by_service("pubsub")
     gcs_ip = get_container_ip_by_service("gcs")
-
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
 
-    # --- Schema Creation ---
+    # Dynamically set unique schema for test isolation
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
 
-    db_url = f"postgresql://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
+    db_url = (
+        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
+        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
+    )
     engine = create_engine(db_url)
 
     try:
@@ -304,14 +297,14 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
         subscription.run(max_messages=1)
         print("Worker finished processing.")
     print("Verifying results in the database...")
+    config = ConfigProvider.get_config()
     db_url = (
-        f"postgresql://{os.environ['POSTGRES_USER']}:{os.environ['POSTGRES_PASSWORD']}"
-        f"@{os.environ['POSTGRES_HOST']}:{os.environ['POSTGRES_PORT']}/{os.environ['POSTGRES_DB']}"
+        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
+        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url)
     with engine.connect() as connection:
-        schema_name = os.environ["POSTGRES_DB_SCHEMA"]
-        connection.execute(text(f"SET search_path TO {schema_name}"))
+        connection.execute(text(f"SET search_path TO {config.POSTGRES_DB_SCHEMA}"))
         query = text(
             "SELECT risk_score, summary, document_hash FROM procurement_analysis "
             "WHERE procurement_control_number = :pcn"
