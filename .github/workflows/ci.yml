@@ -54,12 +54,13 @@ jobs:
       - name: Generate SQL for migrations
         if: github.event_name == 'pull_request'
         run: |
-          # Ensure we have the main branch available
-          git fetch origin main:main
-          # Get the HEAD revision of the main branch
-          PREVIOUS_REV=$(poetry run alembic history -r main | head -n 1 | awk '{print $1}')
-          # Generate the SQL diff
-          poetry run alembic upgrade ${PREVIOUS_REV}:head --sql > migration.sql
+          set -e
+          PR_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
+          git checkout main
+          MAIN_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
+          git checkout -
+          echo "Generating SQL from ${MAIN_HEAD_REV} to ${PR_HEAD_REV}..."
+          poetry run alembic upgrade ${MAIN_HEAD_REV}:${PR_HEAD_REV} --sql > migration.sql
 
       - name: Post SQL migration to PR
         if: github.event_name == 'pull_request'
