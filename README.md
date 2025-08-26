@@ -1,5 +1,5 @@
 [![CI](https://github.com/hunsche/public-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
-[![Coverage Status](https://img.shields.io/badge/coverage-100%25-success)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
+[![codecov](https://codecov.io/gh/hunsche/public-detective/graph/badge.svg)](https://codecov.io/gh/hunsche/public-detective)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
