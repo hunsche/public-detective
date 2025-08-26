@@ -84,6 +84,7 @@ These require the Docker services to be running.
     ```bash
     poetry run pytest tests/integrations/
     ```
+**Important**: Test coverage must always be greater than the threshold defined in `pyproject.toml`.
 #### Test Database Schema
 Integration tests run on a separate, temporary database schema to ensure isolation from the development data. This is handled automatically by setting the `POSTGRES_DB_SCHEMA` environment variable during the test run (see `pytest.ini`). The `DatabaseManager` and Alembic migrations will use this schema if the variable is present.
 

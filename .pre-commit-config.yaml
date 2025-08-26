@@ -68,3 +68,10 @@ repos:
       types: [python]
       args: ["-c", "pyproject.toml"]
       additional_dependencies: ["bandit[toml]"]
+
+    - id: pytest-cov
+      name: pytest-cov
+      entry: poetry run pytest --cov=source
+      language: system
+      types: [python]
+      pass_filenames: false
