@@ -76,3 +76,87 @@ def test_ai_provider_instantiation(monkeypatch):
     monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
     provider = AiProvider(MockOutputSchema)
     assert provider is not None
+
+
+def test_ai_provider_missing_api_key(monkeypatch):
+    """Tests that AiProvider raises ValueError if the API key is missing."""
+    monkeypatch.delenv("GCP_GEMINI_API_KEY", raising=False)
+    with pytest.raises(ValueError, match="GCP_GEMINI_API_KEY must be configured"):
+        AiProvider(MockOutputSchema)
+
+
+@patch("google.generativeai.delete_file")
+@patch("google.generativeai.upload_file")
+@patch("google.generativeai.get_file")
+def test_get_structured_analysis_cleans_up_files(
+    mock_get_file, mock_upload_file, mock_delete_file, mock_gemini_client, monkeypatch
+):
+    """Tests that uploaded files are deleted even if analysis fails."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    mock_model_instance = MagicMock()
+    mock_model_instance.generate_content.side_effect = Exception("API failure")
+    mock_gemini_client.return_value = mock_model_instance
+
+    mock_uploaded_file = MagicMock()
+    mock_uploaded_file.name = "uploaded-file-name"
+    mock_uploaded_file.state.name = "ACTIVE"
+    mock_upload_file.return_value = mock_uploaded_file
+    mock_get_file.return_value = mock_uploaded_file
+
+    provider = AiProvider(MockOutputSchema)
+    files_to_upload = [("file1.pdf", b"content1")]
+
+    with pytest.raises(Exception, match="API failure"):
+        provider.get_structured_analysis(prompt="test", files=files_to_upload)
+
+    mock_upload_file.assert_called_once()
+    mock_delete_file.assert_called_once_with("uploaded-file-name")
+
+
+@patch("google.generativeai.upload_file")
+@patch("google.generativeai.get_file")
+def test_upload_file_to_gemini_waits_for_active(mock_get_file, mock_upload_file, monkeypatch):
+    """Tests that the upload method waits for the file to become active."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+
+    processing_file = MagicMock()
+    processing_file.name = "file-id"
+    processing_file.state.name = "PROCESSING"
+
+    active_file = MagicMock()
+    active_file.name = "file-id"
+    active_file.state.name = "ACTIVE"
+
+    mock_upload_file.return_value = processing_file
+    mock_get_file.side_effect = [processing_file, active_file]
+
+    provider = AiProvider(MockOutputSchema)
+    with patch("time.sleep"):  # Avoid actual sleeping
+        result = provider._upload_file_to_gemini(b"content", "test.pdf")
+
+    assert result == active_file
+    assert mock_get_file.call_count == 2
+
+
+def test_parse_response_blocked(monkeypatch):
+    """Tests that a ValueError is raised if the response is blocked."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(MockOutputSchema)
+    mock_response = MagicMock()
+    mock_response.candidates = []
+    mock_response.prompt_feedback.block_reason.name = "SAFETY"
+
+    with pytest.raises(ValueError, match="AI model blocked the response"):
+        provider._parse_and_validate_response(mock_response)
+
+
+def test_parse_response_empty(monkeypatch):
+    """Tests that a ValueError is raised if the response has no candidates."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(MockOutputSchema)
+    mock_response = MagicMock()
+    mock_response.candidates = []
+    mock_response.prompt_feedback = None
+
+    with pytest.raises(ValueError, match="AI model returned an empty response"):
+        provider._parse_and_validate_response(mock_response)
