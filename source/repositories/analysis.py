@@ -4,6 +4,7 @@ related to procurement analysis results.
 """
 
 import json
+from typing import cast
 
 from models.analysis import Analysis, AnalysisResult
 from providers.database import DatabaseManager
@@ -52,9 +53,10 @@ class AnalysisRepository:
             self.logger.error(f"Failed to parse analysis result from DB: {e}")
             return None
 
-    def save_analysis(self, result: AnalysisResult) -> None:
+    def save_analysis(self, result: AnalysisResult) -> int:
         """
-        Saves a complete analysis result to the database using an 'upsert' operation.
+        Saves a complete analysis result to the database and returns the new
+        record's ID.
         """
         self.logger.info(f"Saving analysis for {result.procurement_control_number}.")
 
@@ -63,22 +65,13 @@ class AnalysisRepository:
             INSERT INTO procurement_analysis (
                 procurement_control_number, document_hash, risk_score,
                 risk_score_rationale, summary, red_flags, warnings,
-                original_documents_url, processed_documents_url
+                original_documents_gcs_path, processed_documents_gcs_path
             ) VALUES (
                 :procurement_control_number, :document_hash, :risk_score,
                 :risk_score_rationale, :summary, :red_flags, :warnings,
-                :original_documents_url, :processed_documents_url
+                :original_documents_gcs_path, :processed_documents_gcs_path
             )
-            ON CONFLICT (procurement_control_number) DO UPDATE SET
-                document_hash = EXCLUDED.document_hash,
-                risk_score = EXCLUDED.risk_score,
-                risk_score_rationale = EXCLUDED.risk_score_rationale,
-                summary = EXCLUDED.summary,
-                red_flags = EXCLUDED.red_flags,
-                warnings = EXCLUDED.warnings,
-                original_documents_url = EXCLUDED.original_documents_url,
-                processed_documents_url = EXCLUDED.processed_documents_url,
-                analysis_date = CURRENT_TIMESTAMP;
+            RETURNING id;
         """
         )
 
@@ -92,15 +85,17 @@ class AnalysisRepository:
             "summary": result.ai_analysis.summary,
             "red_flags": red_flags_json,
             "warnings": result.warnings,
-            "original_documents_url": result.original_documents_url,
-            "processed_documents_url": None,
+            "original_documents_gcs_path": result.original_documents_gcs_path,
+            "processed_documents_gcs_path": result.processed_documents_gcs_path,
         }
 
         with self.engine.connect() as conn:
-            conn.execute(sql, params)
+            result_proxy = conn.execute(sql, params)
+            analysis_id = cast(int, result_proxy.scalar_one())
             conn.commit()
 
-        self.logger.info("Analysis saved successfully.")
+        self.logger.info(f"Analysis saved successfully with ID: {analysis_id}.")
+        return analysis_id
 
     def get_analysis_by_hash(self, document_hash: str) -> AnalysisResult | None:
         """

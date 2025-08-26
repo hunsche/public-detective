@@ -111,3 +111,29 @@ def test_parse_row_to_model_with_invalid_data(analysis_repository, caplog):
     # Assert
     assert result is None
     assert "Failed to parse analysis result from DB" in caplog.text
+
+
+def test_save_analysis_returns_id(analysis_repository, mocker):
+    """
+    Should return the ID of the newly inserted record.
+    """
+    # Arrange
+    mock_result_proxy = mocker.MagicMock()
+    mock_result_proxy.scalar_one.return_value = 123
+    analysis_repository.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_result_proxy
+
+    analysis_result = AnalysisResult(
+        procurement_control_number="123",
+        ai_analysis={
+            "risk_score": 1,
+            "risk_score_rationale": "test",
+            "summary": "test",
+            "red_flags": [],
+        },
+    )
+
+    # Act
+    returned_id = analysis_repository.save_analysis(analysis_result)
+
+    # Assert
+    assert returned_id == 123

@@ -11,7 +11,6 @@ import py7zr
 import rarfile
 import requests
 from google.api_core import exceptions
-from models.file_record import FileRecord
 from models.procurement import (
     DocumentType,
     Procurement,
@@ -20,9 +19,11 @@ from models.procurement import (
     ProcurementModality,
 )
 from providers.config import Config, ConfigProvider
+from providers.database import DatabaseManager
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
 from pydantic import ValidationError
+from sqlalchemy import text
 
 
 class ProcurementRepository:
@@ -41,10 +42,48 @@ class ProcurementRepository:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pubsub_provider = PubSubProvider()
+        self.engine = DatabaseManager.get_engine()
 
-    def process_procurement_documents(
-        self, procurement: Procurement
-    ) -> tuple[list[FileRecord], list[tuple[str, bytes]]]:
+    def save_procurement(self, procurement: Procurement) -> None:
+        """Saves a procurement object to the database."""
+        self.logger.info(f"Saving procurement {procurement.pncp_control_number} to the database.")
+        sql = text(
+            """
+            INSERT INTO procurement (
+                pncp_control_number, proposal_opening_date, proposal_closing_date,
+                object_description, total_awarded_value, is_srp, procurement_year,
+                procurement_sequence, pncp_publication_date, last_update_date,
+                modality_id, procurement_status_id, total_estimated_value
+            ) VALUES (
+                :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
+                :object_description, :total_awarded_value, :is_srp, :procurement_year,
+                :procurement_sequence, :pncp_publication_date, :last_update_date,
+                :modality_id, :procurement_status_id, :total_estimated_value
+            )
+            ON CONFLICT (pncp_control_number) DO NOTHING;
+        """
+        )
+        params = {
+            "pncp_control_number": procurement.pncp_control_number,
+            "proposal_opening_date": procurement.proposal_opening_date,
+            "proposal_closing_date": procurement.proposal_closing_date,
+            "object_description": procurement.object_description,
+            "total_awarded_value": procurement.total_awarded_value,
+            "is_srp": procurement.is_srp,
+            "procurement_year": procurement.procurement_year,
+            "procurement_sequence": procurement.procurement_sequence,
+            "pncp_publication_date": procurement.pncp_publication_date,
+            "last_update_date": procurement.last_update_date,
+            "modality_id": procurement.modality,
+            "procurement_status_id": procurement.procurement_status,
+            "total_estimated_value": procurement.total_estimated_value,
+        }
+        with self.engine.connect() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+        self.logger.info("Procurement saved successfully.")
+
+    def process_procurement_documents(self, procurement: Procurement) -> list[tuple[str, bytes]]:
         """Downloads all documents for a procurement, extracts metadata for every
         file, and collects all final (non-archive) files.
 
@@ -55,16 +94,13 @@ class ProcurementRepository:
             procurement: The procurement object to process.
 
         Returns:
-            A tuple containing:
-            - A list of FileRecord objects for every discovered file.
-            - A list of tuples for all final files (file_path, content).
+            A list of tuples for all final files (file_path, content).
         """
         documents_to_download = self._get_all_documents_metadata(procurement)
         if not documents_to_download:
-            return [], []
+            return []
 
-        all_records: list[FileRecord] = []
-        final_files_for_zip: list[tuple[str, bytes]] = []
+        final_files: list[tuple[str, bytes]] = []
 
         for doc in documents_to_download:
             content = self._download_file_content(doc.url)
@@ -74,29 +110,19 @@ class ProcurementRepository:
             original_filename = self._determine_original_filename(doc.url) or doc.title
 
             self._recursive_file_processing(
-                procurement_control_number=procurement.pncp_control_number,
-                root_document_sequence=doc.document_sequence,
-                root_document_type=doc.document_type_name,
-                root_document_is_active=doc.is_active,
                 content=content,
                 current_path=original_filename,
                 nesting_level=0,
-                record_collection=all_records,
-                file_collection=final_files_for_zip,
+                file_collection=final_files,
             )
 
-        return all_records, final_files_for_zip
+        return final_files
 
     def _recursive_file_processing(
         self,
-        procurement_control_number: str,
-        root_document_sequence: int,
-        root_document_type: str,
-        root_document_is_active: bool,
         content: bytes,
         current_path: str,
         nesting_level: int,
-        record_collection: list[FileRecord],
         file_collection: list[tuple[str, bytes]],
     ) -> None:
         """Recursively processes byte content, dispatching to the correct
@@ -124,72 +150,16 @@ class ProcurementRepository:
                 for member_name, member_content in nested_files:
                     new_path = os.path.join(current_path, member_name)
                     self._recursive_file_processing(
-                        procurement_control_number,
-                        root_document_sequence,
-                        root_document_type,
-                        root_document_is_active,
                         member_content,
                         new_path,
                         nesting_level + 1,
-                        record_collection,
                         file_collection,
                     )
             except Exception as e:
                 self.logger.warning(f"Could not process archive '{current_path}': {e}. Treating " "as a single file.")
-                self._collect_final_file(
-                    procurement_control_number,
-                    root_document_sequence,
-                    root_document_type,
-                    root_document_is_active,
-                    content,
-                    current_path,
-                    nesting_level,
-                    record_collection,
-                    file_collection,
-                )
+                file_collection.append((current_path, content))
         else:
-            self._collect_final_file(
-                procurement_control_number,
-                root_document_sequence,
-                root_document_type,
-                root_document_is_active,
-                content,
-                current_path,
-                nesting_level,
-                record_collection,
-                file_collection,
-            )
-
-    def _collect_final_file(
-        self,
-        procurement_control_number,
-        root_document_sequence,
-        root_document_type,
-        root_document_is_active,
-        content,
-        current_path,
-        nesting_level,
-        record_collection,
-        file_collection,
-    ):
-        """Adds a file's metadata to the record collection and its content to the file collection."""
-        file_name = os.path.basename(current_path)
-        _, extension = os.path.splitext(file_name)
-
-        record_collection.append(
-            FileRecord(
-                procurement_control_number=procurement_control_number,
-                root_document_sequence=root_document_sequence,
-                root_document_type=root_document_type,
-                root_document_is_active=root_document_is_active,
-                file_path=current_path,
-                file_name=file_name,
-                file_extension=(extension.lower().lstrip(".") if extension else None),
-                nesting_level=nesting_level,
-                file_size=len(content),
-            )
-        )
-        file_collection.append((current_path, content))
+            file_collection.append((current_path, content))
 
     def create_zip_from_files(self, files: list[tuple[str, bytes]], control_number: str) -> bytes | None:
         """Creates a single, flat ZIP archive in memory from a list of files."""
