@@ -11,10 +11,15 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -48,6 +53,58 @@ jobs:
       - name: Run database migrations
         run: |
           poetry run alembic upgrade head
+
+      - name: Generate and Check SQL for Migrations
+        if: github.event_name == 'pull_request'
+        run: |
+          set -e
+          PR_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
+          git checkout main
+          MAIN_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
+          git checkout -
+          echo "Generating SQL from ${MAIN_HEAD_REV} to ${PR_HEAD_REV}..."
+          poetry run alembic upgrade ${MAIN_HEAD_REV}:${PR_HEAD_REV} --sql > migration.sql
+          # Check if the migration is empty (only contains BEGIN;, COMMIT;, and whitespace)
+          # If grep finds any line that is NOT one of those, it exits 0, indicating content.
+          if grep -qvE '^(BEGIN;|COMMIT;|\s*)$' migration.sql; then
+              echo "SQL_HAS_CONTENT=true" >> "$GITHUB_ENV"
+          else
+              echo "SQL_HAS_CONTENT=false" >> "$GITHUB_ENV"
+          fi
+
+      - name: Post SQL migration to PR
+        if: github.event_name == 'pull_request' && env.SQL_HAS_CONTENT == 'true'
+        uses: actions/github-script@v6
+        with:
+          script: |
+            const fs = require('fs');
+            const migration_body = fs.readFileSync('migration.sql', 'utf8');
+            const body = `## SQL Migration\n\`\`\`sql\n${migration_body}\n\`\`\``;
+            const comment_header = "## SQL Migration";
+
+            const { data: comments } = await github.rest.issues.listComments({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+            });
+
+            const existing_comment = comments.find(comment => comment.body.startsWith(comment_header));
+
+            if (existing_comment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing_comment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
 
       - name: Run tests
         run: |
