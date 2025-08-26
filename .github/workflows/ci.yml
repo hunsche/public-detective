@@ -54,7 +54,7 @@ jobs:
         run: |
           poetry run alembic upgrade head
 
-      - name: Generate SQL for migrations
+      - name: Generate and Check SQL for Migrations
         if: github.event_name == 'pull_request'
         run: |
           set -e
@@ -64,9 +64,16 @@ jobs:
           git checkout -
           echo "Generating SQL from ${MAIN_HEAD_REV} to ${PR_HEAD_REV}..."
           poetry run alembic upgrade ${MAIN_HEAD_REV}:${PR_HEAD_REV} --sql > migration.sql
+          # Check if the migration is empty (only contains BEGIN;, COMMIT;, and whitespace)
+          # If grep finds any line that is NOT one of those, it exits 0, indicating content.
+          if grep -qvE '^(BEGIN;|COMMIT;|\s*)$' migration.sql; then
+              echo "SQL_HAS_CONTENT=true" >> "$GITHUB_ENV"
+          else
+              echo "SQL_HAS_CONTENT=false" >> "$GITHUB_ENV"
+          fi
 
       - name: Post SQL migration to PR
-        if: github.event_name == 'pull_request'
+        if: github.event_name == 'pull_request' && env.SQL_HAS_CONTENT == 'true'
         uses: actions/github-script@v6
         with:
           script: |
