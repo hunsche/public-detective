@@ -110,9 +110,11 @@ def db_session():
     finally:
         # --- Teardown ---
         with engine.connect() as connection:
+            connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.execute(
                 text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
             )
+            connection.commit()
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
         engine.dispose()
