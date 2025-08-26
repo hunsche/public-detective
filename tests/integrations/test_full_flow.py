@@ -30,11 +30,9 @@ def db_session():
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():
-        print(f"Fixture {fixture_path} not found, creating it...")
         fixture_dir.mkdir(parents=True, exist_ok=True)
         with zipfile.ZipFile(fixture_path, "w") as zf:
             zf.writestr("dummy_document.pdf", b"dummy pdf content")
-        print("Fixture created successfully.")
 
     config = ConfigProvider.get_config()
 
@@ -92,12 +90,13 @@ def db_session():
 
     try:
         with engine.connect() as connection:
-            print(f"Creating test schema: {schema_name}")
+            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+            connection.commit()
+            time.sleep(1)
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
 
         # --- Run Migrations ---
-        print(f"Applying Alembic migrations to schema: {schema_name}")
         from alembic import command
         from alembic.config import Config
 
@@ -111,7 +110,9 @@ def db_session():
     finally:
         # --- Teardown ---
         with engine.connect() as connection:
-            print(f"Dropping test schema: {schema_name}")
+            connection.execute(
+                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+            )
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
         engine.dispose()
@@ -156,10 +157,7 @@ def integration_test_setup(db_session):  # noqa: F841
 
     try:
         # --- Resource Creation ---
-        print(f"Creating Pub/Sub topic: {topic_path}")
         publisher.create_topic(request={"name": topic_path})
-
-        print(f"Creating Pub/Sub subscription: {subscription_path}")
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
 
         # Add a delay to ensure the subscription is fully propagated in the emulator
@@ -169,29 +167,22 @@ def integration_test_setup(db_session):  # noqa: F841
 
     finally:
         # --- Teardown ---
-        print("Tearing down test resources...")
-
         # GCS Cleanup
         try:
             bucket = gcs_client.bucket(os.environ["GCP_GCS_BUCKET_PROCUREMENTS"])
             blobs_to_delete = list(bucket.list_blobs(prefix=gcs_prefix))
             if blobs_to_delete:
-                print(f"Deleting {len(blobs_to_delete)} objects from GCS with prefix '{gcs_prefix}'...")
                 for blob in blobs_to_delete:
                     blob.delete()
-                print("GCS cleanup complete.")
         except Exception as e:
             print(f"Error during GCS cleanup: {e}")
 
         # Pub/Sub Cleanup
         try:
-            print(f"Deleting subscription: {subscription_path}")
             subscriber.delete_subscription(request={"subscription": subscription_path})
-
-            print(f"Deleting topic: {topic_path}")
             publisher.delete_topic(request={"topic": topic_path})
-        except exceptions.NotFound:
-            print("Could not find topic/subscription to delete. They may have been cleaned up already.")
+        except exceptions.NotFound as e:
+            print(f"Could not find topic/subscription to delete: {e}")
 
 
 def load_fixture(path):
@@ -242,20 +233,14 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
                 "totalRegistros": len(procurement_list_fixture),
                 "numeroPagina": 1,
             }
-            print(f"Mocked PNCP procurement list URL: {url}")
-            # Mock for fetching the document list for a specific procurement
         elif f"compras/{target_procurement['anoCompra']}/{target_procurement['sequencialCompra']}/arquivos" in url:
-            # Differentiate between listing documents and downloading a single file
             if url.endswith("/arquivos"):
                 mock_response.json = lambda: document_list_fixture
-                print(f"Mocked PNCP document list URL: {url}")
             else:
                 mock_response._content = attachments_fixture
                 mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
-                print(f"Mocked PNCP document download URL: {url}")
         else:
             mock_response.status_code = 404
-            print(f"Unhandled URL in mock_requests_get: {url}")
 
         return mock_response
 
@@ -272,8 +257,6 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
     ):
 
         # --- 3. Execute CLI ---
-        print("Running CLI command...")
-
         os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
 
         runner = CliRunner()
@@ -285,18 +268,17 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
 
         assert result.exit_code == 0, f"CLI command failed: {result.output}"
         assert "Analysis completed successfully!" in result.output
-        print("CLI command finished successfully.")
 
         # Add a small delay to ensure messages are available for the worker
         time.sleep(2)
 
         # --- 4. Execute Worker ---
-        print("Running Worker...")
         # The worker will use the unique subscription from the environment
         subscription = Subscription()
-        subscription.run(max_messages=1)
-        print("Worker finished processing.")
-    print("Verifying results in the database...")
+        try:
+            subscription.run(max_messages=1)
+        except Exception as e:
+            pytest.fail(f"Worker failed with exception: {e}")
     config = ConfigProvider.get_config()
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
@@ -318,7 +300,4 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
     # Compare with the data from our Gemini fixture
     assert risk_score == gemini_response_fixture.risk_score
     assert summary == gemini_response_fixture.summary
-    assert document_hash is not None  # Verify a hash was calculated and stored
-
-    print("Database verification successful!")
-    print(f"Found analysis for {procurement_control_number} with risk score {risk_score}.")
+    assert document_hash is not None

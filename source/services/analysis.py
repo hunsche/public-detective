@@ -4,23 +4,30 @@ analysis pipeline.
 """
 
 import hashlib
-import io
-import zipfile
-from datetime import date, timedelta
+import json
+import os
+from datetime import date, datetime, timedelta, timezone
 
 from models.analysis import Analysis, AnalysisResult
+from models.file_record import NewFileRecord
 from models.procurement import Procurement
 from providers.ai import AiProvider
 from providers.config import ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
 from repositories.analysis import AnalysisRepository
+from repositories.file_record import FileRecordRepository
 from repositories.procurement import ProcurementRepository
 
 
 class AnalysisService:
-    """
-    Orchestrates the analysis of individual procurements.
+    """Orchestrates the entire procurement analysis pipeline.
+
+    This service is the central component responsible for coordinating all the
+    steps involved in analyzing a public procurement. It fetches procurement
+    documents, prepares them for AI analysis by applying business rules,
+    invokes the AI model, and persists all results and metadata to the
+    database and Google Cloud Storage.
     """
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
@@ -41,25 +48,38 @@ class AnalysisService:
         """Initializes the service and its dependencies."""
         self.procurement_repo = ProcurementRepository()
         self.analysis_repo = AnalysisRepository()
+        self.file_record_repo = FileRecordRepository()
         self.logger = LoggingProvider().get_logger()
         self.ai_provider = AiProvider(Analysis)
         self.gcs_provider = GcsProvider()
         self.config = ConfigProvider.get_config()
 
     def analyze_procurement(self, procurement: Procurement) -> None:
-        """
-        Executes the full analysis pipeline for a single procurement.
+        """Executes the full analysis pipeline for a single procurement.
+
+        This method performs the following steps:
+        1.  Fetches all document files associated with the procurement.
+        2.  Applies business rules to select a subset of files for AI analysis.
+        3.  Calculates a hash of the selected files to check for idempotency.
+        4.  If a previous analysis with the same hash exists, it aborts.
+        5.  Invokes the AI provider to get a structured analysis of the files.
+        6.  Saves the analysis result to the `procurement_analysis` table.
+        7.  Saves a detailed record for each original file to the `file_record`
+            table, including its GCS path and analysis inclusion status.
+
+        Args:
+            procurement: The procurement object to be analyzed.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number}...")
 
-        _, all_original_files = self.procurement_repo.process_procurement_documents(procurement)
+        all_original_files = self.procurement_repo.process_procurement_documents(procurement)
 
         if not all_original_files:
             self.logger.warning(f"No files found for {control_number}. Aborting.")
             return
 
-        files_for_ai, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
         if not files_for_ai:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
@@ -71,22 +91,37 @@ class AnalysisService:
             return
 
         try:
-            original_zip_url = self._archive_and_upload(f"{control_number}-original.zip", all_original_files)
-
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
                 files=files_for_ai,
             )
 
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            gcs_base_path = f"{control_number}/{timestamp}"
+            if self.config.GCP_GCS_TEST_PREFIX:
+                gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
+
+            analysis_report_gcs_path = self._upload_analysis_report(gcs_base_path, ai_analysis)
+
             final_result = AnalysisResult(
                 procurement_control_number=control_number,
                 ai_analysis=ai_analysis,
                 warnings=warnings,
                 document_hash=document_hash,
-                original_documents_url=original_zip_url,
+                original_documents_gcs_path=f"{gcs_base_path}/files/",
+                processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            self.analysis_repo.save_analysis(final_result)
+            analysis_id = self.analysis_repo.save_analysis(final_result)
+
+            self._process_and_save_file_records(
+                analysis_id=analysis_id,
+                gcs_base_path=gcs_base_path,
+                all_files=all_original_files,
+                included_files=files_for_ai,
+                excluded_files=excluded_files,
+            )
+
             self.logger.info(f"Successfully completed analysis for {control_number}.")
 
         except Exception as e:
@@ -100,60 +135,137 @@ class AnalysisService:
             hasher.update(content)
         return hasher.hexdigest()
 
-    def _archive_and_upload(self, zip_name: str, files: list[tuple[str, bytes]]) -> str:
-        """Creates a zip archive from a list of files and uploads it to GCS."""
-        self.logger.info(f"Creating and uploading archive: {zip_name}")
-        with io.BytesIO() as zip_buffer:
-            with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
-                for filename, content in files:
-                    zf.writestr(filename, content)
-            zip_content = zip_buffer.getvalue()
-
-        return str(
-            self.gcs_provider.upload_file(
-                bucket_name=self.gcs_provider.config.GCP_GCS_BUCKET_PROCUREMENTS,
-                destination_blob_name=zip_name,
-                content=zip_content,
-                content_type="application/zip",
-            )
+    def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
+        """Uploads the analysis report to GCS and returns the full path."""
+        analysis_report_content = json.dumps(analysis_result.model_dump(), indent=2).encode("utf-8")
+        analysis_report_blob_name = f"{gcs_base_path}/analysis_report.json"
+        self.gcs_provider.upload_file(
+            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+            destination_blob_name=analysis_report_blob_name,
+            content=analysis_report_content,
+            content_type="application/json",
         )
+        return analysis_report_blob_name
+
+    def _process_and_save_file_records(
+        self,
+        analysis_id: int,
+        gcs_base_path: str,
+        all_files: list[tuple[str, bytes]],
+        included_files: list[tuple[str, bytes]],
+        excluded_files: dict[str, str],
+    ) -> None:
+        """Uploads every original file to GCS and saves its metadata record
+        to the database.
+
+        For each file, it determines if it was included in the AI analysis and
+        records the reason for any exclusion.
+
+        Args:
+            analysis_id: The ID of the parent analysis run.
+            gcs_base_path: The base GCS path for this analysis run.
+            all_files: A list of all original files (path, content).
+            included_files: The list of files that were sent to the AI.
+            excluded_files: A dictionary mapping excluded file paths to their
+                exclusion reason.
+        """
+        included_filenames = {f[0] for f in included_files}
+
+        for file_path, file_content in all_files:
+            file_name = os.path.basename(file_path)
+            gcs_path = f"{gcs_base_path}/files/{file_name}"
+
+            self.gcs_provider.upload_file(
+                bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+                destination_blob_name=gcs_path,
+                content=file_content,
+                content_type="application/octet-stream",  # Use a generic content type
+            )
+
+            is_included = file_path in included_filenames
+            exclusion_reason = excluded_files.get(file_path)
+
+            file_record = NewFileRecord(
+                analysis_id=analysis_id,
+                file_name=file_name,
+                gcs_path=gcs_path,
+                extension=os.path.splitext(file_name)[1],
+                size_bytes=len(file_content),
+                nesting_level=0,  # Assuming no nesting for now
+                included_in_analysis=is_included,
+                exclusion_reason=exclusion_reason,
+                prioritization_logic=self._get_priority_as_string(file_path),
+            )
+            self.file_record_repo.save_file_record(file_record)
 
     def _select_and_prepare_files_for_ai(
         self, all_files: list[tuple[str, bytes]]
-    ) -> tuple[list[tuple[str, bytes]], list[str]]:
-        """
-        Applies business rules to filter, prioritize, and limit files for AI analysis.
+    ) -> tuple[list[tuple[str, bytes]], dict[str, str], list[str]]:
+        """Applies business rules to filter and prioritize files for AI analysis.
+
+        This method implements the core logic for deciding which files are
+        most relevant for analysis, based on file type, keywords in the
+        filename, and constraints on the number of files and total size.
+
+        Args:
+            all_files: A list of all available files for the procurement.
+
+        Returns:
+            A tuple containing:
+            - A list of the selected files (path, content) to be sent to the AI.
+            - A dictionary mapping the path of each excluded file to the reason
+              for its exclusion.
+            - A list of warning messages to be included in the AI prompt.
         """
         warnings = []
-        supported_files = [
-            (path, content) for path, content in all_files if path.lower().endswith(self._SUPPORTED_EXTENSIONS)
-        ]
+        excluded_files = {}
 
+        # Filter by supported extensions
+        supported_files, unsupported_files = [], []
+        for path, content in all_files:
+            if path.lower().endswith(self._SUPPORTED_EXTENSIONS):
+                supported_files.append((path, content))
+            else:
+                unsupported_files.append(path)
+        for path in unsupported_files:
+            excluded_files[path] = "Unsupported file extension."
+
+        # Sort by priority
         supported_files.sort(key=lambda item: self._get_priority(item[0]))
 
-        selected_files = supported_files
+        # Filter by max number of files
         if len(supported_files) > self._MAX_FILES_FOR_AI:
-            excluded_paths = [path for path, _ in supported_files[self._MAX_FILES_FOR_AI :]]
-            warnings.append("Limite de arquivos excedido. Ignorados: " f"{', '.join(excluded_paths)}")
+            for path, _ in supported_files[self._MAX_FILES_FOR_AI :]:
+                excluded_files[path] = "File limit exceeded."
+            warnings.append(
+                "Limite de arquivos excedido. Ignorados: "
+                f"{', '.join(p for p, _ in supported_files[self._MAX_FILES_FOR_AI:])}"
+            )
             selected_files = supported_files[: self._MAX_FILES_FOR_AI]
+        else:
+            selected_files = supported_files
 
-        final_files, excluded_by_size = [], []
+        # Filter by size
+        final_files = []
         current_size = 0
         for path, content in selected_files:
             if current_size + len(content) > self._MAX_SIZE_BYTES_FOR_AI:
-                excluded_by_size.append(path)
+                excluded_files[path] = "Total size limit exceeded."
             else:
                 final_files.append((path, content))
                 current_size += len(content)
 
-        if excluded_by_size:
+        if len(final_files) < len(selected_files):
             max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
-            warnings.append(f"Limite de {max_size_mb:.1f}MB excedido. Ignorados: " f"{', '.join(excluded_by_size)}")
+            warnings.append(
+                f"Limite de {max_size_mb:.1f}MB excedido. "
+                f"Ignorados: {', '.join(p for p, _ in selected_files[len(final_files):])}"
+            )
 
         for warning_msg in warnings:
             self.logger.warning(warning_msg)
 
-        return final_files, warnings
+        return final_files, excluded_files, warnings
 
     def _get_priority(self, file_path: str) -> int:
         """Determines the priority of a file based on keywords in its name."""
@@ -162,6 +274,14 @@ class AnalysisService:
             if keyword in path_lower:
                 return i
         return len(self._FILE_PRIORITY_ORDER)
+
+    def _get_priority_as_string(self, file_path: str) -> str:
+        """Returns the priority keyword found in the file path."""
+        path_lower = file_path.lower()
+        for keyword in self._FILE_PRIORITY_ORDER:
+            if keyword in path_lower:
+                return keyword
+        return "no_priority"
 
     def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
         """Constructs the prompt for the AI, including contextual warnings."""

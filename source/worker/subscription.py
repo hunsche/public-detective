@@ -9,6 +9,7 @@ from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
+from repositories.procurement import ProcurementRepository
 from services.analysis import AnalysisService
 
 
@@ -25,6 +26,7 @@ class Subscription:
     config: Config
     logger: Logger
     analysis_service: AnalysisService
+    procurement_repo: ProcurementRepository
     processed_messages_count: int
     streaming_pull_future: StreamingPullFuture | None
 
@@ -33,6 +35,7 @@ class Subscription:
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
         self.analysis_service = AnalysisService()
+        self.procurement_repo = ProcurementRepository()
         self.pubsub_provider = PubSubProvider()
         self.processed_messages_count = 0
         self.streaming_pull_future = None
@@ -91,6 +94,8 @@ class Subscription:
             data_str = message.data.decode()
             procurement = Procurement.model_validate_json(data_str)
             self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
+
+            self.procurement_repo.save_procurement(procurement)
 
             if self.config.IS_DEBUG_MODE:
                 self._debug_pause()
