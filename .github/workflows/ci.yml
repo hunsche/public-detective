@@ -68,13 +68,33 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const migration = fs.readFileSync('migration.sql', 'utf8');
-            github.rest.issues.createComment({
-              issue_number: context.issue.number,
+            const migration_body = fs.readFileSync('migration.sql', 'utf8');
+            const body = `## SQL Migration\n\`\`\`sql\n${migration_body}\n\`\`\``;
+            const comment_header = "## SQL Migration";
+
+            const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              body: `## SQL Migration\n\`\`\`sql\n${migration}\n\`\`\``
-            })
+              issue_number: context.issue.number,
+            });
+
+            const existing_comment = comments.find(comment => comment.body.startsWith(comment_header));
+
+            if (existing_comment) {
+              await github.rest.issues.updateComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                comment_id: existing_comment.id,
+                body: body
+              });
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.issue.number,
+                body: body
+              });
+            }
 
       - name: Run tests
         run: |
