@@ -55,7 +55,24 @@ class TestAnalysisCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
 
     @patch("cli.commands.AnalysisService")
-    def test_analysis_command_exception(self, mock_analysis_service):
+    @patch("cli.commands.ProcurementRepository")
+    @patch("cli.commands.FileRecordRepository")
+    @patch("cli.commands.AnalysisRepository")
+    @patch("cli.commands.AiProvider")
+    @patch("cli.commands.GcsProvider")
+    @patch("cli.commands.PubSubProvider")
+    @patch("cli.commands.DatabaseManager")
+    def test_analysis_command_exception(
+        self,
+        mock_db_manager,
+        mock_pubsub_provider,
+        mock_gcs_provider,
+        mock_ai_provider,
+        mock_analysis_repo,
+        mock_file_record_repo,
+        mock_procurement_repo,
+        mock_analysis_service,
+    ):
         runner = CliRunner()
         start_date = "2025-01-01"
         end_date = "2025-01-02"
