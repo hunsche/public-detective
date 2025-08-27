@@ -83,11 +83,20 @@ def db_session():
             time.sleep(1)
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
+            connection.execute(text(f"SET search_path TO {schema_name}"))
+            connection.commit()
         from alembic import command
         from alembic.config import Config
 
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
+
+        with engine.connect() as connection:
+            connection.execute(text(f"SET search_path TO {schema_name}"))
+            connection.execute(
+                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+            )
+            connection.commit()
         yield engine
     finally:
         with engine.connect() as connection:
