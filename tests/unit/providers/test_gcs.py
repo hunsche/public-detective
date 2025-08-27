@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+import pytest
 from google.auth.credentials import AnonymousCredentials
 from providers.gcs import GcsProvider
 
@@ -109,8 +110,6 @@ def test_upload_file_success():
     mock_blob.upload_from_string.assert_called_once_with(b"content", content_type="application/pdf")
     assert public_url == "http://fake-url/file.pdf"
 
-
-import pytest
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
 def test_upload_file_failure():

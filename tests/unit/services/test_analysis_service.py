@@ -2,11 +2,13 @@
 Unit tests for the AnalysisService.
 """
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
 from models.analysis import Analysis
 from models.procurement import Procurement
+from services.analysis import AnalysisService
 
 
 @pytest.fixture
@@ -60,8 +62,6 @@ def mock_procurement():
 
 def test_analysis_service_instantiation(mock_dependencies):
     """Tests that the AnalysisService can be instantiated correctly."""
-    from services.analysis import AnalysisService
-
     service = AnalysisService(**mock_dependencies)
     assert service is not None
     assert service.procurement_repo == mock_dependencies["procurement_repo"]
@@ -69,8 +69,6 @@ def test_analysis_service_instantiation(mock_dependencies):
 
 def test_idempotency_check(mock_dependencies, mock_procurement):
     """Tests that analysis is skipped if a result with the same hash exists."""
-    from services.analysis import AnalysisService
-
     # Arrange: Mock the return values
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
     mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = "existing"
@@ -85,8 +83,6 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
 
 def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):
     """Tests that save_file_record is called for each file."""
-    from services.analysis import AnalysisService
-
     # Arrange
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [
         ("file1.pdf", b"content1"),
@@ -107,14 +103,6 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
 
     # Assert
     assert mock_dependencies["file_record_repo"].save_file_record.call_count == 2
-
-
-from services.analysis import AnalysisService
-
-
-from datetime import date
-
-from services.analysis import AnalysisService
 
 
 def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):

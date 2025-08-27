@@ -2,9 +2,8 @@ import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from click.testing import CliRunner
 from cli.commands import analysis_command
-from providers.date import DateProvider
+from click.testing import CliRunner
 
 
 class TestAnalysisCommand(unittest.TestCase):
