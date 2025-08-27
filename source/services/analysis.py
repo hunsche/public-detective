@@ -44,14 +44,21 @@ class AnalysisService:
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
 
-    def __init__(self) -> None:
-        """Initializes the service and its dependencies."""
-        self.procurement_repo = ProcurementRepository()
-        self.analysis_repo = AnalysisRepository()
-        self.file_record_repo = FileRecordRepository()
+    def __init__(
+        self,
+        procurement_repo: ProcurementRepository,
+        analysis_repo: AnalysisRepository,
+        file_record_repo: FileRecordRepository,
+        ai_provider: AiProvider,
+        gcs_provider: GcsProvider,
+    ) -> None:
+        """Initializes the service with its dependencies."""
+        self.procurement_repo = procurement_repo
+        self.analysis_repo = analysis_repo
+        self.file_record_repo = file_record_repo
+        self.ai_provider = ai_provider
+        self.gcs_provider = gcs_provider
         self.logger = LoggingProvider().get_logger()
-        self.ai_provider = AiProvider(Analysis)
-        self.gcs_provider = GcsProvider()
         self.config = ConfigProvider.get_config()
 
     def analyze_procurement(self, procurement: Procurement) -> None:

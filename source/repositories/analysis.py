@@ -7,10 +7,9 @@ import json
 from typing import cast
 
 from models.analysis import Analysis, AnalysisResult
-from providers.database import DatabaseManager
 from providers.logging import Logger, LoggingProvider
 from pydantic import ValidationError
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 
 
 class AnalysisRepository:
@@ -18,12 +17,12 @@ class AnalysisRepository:
     Handles all database operations related to procurement analysis.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine) -> None:
         """
-        Initializes the repository and gets a reference to the database engine.
+        Initializes the repository with a database engine.
         """
         self.logger: Logger = LoggingProvider().get_logger()
-        self.engine = DatabaseManager.get_engine()
+        self.engine = engine
 
     def _parse_row_to_model(self, row: tuple, columns: list[str]) -> AnalysisResult | None:
         """

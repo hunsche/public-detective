@@ -4,11 +4,17 @@ from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
+from models.analysis import Analysis
 from models.procurement import Procurement
+from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
+from providers.database import DatabaseManager
+from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
+from repositories.analysis import AnalysisRepository
+from repositories.file_record import FileRecordRepository
 from repositories.procurement import ProcurementRepository
 from services.analysis import AnalysisService
 
@@ -30,13 +36,40 @@ class Subscription:
     processed_messages_count: int
     streaming_pull_future: StreamingPullFuture | None
 
-    def __init__(self):
-        """Initializes the worker, loading configuration and services."""
+    def __init__(self, analysis_service: AnalysisService | None = None):
+        """Initializes the worker, loading configuration and services.
+
+        This constructor acts as the Composition Root for the worker application.
+        It instantiates and wires together all the necessary dependencies.
+        """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
-        self.analysis_service = AnalysisService()
-        self.procurement_repo = ProcurementRepository()
         self.pubsub_provider = PubSubProvider()
+
+        # In production, the service is composed here. In tests, it's injected.
+        if analysis_service:
+            self.analysis_service = analysis_service
+            # In a test context, the service might not have a procurement_repo
+            # if it's a mock, so we get it from the service.
+            self.procurement_repo = self.analysis_service.procurement_repo
+        else:
+            # --- Dependency Injection Container ---
+            db_engine = DatabaseManager.get_engine()
+            gcs_provider = GcsProvider()
+            ai_provider = AiProvider(Analysis)
+
+            analysis_repo = AnalysisRepository(engine=db_engine)
+            file_record_repo = FileRecordRepository(engine=db_engine)
+            self.procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
+
+            self.analysis_service = AnalysisService(
+                procurement_repo=self.procurement_repo,
+                analysis_repo=analysis_repo,
+                file_record_repo=file_record_repo,
+                ai_provider=ai_provider,
+                gcs_provider=gcs_provider,
+            )
+
         self.processed_messages_count = 0
         self.streaming_pull_future = None
         self._stop_event = threading.Event()

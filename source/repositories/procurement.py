@@ -19,11 +19,10 @@ from models.procurement import (
     ProcurementModality,
 )
 from providers.config import Config, ConfigProvider
-from providers.database import DatabaseManager
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
 from pydantic import ValidationError
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 
 
 class ProcurementRepository:
@@ -37,12 +36,12 @@ class ProcurementRepository:
     logger: Logger
     config: Config
 
-    def __init__(self) -> None:
-        """Initializes the repository with a logger and configuration."""
+    def __init__(self, engine: Engine, pubsub_provider: PubSubProvider) -> None:
+        """Initializes the repository with its dependencies."""
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
-        self.pubsub_provider = PubSubProvider()
-        self.engine = DatabaseManager.get_engine()
+        self.pubsub_provider = pubsub_provider
+        self.engine = engine
 
     def save_procurement(self, procurement: Procurement) -> None:
         """Saves a procurement object to the database."""
