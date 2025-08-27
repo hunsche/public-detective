@@ -45,20 +45,18 @@ def db_session():
         import subprocess  # nosec B404
 
         try:
-            # nosec B603, B607
             container_id_result = subprocess.run(
                 ["sudo", "-n", "docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
                 check=True,
                 capture_output=True,
                 text=True,
-            )
+            )  # nosec B603, B607
             container_id = container_id_result.stdout.strip()
             if not container_id:
                 pytest.fail(f"Could not find container for service {service_name}")
-            # nosec B603, B607
             inspect_result = subprocess.run(
                 ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
-            )
+            )  # nosec B603, B607
             data = json.loads(inspect_result.stdout)
             network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
             return data[0]["NetworkSettings"]["Networks"][network_name]["IPAddress"]
