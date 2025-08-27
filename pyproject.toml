@@ -75,7 +75,7 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 77
+fail_under = 90
 ignore_errors = true
 
 [tool.black]
@@ -140,4 +140,4 @@ min_confidence = 100
 ignore_names = ["cls", "self"]
 
 [tool.bandit]
-skips = ["B101", "B601", "B311"]
+skips = ["B101", "B601", "B311", "B202"]

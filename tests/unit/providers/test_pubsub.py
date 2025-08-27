@@ -1,7 +1,6 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
-from google.cloud import pubsub_v1
 from providers.pubsub import PubSubProvider
 
 

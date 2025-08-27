@@ -8,7 +8,7 @@ import py7zr
 import pytest
 import requests
 from google.api_core import exceptions
-from models.procurement import Procurement, ProcurementDocument
+from models.procurement import Procurement
 from repositories.procurement import ProcurementRepository
 
 
