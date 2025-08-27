@@ -166,6 +166,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
     gemini_response_fixture = Analysis.model_validate(load_fixture(f"{fixture_base_path}/gemini_response.json"))
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
+
     def mock_requests_get(url, **kwargs):
         mock_response = requests.Response()
         mock_response.status_code = 200
