@@ -94,6 +94,7 @@ nosetests.xml
 .pytest_cache/
 cover/
 coverage.xml
+junit.xml
 
 # Environments
 .env

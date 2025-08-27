@@ -78,10 +78,20 @@ def test_ai_provider_instantiation(monkeypatch):
     assert provider is not None
 
 
+from unittest.mock import MagicMock
+
+
 def test_ai_provider_missing_api_key(monkeypatch):
-    """Tests that AiProvider raises ValueError if the API key is missing."""
-    monkeypatch.delenv("GCP_GEMINI_API_KEY", raising=False)
-    with pytest.raises(ValueError, match="GCP_GEMINI_API_KEY must be configured"):
+    """
+    Tests that AiProvider raises a ValueError if the GCP_GEMINI_API_KEY is not configured.
+    """
+    mock_config = MagicMock()
+    mock_config.GCP_GEMINI_API_KEY = None
+
+    # Patch the ConfigProvider to return a config object without the API key
+    monkeypatch.setattr("source.providers.ai.ConfigProvider.get_config", lambda: mock_config)
+
+    with pytest.raises(ValueError, match="GCP_GEMINI_API_KEY must be configured to use the AI provider."):
         AiProvider(MockOutputSchema)
 
 
