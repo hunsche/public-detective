@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths-ignore:
+      - '.github/badges/coverage.svg'
   pull_request:
     branches:
       - main
@@ -14,6 +16,7 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
+      contents: write
 
     steps:
       - name: Checkout code
