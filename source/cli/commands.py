@@ -45,7 +45,6 @@ def analysis_command(start_date: datetime, end_date: datetime):
     )
 
     try:
-        # --- Dependency Injection Container ---
         db_engine = DatabaseManager.get_engine()
         pubsub_provider = PubSubProvider()
         gcs_provider = GcsProvider()
@@ -62,7 +61,6 @@ def analysis_command(start_date: datetime, end_date: datetime):
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
         )
-        # --- End of Container ---
 
         service.run_analysis(start_date.date(), end_date.date())
 

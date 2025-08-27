@@ -24,10 +24,12 @@ class PubSubProvider:
 
     _clients: dict[str, pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient]
     _client_creation_lock: threading.Lock
+    logger: Logger
+    config: Config
 
     def __init__(self) -> None:
-        self.logger: Logger = LoggingProvider().get_logger()
-        self.config: Config = ConfigProvider.get_config()
+        self.logger = LoggingProvider().get_logger()
+        self.config = ConfigProvider.get_config()
         self._clients = {}
         self._client_creation_lock = threading.Lock()
 

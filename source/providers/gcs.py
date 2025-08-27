@@ -18,10 +18,12 @@ class GcsProvider:
 
     _client: storage.Client | None = None
     _client_creation_lock: threading.Lock
+    logger: Logger
+    config: Config
 
     def __init__(self) -> None:
-        self.logger: Logger = LoggingProvider().get_logger()
-        self.config: Config = ConfigProvider.get_config()
+        self.logger = LoggingProvider().get_logger()
+        self.config = ConfigProvider.get_config()
         self._client_creation_lock = threading.Lock()
 
     def _get_or_create_client(self) -> storage.Client:

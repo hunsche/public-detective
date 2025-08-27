@@ -36,6 +36,8 @@ class ProcurementRepository:
 
     logger: Logger
     config: Config
+    pubsub_provider: PubSubProvider
+    engine: Engine
 
     def __init__(self, engine: Engine, pubsub_provider: PubSubProvider) -> None:
         """Initializes the repository with its dependencies."""
@@ -140,7 +142,6 @@ class ProcurementRepository:
             handler = self._extract_from_rar
         elif lower_path.endswith(".7z"):
             handler = self._extract_from_7z
-        # tarfile.is_tarfile can identify .tar, .tar.gz, .tgz, .tar.bz2
         elif tarfile.is_tarfile(io.BytesIO(content)):
             handler = self._extract_from_tar
 
@@ -298,7 +299,7 @@ class ProcurementRepository:
         codes_to_check = self.config.TARGET_IBGE_CODES
         if not codes_to_check:
             self.logger.warning("No TARGET_IBGE_CODES configured. The search will be nationwide.")
-            codes_to_check = [None]  # Perform one loop for nationwide search
+            codes_to_check = [None]
         for city_code in codes_to_check:
             if city_code:
                 self.logger.info(f"Searching for city with IBGE code: {city_code}")

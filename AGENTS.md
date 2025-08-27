@@ -124,6 +124,23 @@ Integration tests run on a separate, temporary database schema to ensure isolati
 ## 5. Code Philosophy
 
 - **No Inline Comments:** Code should be self-documenting through clear variable and method names. Use docstrings for classes and methods, not `#` comments.
+- **Class Property Typing:** All instance properties (i.e., attributes assigned to `self`) must be explicitly typed at the class level. This improves readability and allows for better static analysis.
+
+    ```python
+    # Correct: Property is typed at the class level
+    class MyService:
+        my_repository: MyRepository
+
+        def __init__(self, repo: MyRepository):
+            self.my_repository = repo
+    ```
+
+    ```python
+    # Incorrect: Property is not declared at the class level
+    class MyService:
+        def __init__(self, repo: MyRepository):
+            self.my_repository = repo
+    ```
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 
 ## 6. Database Migrations
