@@ -71,6 +71,7 @@ source = ["source/"]
 omit = [
     ".venv/**",
     "*__init__*",
+    "source/migrations/*",
 ]
 
 [tool.coverage.report]

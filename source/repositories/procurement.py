@@ -2,6 +2,7 @@ import io
 import os
 import re
 import tarfile
+import tempfile
 import zipfile
 from datetime import date
 from http import HTTPStatus
@@ -169,7 +170,7 @@ class ProcurementRepository:
         try:
             with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
                 for file_path, content in files:
-                    safe_path = re.sub(r'[<>:"\\|?*]', "_", file_path)
+                    safe_path = re.sub(r'[<>:"/\\|?*]', "_", file_path)
                     zf.writestr(safe_path, content)
             zip_bytes = zip_stream.getvalue()
             self.logger.info(f"Successfully created final ZIP archive of {len(zip_bytes)} bytes.")
@@ -201,11 +202,18 @@ class ProcurementRepository:
     def _extract_from_7z(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a 7z archive."""
         extracted = []
-        with io.BytesIO(content) as stream:
-            with py7zr.SevenZipFile(stream, mode="r") as archive:
-                all_files = archive.readall()
-                for filename, bio in all_files.items():
-                    extracted.append((filename, bio.read()))
+        with tempfile.TemporaryDirectory() as tmpdir:
+            with io.BytesIO(content) as stream:
+                with py7zr.SevenZipFile(stream, mode="r") as archive:
+                    archive.extractall(path=tmpdir)
+
+            for root, _, files in os.walk(tmpdir):
+                for filename in files:
+                    filepath = os.path.join(root, filename)
+                    with open(filepath, "rb") as f:
+                        file_content = f.read()
+                    relative_path = os.path.relpath(filepath, tmpdir)
+                    extracted.append((relative_path, file_content))
         return extracted
 
     def _extract_from_tar(self, content: bytes) -> list[tuple[str, bytes]]:
@@ -287,9 +295,11 @@ class ProcurementRepository:
             ProcurementModality.ELECTRONIC_COMPETITION,
         ]
         self.logger.info(f"Fetching all procurements updated on {target_date}...")
-        if not self.config.TARGET_IBGE_CODES:
+        codes_to_check = self.config.TARGET_IBGE_CODES
+        if not codes_to_check:
             self.logger.warning("No TARGET_IBGE_CODES configured. The search will be nationwide.")
-        for city_code in self.config.TARGET_IBGE_CODES:
+            codes_to_check = [None]  # Perform one loop for nationwide search
+        for city_code in codes_to_check:
             if city_code:
                 self.logger.info(f"Searching for city with IBGE code: {city_code}")
             for modality in modalities_to_check:
