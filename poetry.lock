@@ -2956,6 +2956,22 @@ pytest = ">=6.2.5"
 dev = ["pre-commit", "pytest-asyncio", "tox"]
 
 [[package]]
+name = "pytest-rerunfailures"
+version = "14.0"
+description = "pytest plugin to re-run tests to eliminate flaky failures"
+optional = false
+python-versions = ">=3.8"
+groups = ["tests"]
+files = [
+    {file = "pytest-rerunfailures-14.0.tar.gz", hash = "sha256:4a400bcbcd3c7a4ad151ab8afac123d90eca3abe27f98725dc4d9702887d2e92"},
+    {file = "pytest_rerunfailures-14.0-py3-none-any.whl", hash = "sha256:4197bdd2eaeffdbf50b5ea6e7236f47ff0e44d1def8dae08e409f536d84e7b32"},
+]
+
+[package.dependencies]
+packaging = ">=17.1"
+pytest = ">=7.2"
+
+[[package]]
 name = "pytest-timeout"
 version = "2.4.0"
 description = "pytest plugin to abort hanging tests"
@@ -3703,4 +3719,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "8cfa788f0eb34854f08d08e7e556d41dbef5137de4841096fdbc065211e293e5"
+content-hash = "1ba322bb932eb8da2a963f2566196106f421af5d830ab29505aee06b430b20e9"
