@@ -1,5 +1,6 @@
 import json
 import os
+import threading
 import time
 import uuid
 import zipfile
@@ -43,8 +44,9 @@ def db_session():
             # Find the container ID using its docker-compose service label
             container_id_result = subprocess.run(  # nosec B603
                 [
-                    "/usr/bin/sudo",
-                    "/usr/bin/docker",
+                    "sudo",
+                    "-n",
+                    "docker",
                     "ps",
                     "-q",
                     "--filter",
@@ -60,7 +62,7 @@ def db_session():
 
             # Inspect the container using its ID to get the IP address
             inspect_result = subprocess.run(  # nosec B603
-                ["/usr/bin/sudo", "/usr/bin/docker", "inspect", container_id],
+                ["sudo", "-n", "docker", "inspect", container_id],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -157,13 +159,23 @@ def integration_test_setup(db_session):  # noqa: F841
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
 
+    def wait_for_subscription(timeout: int = 30):
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < timeout:
+            try:
+                subscriber.get_subscription(request={"subscription": subscription_path})
+                print(f"Subscription {subscription_name} is ready.")
+                return
+            except exceptions.NotFound:
+                time.sleep(1)
+        raise TimeoutError(f"Timed out waiting for subscription {subscription_name}")
+
     try:
         # --- Resource Creation ---
         publisher.create_topic(request={"name": topic_path})
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
 
-        # Add a delay to ensure the subscription is fully propagated in the emulator
-        time.sleep(5)
+        wait_for_subscription()
 
         yield topic_name, subscription_name
 
@@ -197,6 +209,30 @@ def load_binary_fixture(path):
     """Loads a binary fixture file from the specified path."""
     with open(path, "rb") as f:
         return f.read()
+
+
+def wait_for_analysis_in_db(pcn: str, timeout: int = 60):
+    """
+    Polls the database until an analysis for the given PCN is found.
+    """
+    config = ConfigProvider.get_config()
+    db_url = (
+        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
+        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
+    )
+    engine = create_engine(db_url)
+
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < timeout:
+        with engine.connect() as connection:
+            connection.execute(text(f"SET search_path TO {config.POSTGRES_DB_SCHEMA}"))
+            query = text("SELECT risk_score, summary, document_hash FROM procurement_analysis WHERE procurement_control_number = :pcn")
+            result = connection.execute(query, {"pcn": pcn}).fetchone()
+            if result:
+                print(f"Analysis for PCN {pcn} found in the database.")
+                return result
+        time.sleep(2)  # Poll every 2 seconds
+    raise TimeoutError(f"Timed out waiting for analysis of PCN {pcn} in the database.")
 
 
 @pytest.mark.timeout(180)
@@ -271,29 +307,13 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
         assert result.exit_code == 0, f"CLI command failed: {result.output}"
         assert "Analysis completed successfully!" in result.output
 
-        # Add a small delay to ensure messages are available for the worker
-        time.sleep(2)
-
-        # --- 4. Execute Worker ---
-        # The worker will use the unique subscription from the environment
+        # --- 4. Execute Worker in Background ---
         subscription = Subscription()
-        try:
-            subscription.run(max_messages=1)
-        except Exception as e:
-            pytest.fail(f"Worker failed with exception: {e}")
-    config = ConfigProvider.get_config()
-    db_url = (
-        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
-    )
-    engine = create_engine(db_url)
-    with engine.connect() as connection:
-        connection.execute(text(f"SET search_path TO {config.POSTGRES_DB_SCHEMA}"))
-        query = text(
-            "SELECT risk_score, summary, document_hash FROM procurement_analysis "
-            "WHERE procurement_control_number = :pcn"
-        )
-        db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
+        worker_thread = threading.Thread(target=lambda: subscription.run(max_messages=1), daemon=True)
+        worker_thread.start()
+
+        # --- 5. Wait for Result and Assert ---
+        db_result = wait_for_analysis_in_db(procurement_control_number)
 
     assert db_result is not None, f"No analysis found in the database for {procurement_control_number}"
 
