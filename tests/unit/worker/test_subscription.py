@@ -45,118 +45,118 @@ def mock_message():
     return message
 
 
-@patch("worker.subscription.AnalysisService")
-@patch("worker.subscription.ProcurementRepository")
-def test_process_message_success(mock_proc_repo, mock_analysis_service, mock_message):
-    """Tests the successful processing of a valid message."""
-    sub = Subscription()
-    sub.config.IS_DEBUG_MODE = False
-    sub._process_message(mock_message)
+@pytest.fixture
+def mock_analysis_service():
+    """Fixture for a mocked AnalysisService."""
+    service = MagicMock()
+    # The subscription needs a procurement_repo from the service
+    service.procurement_repo = MagicMock()
+    return service
 
-    mock_proc_repo.return_value.save_procurement.assert_called_once()
-    mock_analysis_service.return_value.analyze_procurement.assert_called_once()
+
+@pytest.fixture
+def subscription(mock_analysis_service):
+    """Fixture to create a Subscription instance with mocked services."""
+    # We don't need to mock the config provider anymore because the tests
+    # that need it will inject a mocked analysis_service, preventing the
+    # real AiProvider from being created.
+    sub = Subscription(analysis_service=mock_analysis_service)
+    # Manually replace the real provider with a mock for these tests
+    sub.pubsub_provider = MagicMock()
+    return sub
+
+
+def test_process_message_success(subscription, mock_message):
+    """Tests the successful processing of a valid message."""
+    subscription.config.IS_DEBUG_MODE = False
+    subscription._process_message(mock_message)
+
+    subscription.procurement_repo.save_procurement.assert_called_once()
+    subscription.analysis_service.analyze_procurement.assert_called_once()
     mock_message.ack.assert_called_once()
     mock_message.nack.assert_not_called()
 
 
-def test_process_message_validation_error():
+def test_process_message_validation_error(subscription):
     """Tests that a message with invalid data is NACKed."""
-    sub = Subscription()
     invalid_message = MagicMock()
     invalid_message.data = b"invalid json"
     invalid_message.message_id = "invalid-message"
 
-    sub._process_message(invalid_message)
+    subscription._process_message(invalid_message)
 
     invalid_message.nack.assert_called_once()
     invalid_message.ack.assert_not_called()
 
 
-@patch("worker.subscription.AnalysisService")
-def test_process_message_unexpected_error(mock_analysis_service, mock_message):
+def test_process_message_unexpected_error(subscription, mock_message):
     """Tests that an unexpected error during processing results in a NACK."""
-    mock_analysis_service.return_value.analyze_procurement.side_effect = Exception("Boom!")
-    sub = Subscription()
-    sub.config.IS_DEBUG_MODE = False
+    subscription.analysis_service.analyze_procurement.side_effect = Exception("Boom!")
+    subscription.config.IS_DEBUG_MODE = False
 
-    sub._process_message(mock_message)
+    subscription._process_message(mock_message)
 
     mock_message.nack.assert_called_once()
     mock_message.ack.assert_not_called()
 
 
-def test_message_callback_stops_at_max_messages(mock_message):
+def test_message_callback_stops_at_max_messages(subscription, mock_message):
     """Tests that the worker stops after reaching the message limit."""
-    sub = Subscription()
-    sub.streaming_pull_future = MagicMock()
-    sub._process_message = MagicMock()
+    subscription.streaming_pull_future = MagicMock()
+    subscription._process_message = MagicMock()
 
-    sub._message_callback(mock_message, max_messages=1)
+    subscription._message_callback(mock_message, max_messages=1)
 
-    assert sub.processed_messages_count == 1
-    assert sub._stop_event.is_set()
-    sub.streaming_pull_future.cancel.assert_called_once()
+    assert subscription.processed_messages_count == 1
+    assert subscription._stop_event.is_set()
+    subscription.streaming_pull_future.cancel.assert_called_once()
 
 
-@patch("worker.subscription.PubSubProvider")
-def test_run_worker(mock_pubsub_provider):
+def test_run_worker(subscription):
     """Tests that the worker subscribes and runs correctly."""
     future = MagicMock()
-    mock_pubsub_provider.return_value.subscribe.return_value = future
-    sub = Subscription()
-
-    sub.run()
-
-    mock_pubsub_provider.return_value.subscribe.assert_called_once()
+    subscription.pubsub_provider.subscribe.return_value = future
+    subscription.run()
+    subscription.pubsub_provider.subscribe.assert_called_once()
     future.result.assert_called_once()
 
 
-@patch("worker.subscription.PubSubProvider")
-def test_run_worker_handles_shutdown_exception(mock_pubsub_provider):
+def test_run_worker_handles_shutdown_exception(subscription):
     """Tests graceful shutdown on common exceptions."""
     future = MagicMock()
     future.result.side_effect = [TimeoutError("Test timeout"), None]
     future.cancelled.return_value = False
-    mock_pubsub_provider.return_value.subscribe.return_value = future
-    sub = Subscription()
-
-    sub.run()
-
+    subscription.pubsub_provider.subscribe.return_value = future
+    subscription.run()
     future.cancel.assert_called_once()
     assert future.result.call_count == 2
 
 
-def test_run_worker_no_subscription_name():
+def test_run_worker_no_subscription_name(subscription):
     """Tests that the worker exits if the subscription name is not configured."""
-    sub = Subscription()
-    sub.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = None
-    sub.pubsub_provider = MagicMock()
-
-    sub.run()
-
-    sub.pubsub_provider.subscribe.assert_not_called()
+    subscription.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = None
+    # Reset the mock from the fixture to check for no calls
+    subscription.pubsub_provider = MagicMock()
+    subscription.run()
+    subscription.pubsub_provider.subscribe.assert_not_called()
 
 
-@patch("worker.subscription.Subscription._extend_ack_deadline")
-def test_debug_context(mock_extend_ack, mock_message):
+def test_debug_context(subscription, mock_message):
     """Tests that the debug context extends the ack deadline."""
-    sub = Subscription()
-    sub.config.IS_DEBUG_MODE = True
-    with sub._debug_context(mock_message):
+    subscription.config.IS_DEBUG_MODE = True
+    subscription._extend_ack_deadline = MagicMock()
+    with subscription._debug_context(mock_message):
         pass
-    mock_extend_ack.assert_called_once_with(mock_message, 600)
+    subscription._extend_ack_deadline.assert_called_once_with(mock_message, 600)
 
 
-def test_extend_ack_deadline(mock_message):
+def test_extend_ack_deadline(subscription, mock_message):
     """Tests the extend_ack_deadline method."""
-    sub = Subscription()
-    sub._extend_ack_deadline(mock_message, 120)
+    subscription._extend_ack_deadline(mock_message, 120)
     mock_message.modify_ack_deadline.assert_called_once_with(120)
 
 
-@patch("builtins.input")
-def test_debug_pause(mock_input):
+def test_debug_pause(subscription):
     """Tests the debug_pause method."""
-    sub = Subscription()
-    sub._debug_pause()
-    mock_input.assert_called_once()
+    with patch("builtins.input"):
+        subscription._debug_pause()
