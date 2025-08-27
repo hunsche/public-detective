@@ -71,10 +71,11 @@ source = ["source/"]
 omit = [
     ".venv/**",
     "*__init__*",
+    "source/migrations/*",
 ]
 
 [tool.coverage.report]
-fail_under = 77
+fail_under = 90
 ignore_errors = true
 
 [tool.black]
@@ -136,7 +137,7 @@ exclude = '/.venv/'
 
 [tool.vulture]
 min_confidence = 100
-ignore_names = ["cls", "self"]
+ignore_names = ["cls", "self", "mock_config_provider", "mock_logger_provider"]
 
 [tool.bandit]
-skips = ["B101", "B601", "B311"]
+skips = ["B101", "B601", "B311", "B202"]

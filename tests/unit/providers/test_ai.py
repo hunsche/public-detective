@@ -160,3 +160,57 @@ def test_parse_response_empty(monkeypatch):
 
     with pytest.raises(ValueError, match="AI model returned an empty response"):
         provider._parse_and_validate_response(mock_response)
+
+
+def test_parse_response_from_text(monkeypatch):
+    """Tests parsing a valid response from the text field."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(MockOutputSchema)
+    mock_response = MagicMock()
+    mock_response.candidates[0].content.parts[0].function_call = None
+    mock_response.text = '```json\n{"risk_score": 5, "summary": "text summary"}\n```'
+
+    result = provider._parse_and_validate_response(mock_response)
+
+    assert isinstance(result, MockOutputSchema)
+    assert result.risk_score == 5
+    assert result.summary == "text summary"
+
+
+def test_parse_response_parsing_error(monkeypatch):
+    """Tests that a ValueError is raised if the response cannot be parsed."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(MockOutputSchema)
+    mock_response = MagicMock()
+    mock_response.candidates[0].content.parts[0].function_call = None
+    mock_response.text = "this is not json"
+
+    with pytest.raises(ValueError, match="could not be parsed"):
+        provider._parse_and_validate_response(mock_response)
+
+
+@patch("google.generativeai.upload_file", side_effect=Exception("Upload failed"))
+def test_upload_file_to_gemini_upload_error(mock_upload_file, monkeypatch):
+    """Tests that an exception during upload is caught and re-raised."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(MockOutputSchema)
+
+    with pytest.raises(Exception, match="Upload failed"):
+        provider._upload_file_to_gemini(b"content", "test.pdf")
+
+
+@patch("google.generativeai.upload_file")
+@patch("google.generativeai.get_file")
+def test_upload_file_to_gemini_processing_failed(mock_get_file, mock_upload_file, monkeypatch):
+    """Tests that an exception is raised if the file processing fails."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+
+    failed_file = MagicMock()
+    failed_file.name = "file-id"
+    failed_file.state.name = "FAILED"
+
+    mock_upload_file.return_value = failed_file
+
+    provider = AiProvider(MockOutputSchema)
+    with pytest.raises(Exception, match="failed processing"):
+        provider._upload_file_to_gemini(b"content", "test.pdf")
