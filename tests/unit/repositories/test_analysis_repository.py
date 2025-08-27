@@ -145,3 +145,41 @@ def test_save_analysis_returns_id(analysis_repository):
 
     # Assert
     assert returned_id == 123
+
+
+def test_parse_row_to_model_empty_row(analysis_repository):
+    """Should return None for an empty row."""
+    assert analysis_repository._parse_row_to_model(None, []) is None
+
+
+def test_parse_row_to_model_invalid_json(analysis_repository):
+    """Should raise JSONDecodeError if red_flags contains invalid JSON."""
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "risk_score_rationale",
+        "summary",
+        "red_flags",
+    ]
+    row_tuple = (
+        "12345",
+        8,
+        "High risk",
+        "Summary",
+        "this is not valid json",
+    )
+    with pytest.raises(json.JSONDecodeError):
+        analysis_repository._parse_row_to_model(row_tuple, columns)
+
+
+def test_get_analysis_by_hash_not_found(analysis_repository):
+    """Should return None when no analysis is found for a given hash."""
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.fetchone.return_value = None
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    result = analysis_repository.get_analysis_by_hash("nonexistent_hash")
+
+    assert result is None

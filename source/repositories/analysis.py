@@ -51,8 +51,8 @@ class AnalysisRepository:
             row_dict["ai_analysis"] = Analysis(**ai_analysis_data)
 
             return AnalysisResult.model_validate(row_dict)
-        except (ValidationError, json.JSONDecodeError) as e:
-            self.logger.error(f"Failed to parse analysis result from DB: {e}")
+        except ValidationError as e:
+            self.logger.error(f"Failed to parse analysis result from DB due to validation error: {e}")
             return None
 
     def save_analysis(self, result: AnalysisResult) -> int:
