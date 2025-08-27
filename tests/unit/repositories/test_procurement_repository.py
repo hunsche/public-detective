@@ -387,4 +387,66 @@ def test_get_updated_procurements_no_city_codes(mock_get, repo):
 
     repo.get_updated_procurements(target_date)
 
+    # 4 modalities are checked
     assert mock_get.call_count == 4
+    for call in mock_get.call_args_list:
+        assert "codigoMunicipioIbge" not in call.kwargs["params"]
+
+
+def test_process_procurement_documents_no_docs(repo):
+    """Tests that an empty list is returned when no documents are found."""
+    procurement = MagicMock(spec=Procurement)
+    with patch.object(repo, "_get_all_documents_metadata", return_value=[]):
+        result = repo.process_procurement_documents(procurement)
+        assert result == []
+
+
+def test_process_procurement_documents_download_fails(repo):
+    """Tests that processing continues even if a document download fails."""
+    procurement = MagicMock(spec=Procurement)
+    mock_doc = MagicMock()
+    mock_doc.url = "http://fail.com"
+    with patch.object(repo, "_get_all_documents_metadata", return_value=[mock_doc]):
+        with patch.object(repo, "_download_file_content", return_value=None):
+            result = repo.process_procurement_documents(procurement)
+            assert result == []
+
+
+def test_recursive_file_processing_corrupted_archive(repo):
+    """Tests that a corrupted archive is treated as a single file."""
+    file_collection = []
+    corrupted_content = b"not a zip"
+    with patch.object(repo, "_extract_from_zip", side_effect=zipfile.BadZipFile):
+        repo._recursive_file_processing(corrupted_content, "archive.zip", 0, file_collection)
+        assert file_collection == [("archive.zip", corrupted_content)]
+
+
+def test_create_zip_from_files_error(repo):
+    """Tests that None is returned if zip creation fails."""
+    with patch("zipfile.ZipFile.writestr", side_effect=Exception("zip error")):
+        result = repo.create_zip_from_files([("file.txt", b"content")], "control-123")
+        assert result is None
+
+
+@patch("requests.get")
+def test_get_all_docs_metadata_no_content(mock_get, repo):
+    """Tests handling of 204 No Content status."""
+    mock_get.return_value.status_code = 204
+    procurement = MagicMock(spec=Procurement)
+    procurement.government_entity = MagicMock()
+    procurement.government_entity.cnpj = "123"
+    procurement.procurement_year = "2025"
+    procurement.procurement_sequence = "1"
+    repo.config.PNCP_INTEGRATION_API_URL = "http://test.api/"
+    docs = repo._get_all_documents_metadata(procurement)
+    assert docs == []
+
+
+@patch("requests.head")
+def test_determine_original_filename_no_match(mock_head, repo):
+    """Tests handling of Content-Disposition header with no filename match."""
+    mock_response = MagicMock()
+    mock_response.headers = {"Content-Disposition": "attachment"}
+    mock_head.return_value = mock_response
+    filename = repo._determine_original_filename("http://test.url/download")
+    assert filename is None

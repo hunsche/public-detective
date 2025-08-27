@@ -2,11 +2,13 @@
 Unit tests for the AnalysisService.
 """
 
+from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
 from models.analysis import Analysis
 from models.procurement import Procurement
+from services.analysis import AnalysisService
 
 
 @pytest.fixture
@@ -60,8 +62,6 @@ def mock_procurement():
 
 def test_analysis_service_instantiation(mock_dependencies):
     """Tests that the AnalysisService can be instantiated correctly."""
-    from services.analysis import AnalysisService
-
     service = AnalysisService(**mock_dependencies)
     assert service is not None
     assert service.procurement_repo == mock_dependencies["procurement_repo"]
@@ -69,8 +69,6 @@ def test_analysis_service_instantiation(mock_dependencies):
 
 def test_idempotency_check(mock_dependencies, mock_procurement):
     """Tests that analysis is skipped if a result with the same hash exists."""
-    from services.analysis import AnalysisService
-
     # Arrange: Mock the return values
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
     mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = "existing"
@@ -85,8 +83,6 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
 
 def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):
     """Tests that save_file_record is called for each file."""
-    from services.analysis import AnalysisService
-
     # Arrange
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [
         ("file1.pdf", b"content1"),
@@ -109,35 +105,110 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
     assert mock_dependencies["file_record_repo"].save_file_record.call_count == 2
 
 
-def test_select_and_prepare_files_for_ai(mock_dependencies):
-    """Tests the file selection and preparation logic."""
-    from services.analysis import AnalysisService
-
+def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
+    """Tests all filtering scenarios in _select_and_prepare_files_for_ai."""
     # Arrange
     service = AnalysisService(**mock_dependencies)
-    service._MAX_FILES_FOR_AI = 2
-    service._MAX_SIZE_BYTES_FOR_AI = 100
+    service._MAX_FILES_FOR_AI = 3
+    service._MAX_SIZE_BYTES_FOR_AI = 50
 
     all_files = [
-        ("file1.pdf", b"content1"),
-        ("file2.txt", b"unsupported"),
-        ("file3.pdf", b"content3" * 10),
-        ("file4.pdf", b"content4"),
+        ("edital.pdf", b"edital content"),  # Priority 0
+        ("unsupported.txt", b"unsupported"),
+        ("oversized.pdf", b"a" * 60),
+        ("another.pdf", b"another content"),  # No priority
+        ("planilha.xls", b"planilha content"),  # Priority 3
+        ("limit_exceeded.pdf", b"small"),
     ]
 
     # Act
-    files_for_ai, excluded_files, warnings = service._select_and_prepare_files_for_ai(all_files)
+    files_for_ai, excluded, warnings = service._select_and_prepare_files_for_ai(all_files)
 
     # Assert
     assert len(files_for_ai) == 2
-    assert files_for_ai[0][0] == "file1.pdf"
-    # Note: The original test had a bug here, it was asserting file3.pdf was second.
-    # With the priority logic, file4.pdf should come before file3.pdf if they
-    # don't have priority keywords. Let's assume default sort order for now.
-    # After re-reading the logic, the sort is stable, so order is preserved.
-    # The original file selection logic is complex, this test simplification is fine.
-    assert files_for_ai[1][0] == "file3.pdf"
-    assert len(excluded_files) == 2
-    assert "file2.txt" in excluded_files  # Excluded due to extension
-    assert "file4.pdf" in excluded_files  # Excluded due to file limit
-    assert len(warnings) == 1
+    assert files_for_ai[0][0] == "edital.pdf"
+    assert files_for_ai[1][0] == "planilha.xls"
+
+    assert len(excluded) == 4
+    assert excluded["unsupported.txt"] == "Unsupported file extension."
+    assert excluded["limit_exceeded.pdf"] == "File limit exceeded."
+    # This is also excluded by file limit because it has lower priority than the others
+    assert excluded["another.pdf"] == "File limit exceeded."
+    assert excluded["oversized.pdf"] == "Total size limit exceeded."
+
+    assert len(warnings) == 2
+    assert "Limite de arquivos excedido" in warnings[0]
+    # The warning message for size limit is dynamic based on what's left
+    assert "excedido" in warnings[1]
+
+
+def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement):
+    """Tests that the analysis aborts if no documents are found."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = []
+
+    service.analyze_procurement(mock_procurement)
+
+    service.ai_provider.get_structured_analysis.assert_not_called()
+
+
+def test_analyze_procurement_no_supported_files(mock_dependencies, mock_procurement):
+    """Tests that analysis aborts if no files remain after filtering."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("unsupported.txt", b"c")]
+
+    service.analyze_procurement(mock_procurement)
+
+    service.ai_provider.get_structured_analysis.assert_not_called()
+
+
+def test_analyze_procurement_main_success_path(mock_dependencies, mock_procurement):
+    """Tests the main success path of the analysis pipeline."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.model_dump.return_value = {"risk_score": 1, "summary": "test"}
+    service.ai_provider.get_structured_analysis.return_value = mock_ai_analysis
+
+    service.analyze_procurement(mock_procurement)
+
+    service.analysis_repo.save_analysis.assert_called_once()
+    service.gcs_provider.upload_file.assert_called()
+    service.file_record_repo.save_file_record.assert_called_once()
+
+
+def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurement):
+    """Tests that exceptions in the pipeline are caught and logged."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    service.ai_provider.get_structured_analysis.side_effect = Exception("AI Error")
+
+    with pytest.raises(Exception, match="AI Error"):
+        service.analyze_procurement(mock_procurement)
+
+
+def test_run_analysis_no_procurements(mock_dependencies):
+    """Tests that the loop continues if no procurements are found for a date."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements.return_value = []
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    service.run_analysis(start_date, end_date)
+
+    service.procurement_repo.publish_procurement_to_pubsub.assert_not_called()
+
+
+def test_run_analysis_publish_failure(mock_dependencies, mock_procurement):
+    """Tests that the loop continues even if publishing to Pub/Sub fails."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements.return_value = [mock_procurement]
+    service.procurement_repo.publish_procurement_to_pubsub.return_value = False
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    service.run_analysis(start_date, end_date)
+
+    service.procurement_repo.publish_procurement_to_pubsub.assert_called_once_with(mock_procurement)
