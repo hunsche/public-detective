@@ -114,39 +114,35 @@ class Subscription:
             self.logger.debug("No TTY available; skipping pause.")
 
     def _process_message(self, message: Message):
-        """Decodes, validates, analyzes the message, and manages ACK/NACK.
-
-        Args:
-            message: The Pub/Sub message to process.
-        """
-        correlation_id = uuid.uuid4().hex
-        logger = LoggingProvider().get_logger(correlation_id)
+        """Decodes, validates, analyzes the message, and manages ACK/NACK."""
         message_id = message.message_id
-        logger.info(f"Received message ID: {message_id}. Attempting to process...")
-
         try:
             data_str = message.data.decode()
             procurement = Procurement.model_validate_json(data_str)
-            logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
+            correlation_id = f"{procurement.pncp_control_number}_{uuid.uuid4().hex[:8]}"
 
-            self.procurement_repo.save_procurement(procurement)
+            with LoggingProvider().set_correlation_id(correlation_id):
+                self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
+                self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
 
-            if self.config.IS_DEBUG_MODE:
-                self._debug_pause()
+                self.procurement_repo.save_procurement(procurement)
 
-            self.analysis_service.analyze_procurement(procurement, logger)
+                if self.config.IS_DEBUG_MODE:
+                    self._debug_pause()
 
-            logger.info(f"Message {message_id} processed successfully. Sending ACK.")
-            message.ack()
+                self.analysis_service.analyze_procurement(procurement)
+
+                self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
+                message.ack()
 
         except (json.JSONDecodeError, ValidationError):
-            logger.error(
+            self.logger.error(
                 f"Validation/decoding failed for message {message_id}. Sending NACK.",
                 exc_info=True,
             )
             message.nack()
         except Exception as e:
-            logger.error(
+            self.logger.error(
                 f"Unexpected error processing message {message_id}: {e}",
                 exc_info=True,
             )

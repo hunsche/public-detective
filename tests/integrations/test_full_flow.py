@@ -18,6 +18,7 @@ from google.cloud import pubsub_v1, storage
 from models.analysis import Analysis
 from providers.ai import AiProvider
 from providers.gcs import GcsProvider
+from providers.logging import LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analysis import AnalysisRepository
 from repositories.file_record import FileRecordRepository
@@ -131,13 +132,14 @@ def integration_test_setup(db_session):  # noqa: F841
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
         yield
     finally:
+        logger = LoggingProvider().get_logger()
         try:
             bucket = gcs_client.bucket(os.environ["GCP_GCS_BUCKET_PROCUREMENTS"])
             blobs_to_delete = list(bucket.list_blobs(prefix=gcs_prefix))
             for blob in blobs_to_delete:
                 blob.delete()
         except Exception as e:
-            print(f"Ignoring GCS teardown error: {e}")
+            logger.info(f"Ignoring GCS teardown error (expected with anonymous creds): {e}")
         try:
             subscriber.delete_subscription(request={"subscription": subscription_path})
             publisher.delete_topic(request={"topic": topic_path})
@@ -233,9 +235,22 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
             )
 
     with db_engine.connect() as connection:
-        query = text("SELECT COUNT(*) FROM procurement_analysis")
-        analysis_count = connection.execute(query).scalar_one()
+        # Check total count
+        total_query = text("SELECT COUNT(*) FROM procurement_analysis")
+        analysis_count = connection.execute(total_query).scalar_one()
+        assert (
+            analysis_count == num_procurements
+        ), f"Expected {num_procurements} analyses, but found {analysis_count} in the database."
 
-    assert (
-        analysis_count == num_procurements
-    ), f"Expected {num_procurements} analyses, but found {analysis_count} in the database."
+        # Check a specific analysis
+        target_procurement = procurement_list_fixture[0]
+        pcn = target_procurement["numeroControlePNCP"]
+        specific_query = text(
+            "SELECT risk_score, summary FROM procurement_analysis WHERE " "procurement_control_number = :pcn"
+        )
+        db_result = connection.execute(specific_query, {"pcn": pcn}).fetchone()
+
+        assert db_result is not None, f"No analysis found in the database for {pcn}"
+        risk_score, summary = db_result
+        assert risk_score == gemini_response_fixture.risk_score
+        assert summary == gemini_response_fixture.summary

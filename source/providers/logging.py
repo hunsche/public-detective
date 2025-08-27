@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import sys
+import threading
+from contextlib import contextmanager
 from logging import Filter, Formatter, Logger, LogRecord, StreamHandler, _nameToLevel, getLogger
 
 from providers.config import ConfigProvider
+
+_log_context = threading.local()
 
 
 class ContextualFilter(Filter):
     """A logging filter that makes a correlation ID available to the log formatter."""
 
-    def __init__(self, correlation_id: str, name: str = "") -> None:
-        super().__init__(name)
-        self.correlation_id = correlation_id
-
     def filter(self, record: LogRecord) -> bool:
-        """Adds the correlation ID to the log record."""
-        record.correlation_id = self.correlation_id
+        """Adds the correlation ID to the log record from thread-local context."""
+        record.correlation_id = getattr(_log_context, "correlation_id", "-")
         return True
 
 
@@ -63,16 +63,13 @@ class LoggingProvider:
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
-
-        # Add a default filter that does nothing but ensures correlation_id is always present
-        default_filter = ContextualFilter("-")
-        logger.addFilter(default_filter)
+            logger.addFilter(ContextualFilter())
 
         self._is_configured = True
         logger.info(f"Logger configured with level: {log_level_str}")
         return logger
 
-    def get_logger(self, correlation_id: str | None = None) -> Logger:
+    def get_logger(self) -> Logger:
         """
         Returns the configured logger instance.
 
@@ -83,18 +80,13 @@ class LoggingProvider:
         """
         if not self._logger:
             self._logger = self._configure_logger()
-
-        if correlation_id:
-            # Create a new logger instance for the specific context to avoid
-            # filter conflicts in concurrent scenarios.
-            context_logger = getLogger(f"public_detective.{correlation_id}")
-            context_logger.setLevel(self._logger.level)
-            context_logger.handlers = self._logger.handlers
-
-            # Remove any existing filters and add the new contextual one.
-            context_logger.filters = [f for f in self._logger.filters if not isinstance(f, ContextualFilter)]
-            context_filter = ContextualFilter(correlation_id)
-            context_logger.addFilter(context_filter)
-            return context_logger
-
         return self._logger
+
+    @contextmanager
+    def set_correlation_id(self, correlation_id: str):
+        """A context manager to set and automatically clear the correlation ID."""
+        try:
+            _log_context.correlation_id = correlation_id
+            yield
+        finally:
+            _log_context.correlation_id = None
