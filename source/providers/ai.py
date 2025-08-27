@@ -118,9 +118,10 @@ class AiProvider(Generic[PydanticModel]):
             raise ValueError("AI model returned an empty response.")
 
         try:
-            if response.candidates[0].content.parts[0].function_call.args:
+            function_call = response.candidates[0].content.parts[0].function_call
+            if function_call and function_call.args:
                 self.logger.info("Successfully found structured data in function_call.")
-                return self.output_schema.model_validate(response.candidates[0].content.parts[0].function_call.args)
+                return self.output_schema.model_validate(function_call.args)
 
             self.logger.warning("No direct function_call found, attempting to parse from text response.")
             text_content = response.text
