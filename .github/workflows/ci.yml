@@ -107,7 +107,7 @@ jobs:
             }
 
       - name: Run tests and generate coverage report
-        run: poetry run pytest --cov=source --cov-omit="*/__init__.py,source/migrations/*" --cov-report=xml --cov-report=html --junitxml=junit.xml
+        run: poetry run pytest --cov=source --cov-report=xml --cov-report= --junitxml=junit.xml
 
       - name: Coverage Comment
         if: github.event_name == 'pull_request'
@@ -127,7 +127,6 @@ jobs:
         uses: tj-actions/coverage-badge-py@v2
         with:
           output: .github/badges/coverage.svg
-          source: coverage.xml
 
       - name: Commit and push coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
