@@ -1,9 +1,22 @@
 from __future__ import annotations
 
 import sys
-from logging import Formatter, Logger, StreamHandler, _nameToLevel, getLogger
+import threading
+from contextlib import contextmanager
+from logging import Filter, Formatter, Logger, LogRecord, StreamHandler, _nameToLevel, getLogger
 
 from providers.config import ConfigProvider
+
+_log_context = threading.local()
+
+
+class ContextualFilter(Filter):
+    """A logging filter that makes a correlation ID available to the log formatter."""
+
+    def filter(self, record: LogRecord) -> bool:
+        """Adds the correlation ID to the log record from thread-local context."""
+        record.correlation_id = getattr(_log_context, "correlation_id", "-")
+        return True
 
 
 class LoggingProvider:
@@ -17,6 +30,7 @@ class LoggingProvider:
 
     _instance: LoggingProvider | None = None
     _logger: Logger | None = None
+    _is_configured: bool = False
 
     def __new__(cls):
         """
@@ -33,7 +47,7 @@ class LoggingProvider:
         """
         logger = getLogger("public_detective")
 
-        if getattr(logger, "_configured", False):
+        if self._is_configured:
             return logger
 
         config = ConfigProvider.get_config()
@@ -44,13 +58,14 @@ class LoggingProvider:
         if not logger.handlers:
             handler = StreamHandler(sys.stdout)
             formatter = Formatter(
-                "%(asctime)s - %(name)s - [%(levelname)s] - %(message)s",
+                "%(asctime)s - %(name)s - [%(levelname)s] [%(correlation_id)s] - " "%(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",
             )
             handler.setFormatter(formatter)
             logger.addHandler(handler)
+            logger.addFilter(ContextualFilter())
 
-        setattr(logger, "_configured", True)
+        self._is_configured = True
         logger.info(f"Logger configured with level: {log_level_str}")
         return logger
 
@@ -66,3 +81,12 @@ class LoggingProvider:
         if not self._logger:
             self._logger = self._configure_logger()
         return self._logger
+
+    @contextmanager
+    def set_correlation_id(self, correlation_id: str):
+        """A context manager to set and automatically clear the correlation ID."""
+        try:
+            _log_context.correlation_id = correlation_id
+            yield
+        finally:
+            _log_context.correlation_id = None
