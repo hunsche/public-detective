@@ -1,6 +1,0 @@
-comment: false
-
-flags:
-  unit:
-    paths:
-      - source/
