@@ -35,6 +35,8 @@ class Subscription:
     procurement_repo: ProcurementRepository
     processed_messages_count: int
     streaming_pull_future: StreamingPullFuture | None
+    pubsub_provider: PubSubProvider
+    _stop_event: threading.Event
 
     def __init__(self, analysis_service: AnalysisService | None = None):
         """Initializes the worker, loading configuration and services.
@@ -46,14 +48,10 @@ class Subscription:
         self.logger = LoggingProvider().get_logger()
         self.pubsub_provider = PubSubProvider()
 
-        # In production, the service is composed here. In tests, it's injected.
         if analysis_service:
             self.analysis_service = analysis_service
-            # In a test context, the service might not have a procurement_repo
-            # if it's a mock, so we get it from the service.
             self.procurement_repo = self.analysis_service.procurement_repo
         else:
-            # --- Dependency Injection Container ---
             db_engine = DatabaseManager.get_engine()
             gcs_provider = GcsProvider()
             ai_provider = AiProvider(Analysis)
@@ -161,8 +159,6 @@ class Subscription:
             message: The Pub/Sub message received from the subscription.
             max_messages: The maximum number of messages to process.
         """
-        # This lock ensures that the message count and stop condition are
-        # handled atomically, preventing race conditions in tests.
         with self._lock:
             if self._stop_event.is_set():
                 return
@@ -205,5 +201,5 @@ class Subscription:
             self.logger.info("Stopping worker...")
             if self.streaming_pull_future and not self.streaming_pull_future.cancelled():
                 self.streaming_pull_future.cancel()
-                self.streaming_pull_future.result()  # Wait for cancellation to complete
+                self.streaming_pull_future.result()
             self.logger.info("Worker has stopped gracefully.")

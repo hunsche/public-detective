@@ -8,11 +8,14 @@ class FileRecordRepository:
     Handles all database operations related to file records.
     """
 
+    logger: Logger
+    engine: Engine
+
     def __init__(self, engine: Engine) -> None:
         """
         Initializes the repository with a database engine.
         """
-        self.logger: Logger = LoggingProvider().get_logger()
+        self.logger = LoggingProvider().get_logger()
         self.engine = engine
 
     def save_file_record(self, record: NewFileRecord) -> None:

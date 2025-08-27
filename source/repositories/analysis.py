@@ -17,11 +17,14 @@ class AnalysisRepository:
     Handles all database operations related to procurement analysis.
     """
 
+    logger: Logger
+    engine: Engine
+
     def __init__(self, engine: Engine) -> None:
         """
         Initializes the repository with a database engine.
         """
-        self.logger: Logger = LoggingProvider().get_logger()
+        self.logger = LoggingProvider().get_logger()
         self.engine = engine
 
     def _parse_row_to_model(self, row: tuple, columns: list[str]) -> AnalysisResult | None:

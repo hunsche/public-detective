@@ -12,9 +12,9 @@ from models.analysis import Analysis, AnalysisResult
 from models.file_record import NewFileRecord
 from models.procurement import Procurement
 from providers.ai import AiProvider
-from providers.config import ConfigProvider
+from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
-from providers.logging import LoggingProvider
+from providers.logging import Logger, LoggingProvider
 from repositories.analysis import AnalysisRepository
 from repositories.file_record import FileRecordRepository
 from repositories.procurement import ProcurementRepository
@@ -29,6 +29,14 @@ class AnalysisService:
     invokes the AI model, and persists all results and metadata to the
     database and Google Cloud Storage.
     """
+
+    procurement_repo: ProcurementRepository
+    analysis_repo: AnalysisRepository
+    file_record_repo: FileRecordRepository
+    ai_provider: AiProvider
+    gcs_provider: GcsProvider
+    logger: Logger
+    config: Config
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
     _FILE_PRIORITY_ORDER = [
@@ -186,7 +194,7 @@ class AnalysisService:
                 bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
                 destination_blob_name=gcs_path,
                 content=file_content,
-                content_type="application/octet-stream",  # Use a generic content type
+                content_type="application/octet-stream",
             )
 
             is_included = file_path in included_filenames
@@ -198,7 +206,7 @@ class AnalysisService:
                 gcs_path=gcs_path,
                 extension=os.path.splitext(file_name)[1],
                 size_bytes=len(file_content),
-                nesting_level=0,  # Assuming no nesting for now
+                nesting_level=0,
                 included_in_analysis=is_included,
                 exclusion_reason=exclusion_reason,
                 prioritization_logic=self._get_priority_as_string(file_path),

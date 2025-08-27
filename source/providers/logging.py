@@ -33,7 +33,6 @@ class LoggingProvider:
         """
         logger = getLogger("public_detective")
 
-        # Avoid re-configuring if already configured by another part of the app
         if getattr(logger, "_configured", False):
             return logger
 
