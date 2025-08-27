@@ -26,9 +26,8 @@ from repositories.procurement import ProcurementRepository
 from services.analysis import AnalysisService
 from sqlalchemy import create_engine, text
 
-from source.cli.commands import analysis_command as cli_main
+from source.cli.commands import pre_analyze_command as cli_main
 from source.providers.config import ConfigProvider
-from source.worker.subscription import Subscription
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -77,6 +76,7 @@ def db_session():
     engine = create_engine(db_url)
     try:
         with engine.connect() as connection:
+            connection.execute(text("DROP TYPE IF EXISTS analysis_status CASCADE;"))
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
             time.sleep(1)
@@ -164,7 +164,6 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
     procurement_list_fixture = load_fixture(f"{fixture_base_path}/pncp_procurement_list.json")
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
-    gemini_response_fixture = Analysis.model_validate(load_fixture(f"{fixture_base_path}/gemini_response.json"))
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
 
     def mock_requests_get(url, **kwargs):
@@ -187,71 +186,32 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         return mock_response
 
     db_engine = db_session
-    pubsub_provider = PubSubProvider()
-    gcs_provider = GcsProvider()
-    ai_provider = AiProvider(Analysis)
-    analysis_repo = AnalysisRepository(engine=db_engine)
-    file_record_repo = FileRecordRepository(engine=db_engine)
-    procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
-    analysis_service = AnalysisService(
-        procurement_repo=procurement_repo,
-        analysis_repo=analysis_repo,
-        file_record_repo=file_record_repo,
-        ai_provider=ai_provider,
-        gcs_provider=gcs_provider,
-    )
-
-    with (
-        patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
-        patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture),
-        patch.object(
-            analysis_service, "_calculate_hash", side_effect=[uuid.uuid4().hex for _ in procurement_list_fixture]
-        ),
+    with patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get), patch(
+        "source.providers.ai.AiProvider.count_tokens_for_analysis", return_value=10000
     ):
         os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
         runner = CliRunner()
         result = runner.invoke(cli_main, ["--start-date", target_date_str, "--end-date", target_date_str])
         assert result.exit_code == 0, f"CLI command failed: {result.output}"
-        assert "Analysis completed successfully!" in result.output
-
-        log_capture_stream = io.StringIO()
-        subscription = Subscription(analysis_service=analysis_service)
-        subscription.config.IS_DEBUG_MODE = False
-        num_procurements = len(procurement_list_fixture)
-
-        def worker_target():
-            with redirect_stdout(log_capture_stream):
-                subscription.run(max_messages=num_procurements)
-
-        worker_thread = threading.Thread(target=worker_target, daemon=True)
-        worker_thread.start()
-        worker_thread.join(timeout=60)
-
-        if worker_thread.is_alive():
-            pytest.fail(
-                "Worker thread got stuck and did not finish.\n\n"
-                "--- CAPTURED WORKER LOGS ---\n"
-                f"{log_capture_stream.getvalue()}"
-                "--- END WORKER LOGS ---"
-            )
+        assert "Pre-analysis completed successfully!" in result.output
 
     with db_engine.connect() as connection:
-        # Check total count
+        num_procurements = len(procurement_list_fixture)
         total_query = text("SELECT COUNT(*) FROM procurement_analysis")
         analysis_count = connection.execute(total_query).scalar_one()
         assert (
             analysis_count == num_procurements
-        ), f"Expected {num_procurements} analyses, but found {analysis_count} in the database."
+        ), f"Expected {num_procurements} pre-analyses, but found {analysis_count} in the database."
 
-        # Check a specific analysis
         target_procurement = procurement_list_fixture[0]
         pcn = target_procurement["numeroControlePNCP"]
         specific_query = text(
-            "SELECT risk_score, summary FROM procurement_analysis WHERE " "procurement_control_number = :pcn"
+            "SELECT status, estimated_cost FROM procurement_analysis WHERE " "procurement_control_number = :pcn"
         )
         db_result = connection.execute(specific_query, {"pcn": pcn}).fetchone()
 
-        assert db_result is not None, f"No analysis found in the database for {pcn}"
-        risk_score, summary = db_result
-        assert risk_score == gemini_response_fixture.risk_score
-        assert summary == gemini_response_fixture.summary
+        assert db_result is not None, f"No pre-analysis found in the database for {pcn}"
+        status, estimated_cost = db_result
+        assert status == "PENDING_ANALYSIS"
+        assert estimated_cost is not None
+        assert estimated_cost > 0

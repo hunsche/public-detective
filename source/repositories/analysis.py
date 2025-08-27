@@ -113,3 +113,54 @@ class AnalysisRepository:
             row = tuple(result)
 
         return self._parse_row_to_model(row, columns)
+
+    def create_pending_analysis(self, procurement_control_number: str, estimated_cost: float) -> int:
+        """
+        Creates a new record in the procurement_analysis table with a
+        'PENDING_ANALYSIS' status.
+
+        This is used to record that a procurement has been identified and its
+        analysis cost has been estimated, but it has not yet been processed by
+        the AI.
+
+        Args:
+            procurement_control_number: The unique control number of the
+                procurement.
+            estimated_cost: The calculated cost for the AI analysis.
+
+        Returns:
+            The ID of the newly created analysis record.
+        """
+        self.logger.info(
+            f"Creating pending analysis for {procurement_control_number} with estimated "
+            f"cost {estimated_cost}."
+        )
+
+        sql = text(
+            """
+            INSERT INTO procurement_analysis (
+                procurement_control_number,
+                status,
+                estimated_cost
+            ) VALUES (
+                :procurement_control_number,
+                'PENDING_ANALYSIS',
+                :estimated_cost
+            )
+            ON CONFLICT (procurement_control_number) DO NOTHING
+            RETURNING id;
+        """
+        )
+
+        params = {
+            "procurement_control_number": procurement_control_number,
+            "estimated_cost": estimated_cost,
+        }
+
+        with self.engine.connect() as conn:
+            result_proxy = conn.execute(sql, params)
+            analysis_id = cast(int, result_proxy.scalar_one())
+            conn.commit()
+
+        self.logger.info(f"Pending analysis created successfully with ID: {analysis_id}.")
+        return analysis_id

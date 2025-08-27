@@ -93,6 +93,35 @@ class AiProvider(Generic[PydanticModel]):
                 self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
                 genai.delete_file(uploaded_file.name)
 
+    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> int:
+        """
+        Uploads files to the Gemini API, counts the total tokens for the given
+        prompt and files, and then deletes the uploaded files.
+
+        This method is for cost estimation and does not generate any content.
+
+        Args:
+            prompt: The instructional prompt for the AI model.
+            files: A list of tuples containing file paths and their byte content.
+
+        Returns:
+            The total number of tokens for the prompt and files.
+        """
+        uploaded_files = []
+        try:
+            for file_display_name, file_content in files:
+                self.logger.info(f"Uploading file '{file_display_name}' for token counting.")
+                uploaded_files.append(self._upload_file_to_gemini(file_content, file_display_name))
+
+            contents = [prompt, *uploaded_files]
+            response = self.model.count_tokens(contents)
+            self.logger.info(f"Successfully counted tokens: {response.total_tokens}")
+            return response.total_tokens
+        finally:
+            for uploaded_file in uploaded_files:
+                self.logger.info(f"Deleting uploaded file after token count: {uploaded_file.name}")
+                genai.delete_file(uploaded_file.name)
+
     def _parse_and_validate_response(self, response: genai.types.GenerateContentResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.
 
