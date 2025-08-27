@@ -1,39 +1,44 @@
-import unittest
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
+import pytest
 from models.file_record import NewFileRecord
 from repositories.file_record import FileRecordRepository
 
 
-class TestFileRecordRepository(unittest.TestCase):
-    @patch("providers.database.DatabaseManager.get_engine")
-    def test_save_file_record(self, mock_get_engine):
-        # Arrange
-        mock_engine = MagicMock()
-        mock_conn = MagicMock()
-        mock_get_engine.return_value = mock_engine
-        mock_engine.connect.return_value.__enter__.return_value = mock_conn
-
-        repo = FileRecordRepository()
-        record = NewFileRecord(
-            analysis_id=1,
-            file_name="test.pdf",
-            gcs_path="test/gcs/path",
-            extension=".pdf",
-            size_bytes=1234,
-            nesting_level=0,
-            included_in_analysis=True,
-            exclusion_reason=None,
-            prioritization_logic="high",
-        )
-
-        # Act
-        repo.save_file_record(record)
-
-        # Assert
-        mock_conn.execute.assert_called_once()
-        mock_conn.commit.assert_called_once()
+@pytest.fixture
+def mock_engine():
+    """Fixture for a mocked database engine."""
+    return MagicMock()
 
 
-if __name__ == "__main__":
-    unittest.main()
+@pytest.fixture
+def file_record_repository(mock_engine):
+    """
+    Fixture to create a FileRecordRepository with a mocked database engine.
+    """
+    return FileRecordRepository(engine=mock_engine)
+
+
+def test_save_file_record(file_record_repository):
+    # Arrange
+    mock_conn = MagicMock()
+    file_record_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    record = NewFileRecord(
+        analysis_id=1,
+        file_name="test.pdf",
+        gcs_path="test/gcs/path",
+        extension=".pdf",
+        size_bytes=1234,
+        nesting_level=0,
+        included_in_analysis=True,
+        exclusion_reason=None,
+        prioritization_logic="high",
+    )
+
+    # Act
+    file_record_repository.save_file_record(record)
+
+    # Assert
+    mock_conn.execute.assert_called_once()
+    mock_conn.commit.assert_called_once()

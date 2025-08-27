@@ -1,6 +1,6 @@
 import io
 import zipfile
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -9,12 +9,23 @@ from repositories.procurement import ProcurementRepository
 
 
 @pytest.fixture
-def repo():
+def mock_engine():
+    """Fixture for a mocked database engine."""
+    return MagicMock()
+
+
+@pytest.fixture
+def mock_pubsub_provider():
+    """Fixture for a mocked PubSubProvider."""
+    return MagicMock()
+
+
+@pytest.fixture
+def repo(mock_engine, mock_pubsub_provider):
     """Provides a ProcurementRepository instance with mocked dependencies."""
-    with patch("providers.database.DatabaseManager.get_engine"), patch(
-        "providers.config.ConfigProvider.get_config"
-    ):
-        return ProcurementRepository()
+    # We still need to patch ConfigProvider as it's a direct dependency
+    with patch("providers.config.ConfigProvider.get_config"):
+        return ProcurementRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
 
 
 def test_extract_from_zip(repo):

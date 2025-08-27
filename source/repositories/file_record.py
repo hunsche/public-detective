@@ -1,7 +1,6 @@
 from models.file_record import NewFileRecord
-from providers.database import DatabaseManager
 from providers.logging import Logger, LoggingProvider
-from sqlalchemy import text
+from sqlalchemy import Engine, text
 
 
 class FileRecordRepository:
@@ -9,12 +8,12 @@ class FileRecordRepository:
     Handles all database operations related to file records.
     """
 
-    def __init__(self) -> None:
+    def __init__(self, engine: Engine) -> None:
         """
-        Initializes the repository and gets a reference to the database engine.
+        Initializes the repository with a database engine.
         """
         self.logger: Logger = LoggingProvider().get_logger()
-        self.engine = DatabaseManager.get_engine()
+        self.engine = engine
 
     def save_file_record(self, record: NewFileRecord) -> None:
         """
