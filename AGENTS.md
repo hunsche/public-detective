@@ -30,6 +30,39 @@ Key architectural features:
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
 
+### Architectural Principles
+
+#### Layered Architecture
+
+This project follows a Layered Architecture pattern to ensure a clean separation of concerns. This makes the codebase more modular, testable, and easier to maintain. The architecture is composed of three primary layers: Services, Providers, and Repositories.
+
+-   **Services (`source/services/`) - The Brains**:
+    -   **Responsibility**: This layer contains the core business logic of the application. It acts as an orchestrator or a "maestro".
+    -   **Function**: A service is responsible for executing a specific business use case (e.g., "perform a procurement analysis"). It coordinates calls to various Repositories (to get or save domain data) and Providers (to interact with external tools) to accomplish its task.
+    -   **Scope**: Services are domain-specific and represent the "how" of a business process.
+
+-   **Repositories (`source/repositories/`) - The Database Interface**:
+    -   **Responsibility**: Manage the persistence and retrieval of the application's domain models in the **database**.
+    -   **Function**: They contain all the SQL queries and data mapping logic required to move data between the application and the database. They are called *by the Service layer*.
+    -   **Scope**: Repositories are domain-specific. For example, `AnalysisRepository` only handles database operations for the `Analysis` model. They should **never** contain logic for interacting with other external services like GCS. A repository may store a *reference* to an external resource (like a GCS file path), but it does not handle the upload/download of that resource.
+
+-   **Providers (`source/providers/`) - The External Tools**:
+    -   **Responsibility**: Handle all low-level interactions with external services and APIs (e.g., Google Cloud Storage, Google Gemini, Pub/Sub).
+    -   **Function**: They are responsible for client library setup, authentication, and exposing simple, generic methods (e.g., `gcs_provider.upload_file(...)`). They are called *by the Service layer*.
+    -   **Scope**: Providers are context-agnostic. They do not know about the application's domain models. They simply perform their specific service.
+
+#### Data and Control Flow
+
+The flow of control is always orchestrated by the **Service** layer.
+
+1.  A request to perform an action (e.g., from the CLI or a worker) calls a method in a **Service**.
+2.  The **Service** executes the business logic.
+3.  If it needs to interact with the database, it calls a method on a **Repository**.
+4.  If it needs to interact with an external API (like GCS), it calls a method on a **Provider**.
+5.  The Repository and Provider return data to the Service, which continues its execution until the use case is complete.
+
+This ensures a unidirectional flow of dependencies and maintains a clear separation of responsibilities.
+
 ## 2. Environment Setup
 
 The project is standardized on **Python 3.12**.
