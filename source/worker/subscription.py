@@ -1,5 +1,6 @@
 import json
 import threading
+import uuid
 from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
@@ -118,32 +119,34 @@ class Subscription:
         Args:
             message: The Pub/Sub message to process.
         """
+        correlation_id = uuid.uuid4().hex
+        logger = LoggingProvider().get_logger(correlation_id)
         message_id = message.message_id
-        self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
+        logger.info(f"Received message ID: {message_id}. Attempting to process...")
 
         try:
             data_str = message.data.decode()
             procurement = Procurement.model_validate_json(data_str)
-            self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
+            logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
 
             self.procurement_repo.save_procurement(procurement)
 
             if self.config.IS_DEBUG_MODE:
                 self._debug_pause()
 
-            self.analysis_service.analyze_procurement(procurement)
+            self.analysis_service.analyze_procurement(procurement, logger)
 
-            self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
+            logger.info(f"Message {message_id} processed successfully. Sending ACK.")
             message.ack()
 
         except (json.JSONDecodeError, ValidationError):
-            self.logger.error(
+            logger.error(
                 f"Validation/decoding failed for message {message_id}. Sending NACK.",
                 exc_info=True,
             )
             message.nack()
         except Exception as e:
-            self.logger.error(
+            logger.error(
                 f"Unexpected error processing message {message_id}: {e}",
                 exc_info=True,
             )

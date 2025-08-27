@@ -69,7 +69,7 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
 
-    def analyze_procurement(self, procurement: Procurement) -> None:
+    def analyze_procurement(self, procurement: Procurement, logger: Logger | None = None) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
@@ -85,24 +85,25 @@ class AnalysisService:
         Args:
             procurement: The procurement object to be analyzed.
         """
+        logger = logger or self.logger
         control_number = procurement.pncp_control_number
-        self.logger.info(f"Starting analysis for procurement {control_number}...")
+        logger.info(f"Starting analysis for procurement {control_number}...")
 
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
 
         if not all_original_files:
-            self.logger.warning(f"No files found for {control_number}. Aborting.")
+            logger.warning(f"No files found for {control_number}. Aborting.")
             return
 
         files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
         if not files_for_ai:
-            self.logger.error(f"No supported files left after filtering for {control_number}.")
+            logger.error(f"No supported files left after filtering for {control_number}.")
             return
 
         document_hash = self._calculate_hash(files_for_ai)
         if self.analysis_repo.get_analysis_by_hash(document_hash):
-            self.logger.info(f"Analysis for hash {document_hash} already exists. Skipping.")
+            logger.info(f"Analysis for hash {document_hash} already exists. Skipping.")
             return
 
         try:
@@ -137,10 +138,10 @@ class AnalysisService:
                 excluded_files=excluded_files,
             )
 
-            self.logger.info(f"Successfully completed analysis for {control_number}.")
+            logger.info(f"Successfully completed analysis for {control_number}.")
 
         except Exception as e:
-            self.logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
+            logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
             raise
 
     def _calculate_hash(self, files: list[tuple[str, bytes]]) -> str:
@@ -354,27 +355,28 @@ class AnalysisService:
         """
         Runs the Public Detective analysis job for the specified date range.
         """
-        self.logger.info(f"Starting analysis job for date range: {start_date} to {end_date}")
+        logger = self.logger
+        logger.info(f"Starting analysis job for date range: {start_date} to {end_date}")
         current_date = start_date
         while current_date <= end_date:
-            self.logger.info(f"Processing date: {current_date}")
+            logger.info(f"Processing date: {current_date}")
             updated_procurements = self.procurement_repo.get_updated_procurements(target_date=current_date)
 
             if not updated_procurements:
-                self.logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
+                logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
                 current_date += timedelta(days=1)
                 continue
 
-            self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
+            logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
             success_count, failure_count = 0, 0
             for procurement in updated_procurements:
-                published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
+                published = self.procurement_repo.publish_procurement_to_pubsub(procurement, logger)
                 if published:
                     success_count += 1
                 else:
                     failure_count += 1
-            self.logger.info(
+            logger.info(
                 f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
             )
             current_date += timedelta(days=1)
-        self.logger.info("Analysis job for the entire date range has been completed.")
+        logger.info("Analysis job for the entire date range has been completed.")

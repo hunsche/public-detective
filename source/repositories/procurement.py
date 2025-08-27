@@ -340,14 +340,15 @@ class ProcurementRepository:
         self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
         return all_procurements
 
-    def publish_procurement_to_pubsub(self, procurement: Procurement) -> bool:
+    def publish_procurement_to_pubsub(self, procurement: Procurement, logger: Logger | None = None) -> bool:
         """Publishes a procurement object to the configured Pub/Sub topic."""
+        logger = logger or self.logger
         try:
             message_json = procurement.model_dump_json(by_alias=True)
             message_bytes = message_json.encode()
             message_id = self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
-            self.logger.debug(f"Successfully published message {message_id} for " f"{procurement.pncp_control_number}.")
+            logger.debug(f"Successfully published message {message_id} for " f"{procurement.pncp_control_number}.")
             return True
         except exceptions.GoogleAPICallError as e:
-            self.logger.error(f"Failed to publish message for {procurement.pncp_control_number}: {e}")
+            logger.error(f"Failed to publish message for {procurement.pncp_control_number}: {e}")
             return False

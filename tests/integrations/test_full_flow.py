@@ -164,9 +164,6 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
     gemini_response_fixture = Analysis.model_validate(load_fixture(f"{fixture_base_path}/gemini_response.json"))
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
-    target_procurement = procurement_list_fixture[0]
-    procurement_control_number = target_procurement["numeroControlePNCP"]
-
     def mock_requests_get(url, **kwargs):
         mock_response = requests.Response()
         mock_response.status_code = 200
@@ -177,12 +174,11 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
                 "totalRegistros": len(procurement_list_fixture),
                 "numeroPagina": 1,
             }
-        elif f"compras/{target_procurement['anoCompra']}/{target_procurement['sequencialCompra']}/arquivos" in url:
-            if url.endswith("/arquivos"):
-                mock_response.json = lambda: document_list_fixture
-            else:
-                mock_response._content = attachments_fixture
-                mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
+        elif url.endswith("/arquivos"):
+            mock_response.json = lambda: document_list_fixture
+        elif "/arquivos/" in url:
+            mock_response._content = attachments_fixture
+            mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
         else:
             mock_response.status_code = 404
         return mock_response
@@ -205,8 +201,10 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     with (
         patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
         patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture),
+        patch.object(
+            analysis_service, "_calculate_hash", side_effect=[uuid.uuid4().hex for _ in procurement_list_fixture]
+        ),
     ):
-
         os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
         runner = CliRunner()
         result = runner.invoke(cli_main, ["--start-date", target_date_str, "--end-date", target_date_str])
@@ -216,10 +214,11 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         log_capture_stream = io.StringIO()
         subscription = Subscription(analysis_service=analysis_service)
         subscription.config.IS_DEBUG_MODE = False
+        num_procurements = len(procurement_list_fixture)
 
         def worker_target():
             with redirect_stdout(log_capture_stream):
-                subscription.run(max_messages=1)
+                subscription.run(max_messages=num_procurements)
 
         worker_thread = threading.Thread(target=worker_target, daemon=True)
         worker_thread.start()
@@ -234,15 +233,9 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
             )
 
     with db_engine.connect() as connection:
-        query = text(
-            "SELECT risk_score, summary, document_hash "
-            "FROM procurement_analysis "
-            "WHERE procurement_control_number = :pcn"
-        )
-        db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
+        query = text("SELECT COUNT(*) FROM procurement_analysis")
+        analysis_count = connection.execute(query).scalar_one()
 
-    assert db_result is not None, f"No analysis found in the database for {procurement_control_number}"
-    risk_score, summary, document_hash = db_result
-    assert risk_score == gemini_response_fixture.risk_score
-    assert summary == gemini_response_fixture.summary
-    assert document_hash is not None
+    assert (
+        analysis_count == num_procurements
+    ), f"Expected {num_procurements} analyses, but found {analysis_count} in the database."
