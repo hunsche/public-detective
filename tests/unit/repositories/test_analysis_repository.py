@@ -1,4 +1,5 @@
 import json
+from unittest.mock import MagicMock
 
 import pytest
 from models.analysis import AnalysisResult, RedFlag, RedFlagCategory
@@ -6,12 +7,17 @@ from repositories.analysis import AnalysisRepository
 
 
 @pytest.fixture
-def analysis_repository(mocker):
+def mock_engine():
+    """Fixture for a mocked database engine."""
+    return MagicMock()
+
+
+@pytest.fixture
+def analysis_repository(mock_engine):
     """
     Fixture to create an AnalysisRepository with a mocked database engine.
     """
-    mocker.patch("providers.database.DatabaseManager.get_engine")
-    return AnalysisRepository()
+    return AnalysisRepository(engine=mock_engine)
 
 
 def test_parse_row_to_model_with_json_string(analysis_repository):
@@ -113,14 +119,16 @@ def test_parse_row_to_model_with_invalid_data(analysis_repository, caplog):
     assert "Failed to parse analysis result from DB" in caplog.text
 
 
-def test_save_analysis_returns_id(analysis_repository, mocker):
+def test_save_analysis_returns_id(analysis_repository):
     """
     Should return the ID of the newly inserted record.
     """
     # Arrange
-    mock_result_proxy = mocker.MagicMock()
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
     mock_result_proxy.scalar_one.return_value = 123
-    analysis_repository.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_result_proxy
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     analysis_result = AnalysisResult(
         procurement_control_number="123",

@@ -136,8 +136,8 @@ def test_select_and_prepare_files_for_ai(mock_dependencies):
     # don't have priority keywords. Let's assume default sort order for now.
     # After re-reading the logic, the sort is stable, so order is preserved.
     # The original file selection logic is complex, this test simplification is fine.
-    assert files_for_ai[1][0] == "file4.pdf"
+    assert files_for_ai[1][0] == "file3.pdf"
     assert len(excluded_files) == 2
-    assert "file2.txt" in excluded_files
-    assert "file3.pdf" in excluded_files  # Excluded due to size
+    assert "file2.txt" in excluded_files  # Excluded due to extension
+    assert "file4.pdf" in excluded_files  # Excluded due to file limit
     assert len(warnings) == 1

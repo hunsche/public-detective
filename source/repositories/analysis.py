@@ -106,7 +106,7 @@ class AnalysisRepository:
             result = conn.execute(sql, {"document_hash": document_hash}).fetchone()
             if not result:
                 return None
-            columns = result._fields
+            columns = list(result._fields)
             row = tuple(result)
 
         return self._parse_row_to_model(row, columns)

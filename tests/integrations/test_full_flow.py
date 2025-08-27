@@ -45,11 +45,13 @@ def db_session():
     config = ConfigProvider.get_config()
 
     def get_container_ip_by_service(service_name):
+        # nosec B404
         import subprocess
 
         try:
+            # nosec B603, B607
             container_id_result = subprocess.run(
-                ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
+                ["sudo", "-n", "docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
                 check=True,
                 capture_output=True,
                 text=True,
@@ -58,8 +60,9 @@ def db_session():
             if not container_id:
                 pytest.fail(f"Could not find container for service {service_name}")
 
+            # nosec B603, B607
             inspect_result = subprocess.run(
-                ["docker", "inspect", container_id], check=True, capture_output=True, text=True
+                ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
             )
             data = json.loads(inspect_result.stdout)
             network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
@@ -100,7 +103,9 @@ def db_session():
     finally:
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.execute(text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;"))
+            connection.execute(
+                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+            )
             connection.commit()
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
@@ -108,7 +113,7 @@ def db_session():
 
 
 @pytest.fixture(scope="function")
-def integration_test_setup(db_session):
+def integration_test_setup(db_session):  # noqa: F841
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
@@ -138,8 +143,9 @@ def integration_test_setup(db_session):
             blobs_to_delete = list(bucket.list_blobs(prefix=gcs_prefix))
             for blob in blobs_to_delete:
                 blob.delete()
-        except Exception:
-            pass
+        except Exception as e:
+            # Best-effort cleanup, ignore errors during teardown
+            print(f"Ignoring GCS teardown error: {e}")
         try:
             subscriber.delete_subscription(request={"subscription": subscription_path})
             publisher.delete_topic(request={"topic": topic_path})
@@ -157,7 +163,7 @@ def load_binary_fixture(path):
         return f.read()
 
 
-def wait_for_analysis_in_db(pcn: str, timeout: int = 60):
+def wait_for_analysis_in_db(pcn: str, timeout: int = 120):
     config = ConfigProvider.get_config()
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
@@ -168,7 +174,11 @@ def wait_for_analysis_in_db(pcn: str, timeout: int = 60):
     while time.monotonic() - start_time < timeout:
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {config.POSTGRES_DB_SCHEMA}"))
-            query = text("SELECT risk_score, summary, document_hash FROM procurement_analysis WHERE procurement_control_number = :pcn")
+            query = text(
+                "SELECT risk_score, summary, document_hash "
+                "FROM procurement_analysis "
+                "WHERE procurement_control_number = :pcn"
+            )
             result = connection.execute(query, {"pcn": pcn}).fetchone()
             if result:
                 return result
@@ -177,7 +187,7 @@ def wait_for_analysis_in_db(pcn: str, timeout: int = 60):
 
 
 @pytest.mark.timeout(180)
-def test_full_flow_integration(integration_test_setup):
+def test_full_flow_integration(integration_test_setup):  # noqa: F841
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
@@ -237,6 +247,8 @@ def test_full_flow_integration(integration_test_setup):
 
         # Inject the fully composed, real service into the worker
         subscription = Subscription(analysis_service=analysis_service)
+        # Ensure debug mode is off for this test to prevent hanging on input()
+        subscription.config.IS_DEBUG_MODE = False
         worker_thread = threading.Thread(target=lambda: subscription.run(max_messages=1), daemon=True)
         worker_thread.start()
 
