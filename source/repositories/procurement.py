@@ -1,4 +1,5 @@
 import io
+import json
 import os
 import re
 import tarfile
@@ -46,7 +47,7 @@ class ProcurementRepository:
         self.pubsub_provider = pubsub_provider
         self.engine = engine
 
-    def save_procurement(self, procurement: Procurement) -> None:
+    def save_procurement(self, procurement: Procurement, raw_data: dict) -> None:
         """Saves a procurement object to the database."""
         self.logger.info(f"Saving procurement {procurement.pncp_control_number} to the database.")
         sql = text(
@@ -55,12 +56,14 @@ class ProcurementRepository:
                 pncp_control_number, proposal_opening_date, proposal_closing_date,
                 object_description, total_awarded_value, is_srp, procurement_year,
                 procurement_sequence, pncp_publication_date, last_update_date,
-                modality_id, procurement_status_id, total_estimated_value
+                modality_id, procurement_status_id, total_estimated_value,
+                raw_data
             ) VALUES (
                 :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
                 :object_description, :total_awarded_value, :is_srp, :procurement_year,
                 :procurement_sequence, :pncp_publication_date, :last_update_date,
-                :modality_id, :procurement_status_id, :total_estimated_value
+                :modality_id, :procurement_status_id, :total_estimated_value,
+                :raw_data
             )
             ON CONFLICT (pncp_control_number) DO NOTHING;
         """
@@ -79,6 +82,7 @@ class ProcurementRepository:
             "modality_id": procurement.modality,
             "procurement_status_id": procurement.procurement_status,
             "total_estimated_value": procurement.total_estimated_value,
+            "raw_data": json.dumps(raw_data),
         }
         with self.engine.connect() as conn:
             conn.execute(sql, params)
@@ -284,11 +288,11 @@ class ProcurementRepository:
             self.logger.warning(f"Could not determine filename from headers for {url}: {e}")
         return None
 
-    def get_updated_procurements(self, target_date: date) -> list[Procurement]:
+    def get_updated_procurements(self, target_date: date) -> list[tuple[Procurement, dict]]:
         """Fetches all procurements updated on a specific date by iterating through
         relevant modalities and configured city codes.
         """
-        all_procurements: list[Procurement] = []
+        all_procurements: list[tuple[Procurement, dict]] = []
         modalities_to_check = [
             ProcurementModality.ELECTRONIC_REVERSE_AUCTION,
             ProcurementModality.BIDDING_WAIVER,
@@ -324,10 +328,12 @@ class ProcurementRepository:
                         if response.status_code == HTTPStatus.NO_CONTENT:
                             break
                         response.raise_for_status()
-                        parsed_data = ProcurementListResponse.model_validate(response.json())
+                        raw_data = response.json()
+                        parsed_data = ProcurementListResponse.model_validate(raw_data)
                         if not parsed_data.data:
                             break
-                        all_procurements.extend(parsed_data.data)
+                        for i, procurement in enumerate(parsed_data.data):
+                            all_procurements.append((procurement, raw_data["data"][i]))
                         if page >= parsed_data.total_pages:
                             break
                         page += 1

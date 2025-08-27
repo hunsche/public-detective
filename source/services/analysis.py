@@ -6,6 +6,7 @@ analysis pipeline.
 import hashlib
 import json
 import os
+import time
 from datetime import date, datetime, timedelta, timezone
 
 from models.analysis import Analysis, AnalysisResult
@@ -367,7 +368,7 @@ class AnalysisService:
 
             self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
             success_count, failure_count = 0, 0
-            for procurement in updated_procurements:
+            for procurement, _ in updated_procurements:
                 published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
                 if published:
                     success_count += 1
@@ -378,3 +379,63 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def pre_analyze_procurements(self, start_date: date, end_date: date):
+        """
+        Runs the pre-analysis job for the specified date range.
+        """
+        self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
+        current_date = start_date
+        while current_date <= end_date:
+            self.logger.info(f"Processing date: {current_date}")
+            updated_procurements = self.procurement_repo.get_updated_procurements(target_date=current_date)
+
+            if not updated_procurements:
+                self.logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
+                current_date += timedelta(days=1)
+                continue
+
+            self.logger.info(f"Found {len(updated_procurements)} updated procurements.")
+
+            # Process in batches to handle rate limits
+            batch_size = 50
+            for i in range(0, len(updated_procurements), batch_size):
+                batch = updated_procurements[i : i + batch_size]
+                self.logger.info(f"Processing batch {i // batch_size + 1} with {len(batch)} procurements.")
+                for procurement, raw_data in batch:
+                    try:
+                        self.procurement_repo.save_procurement(procurement, raw_data)
+
+                        all_original_files = self.procurement_repo.process_procurement_documents(procurement)
+                        if not all_original_files:
+                            self.logger.warning(f"No files found for {procurement.pncp_control_number}. Skipping.")
+                            continue
+
+                        files_for_ai, _, _ = self._select_and_prepare_files_for_ai(all_original_files)
+                        if not files_for_ai:
+                            self.logger.warning(f"No supported files for {procurement.pncp_control_number}. Skipping.")
+                            continue
+
+                        prompt = self._build_analysis_prompt(procurement, [])
+                        token_count = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+
+                        # TODO: Confirm Gemini API pricing
+                        # Using $7 per 1M tokens for Gemini 1.5 Pro as of Aug 2024
+                        estimated_cost = token_count * (7 / 1_000_000)
+
+                        self.analysis_repo.create_pending_analysis(
+                            procurement_control_number=procurement.pncp_control_number,
+                            estimated_cost=estimated_cost,
+                        )
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
+                            exc_info=True,
+                        )
+
+                if i + batch_size < len(updated_procurements):
+                    self.logger.info("Waiting for 1 second before next batch...")
+                    time.sleep(1)
+
+            current_date += timedelta(days=1)
+        self.logger.info("Pre-analysis job for the entire date range has been completed.")

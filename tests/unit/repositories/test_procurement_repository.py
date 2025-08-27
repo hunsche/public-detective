@@ -311,7 +311,7 @@ def test_save_procurement(repo, mock_engine):
     procurement.procurement_status = 1
     procurement.total_estimated_value = 1200.00
 
-    repo.save_procurement(procurement)
+    repo.save_procurement(procurement, {"raw": "data"})
 
     mock_engine.connect.assert_called_once()
     conn_mock = mock_engine.connect().__enter__()
@@ -369,8 +369,8 @@ def test_get_updated_procurements_pagination_and_error_handling(mock_get, repo):
     procurements = repo.get_updated_procurements(target_date)
 
     assert len(procurements) == 2
-    assert procurements[0].pncp_control_number == "1"
-    assert procurements[1].pncp_control_number == "2"
+    assert procurements[0][0].pncp_control_number == "1"
+    assert procurements[1][0].pncp_control_number == "2"
     assert mock_get.call_count == 5
 
 
