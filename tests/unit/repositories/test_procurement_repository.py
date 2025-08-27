@@ -1,6 +1,6 @@
 import io
 import zipfile
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch, MagicMock
 
 import pytest
 from repositories.procurement import ProcurementRepository
