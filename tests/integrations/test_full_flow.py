@@ -1,11 +1,13 @@
+import io
 import json
 import os
 import threading
 import time
 import uuid
 import zipfile
+from contextlib import redirect_stdout
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 import requests
@@ -15,7 +17,6 @@ from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage
 from models.analysis import Analysis
 from providers.ai import AiProvider
-from providers.database import DatabaseManager
 from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
 from repositories.analysis import AnalysisRepository
@@ -31,10 +32,6 @@ from source.worker.subscription import Subscription
 
 @pytest.fixture(scope="session", autouse=True)
 def db_session():
-    """
-    Connects to the database and creates a unique schema for the test session.
-    Ensures that the database is clean before and after the tests.
-    """
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():
@@ -45,8 +42,7 @@ def db_session():
     config = ConfigProvider.get_config()
 
     def get_container_ip_by_service(service_name):
-        # nosec B404
-        import subprocess
+        import subprocess  # nosec B404
 
         try:
             # nosec B603, B607
@@ -59,7 +55,6 @@ def db_session():
             container_id = container_id_result.stdout.strip()
             if not container_id:
                 pytest.fail(f"Could not find container for service {service_name}")
-
             # nosec B603, B607
             inspect_result = subprocess.run(
                 ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
@@ -74,16 +69,13 @@ def db_session():
     gcs_ip = get_container_ip_by_service("gcs")
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
-
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
-
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
         f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url)
-
     try:
         with engine.connect() as connection:
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
@@ -91,15 +83,12 @@ def db_session():
             time.sleep(1)
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
-
         from alembic import command
         from alembic.config import Config
 
         alembic_cfg = Config("alembic.ini")
         command.upgrade(alembic_cfg, "head")
-
-        yield
-
+        yield engine
     finally:
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
@@ -118,7 +107,6 @@ def integration_test_setup(db_session):  # noqa: F841
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
     os.environ["GCP_GEMINI_API_KEY"] = "dummy-key-for-testing"
-
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
     subscription_name = f"procurements-subscription-{run_id}"
@@ -126,13 +114,11 @@ def integration_test_setup(db_session):  # noqa: F841
     os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
     gcs_prefix = f"test-run-{run_id}"
     os.environ["GCP_GCS_TEST_PREFIX"] = gcs_prefix
-
     publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
     subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
     gcs_client = storage.Client(credentials=AnonymousCredentials(), project=project_id)
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
-
     try:
         publisher.create_topic(request={"name": topic_path})
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
@@ -144,7 +130,6 @@ def integration_test_setup(db_session):  # noqa: F841
             for blob in blobs_to_delete:
                 blob.delete()
         except Exception as e:
-            # Best-effort cleanup, ignore errors during teardown
             print(f"Ignoring GCS teardown error: {e}")
         try:
             subscriber.delete_subscription(request={"subscription": subscription_path})
@@ -163,31 +148,8 @@ def load_binary_fixture(path):
         return f.read()
 
 
-def wait_for_analysis_in_db(pcn: str, timeout: int = 120):
-    config = ConfigProvider.get_config()
-    db_url = (
-        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
-    )
-    engine = create_engine(db_url)
-    start_time = time.monotonic()
-    while time.monotonic() - start_time < timeout:
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {config.POSTGRES_DB_SCHEMA}"))
-            query = text(
-                "SELECT risk_score, summary, document_hash "
-                "FROM procurement_analysis "
-                "WHERE procurement_control_number = :pcn"
-            )
-            result = connection.execute(query, {"pcn": pcn}).fetchone()
-            if result:
-                return result
-        time.sleep(2)
-    raise TimeoutError(f"Timed out waiting for analysis of PCN {pcn} in the database.")
-
-
 @pytest.mark.timeout(180)
-def test_full_flow_integration(integration_test_setup):  # noqa: F841
+def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F841
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
@@ -218,18 +180,13 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
             mock_response.status_code = 404
         return mock_response
 
-    # This test is now a Composition Root for the worker part of the flow.
-    db_engine = DatabaseManager.get_engine()
+    db_engine = db_session
     pubsub_provider = PubSubProvider()
     gcs_provider = GcsProvider()
-    # The AI provider is mocked
-    ai_provider = MagicMock(spec=AiProvider)
-    ai_provider.get_structured_analysis.return_value = gemini_response_fixture
-
+    ai_provider = AiProvider(Analysis)
     analysis_repo = AnalysisRepository(engine=db_engine)
     file_record_repo = FileRecordRepository(engine=db_engine)
     procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
-
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
@@ -238,21 +195,44 @@ def test_full_flow_integration(integration_test_setup):  # noqa: F841
         gcs_provider=gcs_provider,
     )
 
-    with patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get):
+    with (
+        patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
+        patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture),
+    ):
+
         os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
         runner = CliRunner()
         result = runner.invoke(cli_main, ["--start-date", target_date_str, "--end-date", target_date_str])
         assert result.exit_code == 0, f"CLI command failed: {result.output}"
         assert "Analysis completed successfully!" in result.output
 
-        # Inject the fully composed, real service into the worker
+        log_capture_stream = io.StringIO()
         subscription = Subscription(analysis_service=analysis_service)
-        # Ensure debug mode is off for this test to prevent hanging on input()
         subscription.config.IS_DEBUG_MODE = False
-        worker_thread = threading.Thread(target=lambda: subscription.run(max_messages=1), daemon=True)
-        worker_thread.start()
 
-        db_result = wait_for_analysis_in_db(procurement_control_number)
+        def worker_target():
+            with redirect_stdout(log_capture_stream):
+                subscription.run(max_messages=1)
+
+        worker_thread = threading.Thread(target=worker_target, daemon=True)
+        worker_thread.start()
+        worker_thread.join(timeout=60)
+
+        if worker_thread.is_alive():
+            pytest.fail(
+                "Worker thread got stuck and did not finish.\n\n"
+                "--- CAPTURED WORKER LOGS ---\n"
+                f"{log_capture_stream.getvalue()}"
+                "--- END WORKER LOGS ---"
+            )
+
+    with db_engine.connect() as connection:
+        query = text(
+            "SELECT risk_score, summary, document_hash "
+            "FROM procurement_analysis "
+            "WHERE procurement_control_number = :pcn"
+        )
+        db_result = connection.execute(query, {"pcn": procurement_control_number}).fetchone()
 
     assert db_result is not None, f"No analysis found in the database for {procurement_control_number}"
     risk_score, summary, document_hash = db_result
