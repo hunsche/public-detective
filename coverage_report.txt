@@ -1,0 +1,47 @@
+============================= test session starts ==============================
+platform linux -- Python 3.12.11, pytest-8.4.1, pluggy-1.6.0
+rootdir: /app
+configfile: pytest.ini
+testpaths: tests/unit, tests/integrations
+plugins: cov-5.0.0, mock-3.14.1, asyncio-0.24.0, xdist-3.8.0, dotenv-0.5.2, Faker-25.9.2, timeout-2.4.0, rerunfailures-14.0
+asyncio: mode=Mode.AUTO, default_loop_scope=None
+collected 69 items
+
+tests/unit/providers/test_ai.py ............                             [ 17%]
+tests/unit/providers/test_database.py ....                               [ 23%]
+tests/unit/providers/test_gcs.py ..                                      [ 26%]
+tests/unit/providers/test_pubsub.py ..                                   [ 28%]
+tests/unit/repositories/test_analysis_repository.py .....                [ 36%]
+tests/unit/repositories/test_file_record_repository.py .                 [ 37%]
+tests/unit/repositories/test_procurement_repository.py ................. [ 62%]
+....                                                                     [ 68%]
+tests/unit/services/test_analysis_service.py .....                       [ 75%]
+tests/unit/worker/test_subscription.py ..............                    [ 95%]
+tests/integrations/test_full_flow.py s                                   [ 97%]
+tests/integrations/test_refactored_flows.py ss                           [100%]
+
+---------- coverage: platform linux, python 3.12.11-final-0 ----------
+Name                                 Stmts   Miss Branch BrPart  Cover
+----------------------------------------------------------------------
+source/cli/commands.py                  52     32      4      0    36%
+source/models/analysis.py               23      0      0      0   100%
+source/models/file_record.py            25      0      0      0   100%
+source/models/procurement.py           125      0      0      0   100%
+source/providers/ai.py                  95      0     18      0   100%
+source/providers/config.py              38      0      4      2    95%
+source/providers/database.py            35      0     10      1    98%
+source/providers/date.py                 2      0      0      0   100%
+source/providers/gcs.py                 42     14      6      2    67%
+source/providers/logging.py             46      1      8      2    94%
+source/providers/pubsub.py              74     34     10      2    52%
+source/repositories/analysis.py         57      9      6      1    81%
+source/repositories/file_record.py      17      0      0      0   100%
+source/repositories/procurement.py     227     35     70     12    80%
+source/services/analysis.py            192     46     62     12    74%
+source/worker/subscription.py          121      7     18      5    91%
+----------------------------------------------------------------------
+TOTAL                                 1171    178    216     39    82%
+
+Required test coverage of 80.0% reached. Total coverage: 82.19%
+
+======================== 66 passed, 3 skipped in 6.80s =========================
