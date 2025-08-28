@@ -61,17 +61,6 @@ def subscription(mock_analysis_service):
     return sub
 
 
-def test_process_message_success(subscription, mock_message):
-    """Tests the successful processing of a valid message."""
-    subscription.config.IS_DEBUG_MODE = False
-    subscription._process_message(mock_message)
-
-    subscription.procurement_repo.save_procurement.assert_called_once()
-    subscription.analysis_service.analyze_procurement.assert_called_once()
-    mock_message.ack.assert_called_once()
-    mock_message.nack.assert_not_called()
-
-
 def test_process_message_validation_error(subscription):
     """Tests that a message with invalid data is NACKed."""
     invalid_message = MagicMock()

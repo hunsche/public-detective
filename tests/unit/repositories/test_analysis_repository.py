@@ -145,3 +145,24 @@ def test_save_analysis_returns_id(analysis_repository):
 
     # Assert
     assert returned_id == 123
+
+
+def test_create_pending_analysis_returns_id(analysis_repository):
+    """
+    Should return the ID of the newly inserted pending analysis record.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.scalar_one.return_value = 456
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    returned_id = analysis_repository.create_pending_analysis("PNCP-456", 0.05)
+
+    # Assert
+    assert returned_id == 456
+    mock_conn.execute.assert_called_once()
+    conn_mock = analysis_repository.engine.connect().__enter__()
+    conn_mock.commit.assert_called_once()

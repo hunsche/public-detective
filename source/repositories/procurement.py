@@ -357,3 +357,15 @@ class ProcurementRepository:
         except exceptions.GoogleAPICallError as e:
             self.logger.error(f"Failed to publish message for {procurement.pncp_control_number}: {e}")
             return False
+
+    def get_procurement_by_control_number(self, control_number: str) -> Procurement | None:
+        """Retrieves a procurement from the database by its control number."""
+        sql = text("SELECT raw_data FROM procurement WHERE pncp_control_number = :control_number LIMIT 1;")
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"control_number": control_number}).fetchone()
+            if not result:
+                return None
+            raw_data = result[0]
+            if isinstance(raw_data, str):
+                raw_data = json.loads(raw_data)
+            return Procurement.model_validate(raw_data)

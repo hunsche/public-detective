@@ -1,4 +1,5 @@
 import io
+import json
 import tarfile
 import zipfile
 from datetime import date
@@ -388,3 +389,31 @@ def test_get_updated_procurements_no_city_codes(mock_get, repo):
     repo.get_updated_procurements(target_date)
 
     assert mock_get.call_count == 4
+
+
+def test_get_procurement_by_control_number(repo, mock_engine):
+    """Tests retrieving a procurement by its control number."""
+    mock_conn = MagicMock()
+    mock_result = MagicMock()
+    mock_data = _get_mock_procurement_data("PNCP-123")
+    mock_result.fetchone.return_value = (json.dumps(mock_data),)
+    mock_conn.execute.return_value = mock_result
+    mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+    procurement = repo.get_procurement_by_control_number("PNCP-123")
+
+    assert procurement is not None
+    assert procurement.pncp_control_number == "PNCP-123"
+
+
+def test_get_procurement_by_control_number_not_found(repo, mock_engine):
+    """Tests retrieving a non-existent procurement."""
+    mock_conn = MagicMock()
+    mock_result = MagicMock()
+    mock_result.fetchone.return_value = None
+    mock_conn.execute.return_value = mock_result
+    mock_engine.connect.return_value.__enter__.return_value = mock_conn
+
+    procurement = repo.get_procurement_by_control_number("PNCP-456")
+
+    assert procurement is None

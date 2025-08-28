@@ -125,12 +125,20 @@ class Subscription:
                 self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
                 self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
 
-                self.procurement_repo.save_procurement(procurement)
+                full_procurement = self.procurement_repo.get_procurement_by_control_number(
+                    procurement.pncp_control_number
+                )
+                if not full_procurement:
+                    self.logger.error(
+                        f"Procurement {procurement.pncp_control_number} not found in the database. Sending NACK."
+                    )
+                    message.nack()
+                    return
 
                 if self.config.IS_DEBUG_MODE:
                     self._debug_pause()
 
-                self.analysis_service.analyze_procurement(procurement)
+                self.analysis_service.analyze_procurement(full_procurement)
 
                 self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
                 message.ack()

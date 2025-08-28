@@ -432,6 +432,7 @@ class AnalysisService:
                             f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
                             exc_info=True,
                         )
+                        raise
 
                 if i + batch_size < len(updated_procurements):
                     self.logger.info("Waiting for 1 second before next batch...")

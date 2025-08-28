@@ -214,3 +214,30 @@ def test_upload_file_to_gemini_processing_failed(mock_get_file, mock_upload_file
     provider = AiProvider(MockOutputSchema)
     with pytest.raises(Exception, match="failed processing"):
         provider._upload_file_to_gemini(b"content", "test.pdf")
+
+
+@patch("google.generativeai.delete_file")
+@patch("google.generativeai.upload_file")
+@patch("google.generativeai.get_file")
+def test_count_tokens_for_analysis(mock_get_file, mock_upload_file, mock_delete_file, mock_gemini_client, monkeypatch):
+    """Tests that token counting uploads files, counts tokens, and cleans up."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    mock_model_instance = MagicMock()
+    mock_model_instance.count_tokens.return_value = MagicMock(total_tokens=1234)
+    mock_gemini_client.return_value = mock_model_instance
+
+    mock_uploaded_file = MagicMock()
+    mock_uploaded_file.name = "uploaded-file-name"
+    mock_uploaded_file.state.name = "ACTIVE"
+    mock_upload_file.return_value = mock_uploaded_file
+    mock_get_file.return_value = mock_uploaded_file
+
+    provider = AiProvider(MockOutputSchema)
+    files_to_upload = [("file1.pdf", b"content1")]
+
+    token_count = provider.count_tokens_for_analysis(prompt="test", files=files_to_upload)
+
+    assert token_count == 1234
+    mock_upload_file.assert_called_once()
+    mock_model_instance.count_tokens.assert_called_once()
+    mock_delete_file.assert_called_once_with("uploaded-file-name")

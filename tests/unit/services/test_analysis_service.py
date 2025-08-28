@@ -141,3 +141,23 @@ def test_select_and_prepare_files_for_ai(mock_dependencies):
     assert "file2.txt" in excluded_files  # Excluded due to extension
     assert "file4.pdf" in excluded_files  # Excluded due to file limit
     assert len(warnings) == 1
+
+
+def test_pre_analyze_procurements(mock_dependencies, mock_procurement):
+    """Tests the pre-analysis flow."""
+    from services.analysis import AnalysisService
+
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements.return_value = [(mock_procurement, {})]
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+    service.ai_provider.count_tokens_for_analysis.return_value = 1000
+
+    # Act
+    from datetime import date
+
+    service.pre_analyze_procurements(date(2024, 1, 1), date(2024, 1, 1))
+
+    # Assert
+    service.procurement_repo.save_procurement.assert_called_once_with(mock_procurement, {})
+    service.analysis_repo.create_pending_analysis.assert_called_once()

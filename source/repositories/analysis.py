@@ -57,22 +57,25 @@ class AnalysisRepository:
 
     def save_analysis(self, result: AnalysisResult) -> int:
         """
-        Saves a complete analysis result to the database and returns the new
-        record's ID.
+        Saves a complete analysis result to the database by updating an
+        existing record.
         """
         self.logger.info(f"Saving analysis for {result.procurement_control_number}.")
 
         sql = text(
             """
-            INSERT INTO procurement_analysis (
-                procurement_control_number, document_hash, risk_score,
-                risk_score_rationale, summary, red_flags, warnings,
-                original_documents_gcs_path, processed_documents_gcs_path
-            ) VALUES (
-                :procurement_control_number, :document_hash, :risk_score,
-                :risk_score_rationale, :summary, :red_flags, :warnings,
-                :original_documents_gcs_path, :processed_documents_gcs_path
-            )
+            UPDATE procurement_analysis
+            SET
+                status = 'ANALYSIS_SUCCESSFUL',
+                document_hash = :document_hash,
+                risk_score = :risk_score,
+                risk_score_rationale = :risk_score_rationale,
+                summary = :summary,
+                red_flags = :red_flags,
+                warnings = :warnings,
+                original_documents_gcs_path = :original_documents_gcs_path,
+                processed_documents_gcs_path = :processed_documents_gcs_path
+            WHERE procurement_control_number = :procurement_control_number
             RETURNING id;
         """
         )
@@ -132,8 +135,7 @@ class AnalysisRepository:
             The ID of the newly created analysis record.
         """
         self.logger.info(
-            f"Creating pending analysis for {procurement_control_number} with estimated "
-            f"cost {estimated_cost}."
+            f"Creating pending analysis for {procurement_control_number} with estimated " f"cost {estimated_cost}."
         )
 
         sql = text(
@@ -147,7 +149,10 @@ class AnalysisRepository:
                 'PENDING_ANALYSIS',
                 :estimated_cost
             )
-            ON CONFLICT (procurement_control_number) DO NOTHING
+            ON CONFLICT (procurement_control_number)
+            DO UPDATE SET
+                status = 'PENDING_ANALYSIS',
+                estimated_cost = :estimated_cost
             RETURNING id;
         """
         )
