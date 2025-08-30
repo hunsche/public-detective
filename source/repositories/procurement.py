@@ -239,11 +239,15 @@ class ProcurementRepository:
     def _extract_from_rar(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a RAR archive."""
         extracted = []
-        with io.BytesIO(content) as stream:
-            with rarfile.RarFile(stream) as archive:
-                for member_info in archive.infolist():
-                    if not member_info.isdir():
-                        extracted.append((member_info.filename, archive.read(member_info.filename)))
+        try:
+            with io.BytesIO(content) as stream:
+                with rarfile.RarFile(stream) as archive:
+                    for member_info in archive.infolist():
+                        if not member_info.isdir():
+                            extracted.append((member_info.filename, archive.read(member_info.filename)))
+        except rarfile.BadRarFile:
+            self.logger.warning("Failed to extract from a corrupted or invalid RAR file.")
+            return []
         return extracted
 
     def _extract_from_7z(self, content: bytes) -> list[tuple[str, bytes]]:

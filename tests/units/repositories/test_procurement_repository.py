@@ -543,6 +543,29 @@ def test_extract_from_rar_error(repo):
         assert result == []
 
 
+def test_extract_from_rar_success(repo):
+    """Tests extracting files from a RAR archive."""
+    mock_rar_info1 = MagicMock()
+    mock_rar_info1.filename = "file1.txt"
+    mock_rar_info1.isdir.return_value = False
+
+    mock_rar_info2 = MagicMock()
+    mock_rar_info2.filename = "file2.txt"
+    mock_rar_info2.isdir.return_value = False
+
+    mock_rar_archive = MagicMock()
+    mock_rar_archive.infolist.return_value = [mock_rar_info1, mock_rar_info2]
+    mock_rar_archive.read.side_effect = [b"content1", b"content2"]
+
+    with patch("rarfile.RarFile") as mock_rar_file_class:
+        mock_rar_file_class.return_value.__enter__.return_value = mock_rar_archive
+        extracted_files = repo._extract_from_rar(b"dummy rar content")
+
+    assert len(extracted_files) == 2
+    assert ("file1.txt", b"content1") in extracted_files
+    assert ("file2.txt", b"content2") in extracted_files
+
+
 @patch("requests.get")
 def test_get_updated_procurements_with_raw_data_no_city_codes(mock_get, repo):
     """
