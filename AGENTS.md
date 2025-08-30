@@ -125,6 +125,16 @@ These require the Docker services to be running.
 -   **Who Should Run This?** Agents working on the full application flow or making changes that could impact multiple components.
 -   **Purpose:** The E2E test (`tests/e2e/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.
 
+#### How to Run the E2E Test for Analysis
+
+To properly execute the E2E test and view all the necessary output for critical analysis, you must run `pytest` with the `-s` flag. This flag disables output capturing, allowing you to see the real-time logs from the CLI commands and, most importantly, the final JSON data dump.
+
+```bash
+poetry run pytest -s tests/e2e/test_full_e2e.py
+```
+
+Without the `-s` flag, the test might appear to pass, but you will not see the critical data required for your audit.
+
 #### E2E Test Workflow
 
 The test script automates the following application workflow:

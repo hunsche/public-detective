@@ -9,8 +9,24 @@ from google.generativeai.types import File
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
+from pydantic.json_schema import models_json_schema
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
+
+
+def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict[str, object]:
+    """
+    Converts a Pydantic model into a flattened JSON schema, resolving all
+    $defs references. This is necessary for compatibility with the Gemini API,
+    which does not support nested definitions.
+    """
+    # The `models_json_schema` function from Pydantic is used to generate the
+    # schema with all references resolved and inlined.
+    _, flattened_schema = models_json_schema(
+        [(schema, "validation")],
+        ref_template="#/definitions/{model}",
+    )
+    return flattened_schema.get(schema.__name__, {})
 
 
 class AiProvider(Generic[PydanticModel]):
@@ -80,7 +96,7 @@ class AiProvider(Generic[PydanticModel]):
             response = self.model.generate_content(
                 contents,
                 generation_config=genai.types.GenerationConfig(
-                    response_schema=self.output_schema,
+                    response_schema=_flatten_pydantic_schema(self.output_schema),
                     response_mime_type="application/json",
                 ),
             )

@@ -124,8 +124,42 @@ class AnalysisService:
             return
 
         document_hash = self._calculate_hash(files_for_ai)
-        if self.analysis_repo.get_analysis_by_hash(document_hash):
-            self.logger.info(f"Analysis for hash {document_hash} already exists. Skipping.")
+        existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
+
+        if existing_analysis:
+            self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
+            # Create the GCS paths based on the new analysis timestamp
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            gcs_base_path = f"{control_number}/{timestamp}"
+            if self.config.GCP_GCS_TEST_PREFIX:
+                gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
+
+            # Copy results from the existing analysis
+            reused_result = AnalysisResult(
+                procurement_control_number=control_number,
+                version_number=version_number,
+                ai_analysis=Analysis(
+                    risk_score=existing_analysis.ai_analysis.risk_score,
+                    summary=existing_analysis.ai_analysis.summary,
+                    risk_score_rationale=existing_analysis.ai_analysis.risk_score_rationale,
+                    red_flags=existing_analysis.ai_analysis.red_flags,
+                ),
+                warnings=existing_analysis.warnings,
+                document_hash=document_hash,
+                original_documents_gcs_path=f"{gcs_base_path}/files/",
+                processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
+            )
+            self.analysis_repo.save_analysis(analysis_id, reused_result)
+
+            # Even if we reuse the analysis, we must record the files for the *new* analysis run
+            self._process_and_save_file_records(
+                analysis_id=analysis_id,
+                gcs_base_path=gcs_base_path,
+                all_files=all_original_files,
+                included_files=files_for_ai,
+                excluded_files=excluded_files,
+            )
+            self.logger.info(f"Successfully reused analysis for {control_number}.")
             return
 
         try:

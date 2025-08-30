@@ -72,7 +72,9 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     """Tests that analysis is skipped if a result with the same hash exists."""
     # Arrange: Mock the return values
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
-    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = "existing"
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    mock_existing_analysis.ai_analysis = MagicMock(spec=Analysis)
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
 
     # Act
     service = AnalysisService(**mock_dependencies)

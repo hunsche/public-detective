@@ -57,8 +57,7 @@ def test_get_structured_analysis_uses_valid_schema(mock_configure, mock_gen_mode
 
     # The core of the test: ensure no invalid fields like 'ge' or 'le' are in the schema
     # We inspect the 'risk_score' property in the schema definition.
-    schema_dict = response_schema.model_json_schema()
-    risk_score_properties = schema_dict["properties"]["risk_score"]
+    risk_score_properties = response_schema["properties"]["risk_score"]
     assert "ge" not in risk_score_properties
     assert "le" not in risk_score_properties
 
