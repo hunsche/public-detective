@@ -47,16 +47,16 @@ def db_session():
 
         try:
             container_id_result = subprocess.run(
-                ["sudo", "-n", "docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
+                ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
                 check=True,
                 capture_output=True,
                 text=True,
             )  # nosec B603, B607
-            container_id = container_id_result.stdout.strip()
+            container_id = container_id_result.stdout.strip().split("\n")[0]
             if not container_id:
                 pytest.fail(f"Could not find container for service {service_name}")
             inspect_result = subprocess.run(
-                ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
+                ["docker", "inspect", container_id], check=True, capture_output=True, text=True
             )  # nosec B603, B607
             data = json.loads(inspect_result.stdout)
             network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
@@ -66,13 +66,15 @@ def db_session():
 
     pubsub_ip = get_container_ip_by_service("pubsub")
     gcs_ip = get_container_ip_by_service("gcs")
+    postgres_ip = get_container_ip_by_service("postgres")
+    os.environ["POSTGRES_HOST"] = postgres_ip
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
+        f"{postgres_ip}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url)
     try:
