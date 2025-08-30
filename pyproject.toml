@@ -75,8 +75,8 @@ omit = [
 ]
 
 [tool.coverage.report]
-fail_under = 0
-ignore_errors = true
+fail_under = 95
+ignore_errors = false
 
 [tool.black]
 line-length = 120

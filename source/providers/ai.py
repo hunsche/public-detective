@@ -14,7 +14,7 @@ from pydantic.json_schema import models_json_schema
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
 
-def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict[str, object]:
+def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict:
     """
     Converts a Pydantic model into a flattened JSON schema, resolving all
     $defs references. This is necessary for compatibility with the Gemini API,
@@ -26,7 +26,7 @@ def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict[str, object]:
         [(schema, "validation")],
         ref_template="#/definitions/{model}",
     )
-    return flattened_schema.get(schema.__name__, {})
+    return flattened_schema.get(schema.__name__, {})  # type: ignore [no-any-return]
 
 
 class AiProvider(Generic[PydanticModel]):

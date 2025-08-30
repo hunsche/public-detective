@@ -6,7 +6,7 @@ from datetime import date
 from unittest.mock import MagicMock
 
 import pytest
-from models.analysis import Analysis
+from models.analysis import Analysis, AnalysisResult
 from models.procurement import Procurement
 from services.analysis import AnalysisService
 
