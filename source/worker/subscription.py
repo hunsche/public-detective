@@ -167,12 +167,16 @@ class Subscription:
                 if self.streaming_pull_future:
                     self.streaming_pull_future.cancel()
 
-    def run(self, max_messages: int | None = None):
+    def run(self, max_messages: int | None = None, timeout: int | None = None):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
-        and blocks indefinitely, waiting for messages. It includes logic for
-        graceful shutdown upon interruption.
+        and blocks, waiting for messages. It includes logic for graceful
+        shutdown upon interruption or timeout.
+
+        Args:
+            max_messages: The maximum number of messages to process before stopping.
+            timeout: The maximum time in seconds to wait for messages.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
@@ -183,18 +187,26 @@ class Subscription:
             self._message_callback(message, max_messages)
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
-        self.logger.info("Worker is now running and waiting for messages...")
+        self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
 
         try:
-            self.streaming_pull_future.result(timeout=None)
-        except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
+            self.streaming_pull_future.result(timeout=timeout)
+        except TimeoutError:
+            self.logger.warning(f"Worker timed out after {timeout} seconds of inactivity.")
+        except (GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
+            # When max_messages is reached, a Cancelled exception is expected.
             if "cancelled" not in str(e).lower():
                 self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
         finally:
             self.logger.info("Stopping worker...")
             if self.streaming_pull_future and not self.streaming_pull_future.cancelled():
                 self.streaming_pull_future.cancel()
-                self.streaming_pull_future.result()
+                # Wait for the future to be cancelled. It's safe to ignore
+                # exceptions here as the worker is already shutting down.
+                try:
+                    self.streaming_pull_future.result(timeout=10)
+                except Exception:  # nosec B110
+                    pass
             self.logger.info("Worker has stopped gracefully.")

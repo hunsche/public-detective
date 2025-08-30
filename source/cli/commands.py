@@ -63,7 +63,15 @@ def analyze(analysis_id: int):
 )
 @click.option("--batch-size", type=int, default=100, help="Number of procurements to process in each batch.")
 @click.option("--sleep-seconds", type=int, default=60, help="Seconds to sleep between batches.")
-def pre_analyze(start_date: datetime, end_date: datetime, batch_size: int, sleep_seconds: int):
+@click.option(
+    "--max-messages",
+    type=int,
+    default=None,
+    help="Maximum number of messages to publish. If None, publishes all found.",
+)
+def pre_analyze(
+    start_date: datetime, end_date: datetime, batch_size: int, sleep_seconds: int, max_messages: int | None
+):
     """
     Command-line interface to run the Public Detective pre-analysis job.
     """
@@ -95,7 +103,7 @@ def pre_analyze(start_date: datetime, end_date: datetime, batch_size: int, sleep
             pubsub_provider=pubsub_provider,
         )
 
-        service.run_pre_analysis(start_date.date(), end_date.date(), batch_size, sleep_seconds)
+        service.run_pre_analysis(start_date.date(), end_date.date(), batch_size, sleep_seconds, max_messages)
 
         click.secho("Pre-analysis completed successfully!", fg="green")
     except Exception as e:

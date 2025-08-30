@@ -19,12 +19,12 @@ class TestAnalysisCommand(unittest.TestCase):
     def test_analyze_command_success(
         self,
         mock_analysis_service,
-        mock_procurement_repo,
-        mock_file_record_repo,
-        mock_analysis_repo,
-        mock_ai_provider,
-        mock_gcs_provider,
-        mock_pubsub_provider,
+        mock_procurement_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
         mock_db_manager,
     ):
         runner = CliRunner()
@@ -57,13 +57,13 @@ class TestAnalysisCommand(unittest.TestCase):
     @patch("source.cli.commands.DatabaseManager")
     def test_analyze_command_exception(
         self,
-        mock_db_manager,
-        mock_pubsub_provider,
-        mock_gcs_provider,
-        mock_ai_provider,
-        mock_analysis_repo,
-        mock_file_record_repo,
-        mock_procurement_repo,
+        mock_db_manager,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
         mock_analysis_service,
     ):
         runner = CliRunner()
@@ -94,13 +94,13 @@ class TestPreAnalysisCommand(unittest.TestCase):
     @patch("source.cli.commands.DatabaseManager")
     def test_pre_analysis_command_with_valid_dates(
         self,
-        mock_db_manager,
-        mock_pubsub_provider,
-        mock_gcs_provider,
-        mock_ai_provider,
-        mock_analysis_repo,
-        mock_file_record_repo,
-        mock_procurement_repo,
+        mock_db_manager,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
         mock_analysis_service,
     ):
         runner = CliRunner()
@@ -133,6 +133,7 @@ class TestPreAnalysisCommand(unittest.TestCase):
             date(2025, 1, 2),
             batch_size,
             sleep_seconds,
+            None,  # max_messages
         )
 
         # Verify success message

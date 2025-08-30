@@ -1,8 +1,3 @@
-"""
-This module defines the service responsible for orchestrating the procurement
-analysis pipeline.
-"""
-
 import hashlib
 import json
 import os
@@ -243,7 +238,8 @@ class AnalysisService:
             self.file_record_repo.save_file_record(file_record)
 
     def _select_and_prepare_files_for_ai(
-        self, all_files: list[tuple[str, bytes]]
+        self,
+        all_files: list[tuple[str, bytes]],
     ) -> tuple[list[tuple[str, bytes]], dict[str, str], list[str]]:
         """Applies business rules to filter and prioritize files for AI analysis.
 
@@ -410,9 +406,12 @@ class AnalysisService:
         self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
         self.logger.info(f"Published analysis request for analysis_id {analysis_id} to Pub/Sub.")
 
-    def run_pre_analysis(self, start_date: date, end_date: date, batch_size: int, sleep_seconds: int):
+    def run_pre_analysis(
+        self, start_date: date, end_date: date, batch_size: int, sleep_seconds: int, max_messages: int | None = None
+    ):
         self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
         current_date = start_date
+        messages_published_count = 0  # Initialize counter
         while current_date <= end_date:
             self.logger.info(f"Processing date: {current_date}")
             procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
@@ -433,6 +432,10 @@ class AnalysisService:
                 for procurement, raw_data in batch:
                     try:
                         self._pre_analyze_procurement(procurement, raw_data)
+                        messages_published_count += 1  # Increment count on successful pre-analysis
+                        if max_messages is not None and messages_published_count >= max_messages:
+                            self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
+                            return  # Exit the function
                     except Exception as e:
                         self.logger.error(
                             f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
