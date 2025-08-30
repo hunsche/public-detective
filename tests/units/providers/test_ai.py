@@ -80,7 +80,7 @@ def test_ai_provider_instantiation(monkeypatch):
 
 def test_ai_provider_missing_api_key(monkeypatch):
     """Tests that AiProvider raises ValueError if the API key is missing."""
-    monkeypatch.delenv("GCP_GEMINI_API_KEY", raising=False)
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "")
     with pytest.raises(ValueError, match="GCP_GEMINI_API_KEY must be configured"):
         AiProvider(MockOutputSchema)
 
