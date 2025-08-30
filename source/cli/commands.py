@@ -26,7 +26,19 @@ from services.analysis import AnalysisService
     default=date.today().isoformat(),
     help="End date for the analysis in YYYY-MM-DD format.",
 )
-def analysis_command(start_date: datetime, end_date: datetime):
+@click.option(
+    "--max-messages",
+    type=int,
+    default=None,
+    help="Limits procurements processed. If --sync-run, limits local analyses; otherwise, Pub/Sub messages.",
+)
+@click.option(
+    "--sync-run",
+    is_flag=True,
+    default=False,
+    help="Run the analysis directly in a synchronous way, bypassing Pub/Sub.",
+)
+def analysis_command(start_date: datetime, end_date: datetime, max_messages: int | None, sync_run: bool):
     """
     Command-line interface to run the Public Detective analysis job.
 
@@ -46,13 +58,16 @@ def analysis_command(start_date: datetime, end_date: datetime):
 
     try:
         db_engine = DatabaseManager.get_engine()
-        pubsub_provider = PubSubProvider()
         gcs_provider = GcsProvider()
         ai_provider = AiProvider(Analysis)
-
         analysis_repo = AnalysisRepository(engine=db_engine)
         file_record_repo = FileRecordRepository(engine=db_engine)
-        procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+
+        if sync_run:
+            procurement_repo = ProcurementRepository(engine=db_engine)
+        else:
+            pubsub_provider = PubSubProvider()
+            procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
@@ -62,7 +77,7 @@ def analysis_command(start_date: datetime, end_date: datetime):
             gcs_provider=gcs_provider,
         )
 
-        service.run_analysis(start_date.date(), end_date.date())
+        service.run_analysis(start_date.date(), end_date.date(), max_messages=max_messages, sync_run=sync_run)
 
         click.secho("Analysis completed successfully!", fg="green")
     except Exception as e:

@@ -350,7 +350,7 @@ class AnalysisService:
         fornecido, incluindo o campo `risk_score_rationale`.
         """
 
-    def run_analysis(self, start_date: date, end_date: date):
+    def run_analysis(self, start_date: date, end_date: date, max_messages: int | None = None, sync_run: bool = False):
         """
         Runs the Public Detective analysis job for the specified date range.
         """
@@ -365,16 +365,32 @@ class AnalysisService:
                 current_date += timedelta(days=1)
                 continue
 
-            self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
-            success_count, failure_count = 0, 0
-            for procurement in updated_procurements:
-                published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
-                if published:
-                    success_count += 1
-                else:
-                    failure_count += 1
-            self.logger.info(
-                f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
-            )
+            procurements_to_process = updated_procurements[:max_messages] if max_messages else updated_procurements
+
+            if sync_run:
+                self.logger.info(
+                    f"Found {len(procurements_to_process)} updated procurements. "
+                    f"Processing them directly (run_local=True)."
+                )
+                for procurement in procurements_to_process:
+                    try:
+                        self.analyze_procurement(procurement)
+                    except Exception as e:
+                        self.logger.error(f"Failed to analyze procurement {procurement.pncp_control_number}: {e}")
+            else:
+                self.logger.info(
+                    f"Found {len(procurements_to_process)} updated procurements. " "Publishing to message queue."
+                )
+                success_count, failure_count = 0, 0
+                for procurement in procurements_to_process:
+                    published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
+                    if published:
+                        success_count += 1
+                    else:
+                        failure_count += 1
+                self.logger.info(
+                    f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
+                )
+
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")

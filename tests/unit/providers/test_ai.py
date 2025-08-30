@@ -71,9 +71,8 @@ def mock_gemini_client(monkeypatch):
 
 
 @pytest.mark.usefixtures("mock_gemini_client")
-def test_ai_provider_instantiation(monkeypatch):
+def test_ai_provider_instantiation(mock_gemini_client, monkeypatch):
     """Tests that the AiProvider can be instantiated correctly."""
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
     provider = AiProvider(MockOutputSchema)
     assert provider is not None
 

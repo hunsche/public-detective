@@ -40,6 +40,8 @@ class TestAnalysisCommand(unittest.TestCase):
         mock_service_instance.run_analysis.assert_called_once_with(
             date(2025, 1, 1),
             date(2025, 1, 2),
+            max_messages=None,
+            sync_run=False,
         )
 
         # Verify success message

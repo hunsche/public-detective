@@ -89,17 +89,47 @@ The project is standardized on **Python 3.12**.
 
 This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS emulator, etc.).
 
-1.  **Start all services:**
+### A. CLI Execution Modes
+
+The main CLI script (`source/cli/__main__.py`) offers different execution modes for the analysis job:
+
+-   **Default (Asynchronous Flow)**:
+    When run without the `--sync-run` flag, the CLI acts as a **producer**. It fetches procurement data and publishes messages to the local Pub/Sub emulator. These messages are then consumed by a separate worker process.
+    *   **Usage**:
+        ```bash
+        PUBSUB_EMULATOR_HOST=localhost:8085 poetry run python -m source.cli --start-date YYYY-MM-DD --end-date YYYY-MM-DD [--max-messages N]
+        ```
+    *   **`--max-messages N`**: Limits the number of messages published to the Pub/Sub emulator. If omitted, all found procurements for the date range will be published.
+
+-   **Synchronous Flow (`--sync-run`)**:
+    When run with the `--sync-run` flag, the CLI executes the **entire analysis pipeline directly** in a synchronous manner, bypassing the Pub/Sub emulator. This mode is useful for end-to-end testing and debugging without needing a separate worker.
+    *   **Usage**:
+        ```bash
+        PUBSUB_EMULATOR_HOST=localhost:8085 poetry run python -m source.cli --start-date YYYY-MM-DD --end-date YYYY-MM-DD --sync-run [--max-messages N]
+        ```
+    *   **`--max-messages N`**: Limits the number of procurements analyzed directly by the CLI. If omitted, all found procurements for the date range will be analyzed.
+
+### B. Worker Execution
+
+The worker (`source/worker/__main__.py`) is a separate process responsible for consuming messages from the Pub/Sub emulator and performing the AI analysis.
+
+-   **Usage**:
     ```bash
-    docker compose up -d
+    PUBSUB_EMULATOR_HOST=localhost:8085 poetry run python -m source.worker [--max-messages N]
     ```
-2.  **Apply database migrations:**
+-   **`--max-messages N`**: Limits the number of messages the worker will consume before exiting. If omitted, the worker will run indefinitely, consuming all available messages.
+
+### C. Emulator Configuration
+
+This project relies on local Dockerized emulators for Google Cloud Pub/Sub and Google Cloud Storage. When running Python commands that interact with these services directly (e.g., the CLI or worker), it is crucial to set the `PUBSUB_EMULATOR_HOST` environment variable.
+
+-   **`PUBSUB_EMULATOR_HOST`**: Must be set to `localhost:8085` to direct Pub/Sub client traffic to the local emulator.
+    *   **Example**: `PUBSUB_EMULATOR_HOST=localhost:8085 poetry run python -m source.cli ...`
+
+-   **Database Migrations**:
+    After starting the PostgreSQL container (e.g., `docker compose up -d postgres`), ensure you apply any pending database migrations:
     ```bash
     poetry run alembic upgrade head
-    ```
-3.  **Run the main analysis script (example):**
-    ```bash
-    poetry run python source/cli --start-date 2025-01-01 --end-date 2025-01-02
     ```
 
 ## 4. Running Tests

@@ -39,7 +39,7 @@ class ProcurementRepository:
     pubsub_provider: PubSubProvider
     engine: Engine
 
-    def __init__(self, engine: Engine, pubsub_provider: PubSubProvider) -> None:
+    def __init__(self, engine: Engine, pubsub_provider: PubSubProvider | None = None) -> None:
         """Initializes the repository with its dependencies."""
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -342,6 +342,9 @@ class ProcurementRepository:
 
     def publish_procurement_to_pubsub(self, procurement: Procurement) -> bool:
         """Publishes a procurement object to the configured Pub/Sub topic."""
+        if not self.pubsub_provider:
+            self.logger.warning("Pub/Sub provider not configured. Skipping message publishing.")
+            return False
         try:
             message_json = procurement.model_dump_json(by_alias=True)
             message_bytes = message_json.encode()

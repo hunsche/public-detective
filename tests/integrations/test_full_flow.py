@@ -25,6 +25,7 @@ from repositories.file_record import FileRecordRepository
 from repositories.procurement import ProcurementRepository
 from services.analysis import AnalysisService
 from sqlalchemy import create_engine, text
+from sqlalchemy.exc import OperationalError
 
 from source.cli.commands import analysis_command as cli_main
 from source.providers.config import ConfigProvider
@@ -47,16 +48,19 @@ def db_session():
 
         try:
             container_id_result = subprocess.run(
-                ["sudo", "-n", "docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
+                ["docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
                 check=True,
                 capture_output=True,
                 text=True,
             )  # nosec B603, B607
-            container_id = container_id_result.stdout.strip()
+            container_id = container_id_result.stdout.strip().split("\n")[0]
             if not container_id:
                 pytest.fail(f"Could not find container for service {service_name}")
             inspect_result = subprocess.run(
-                ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
+                ["docker", "inspect", container_id],
+                check=True,
+                capture_output=True,
+                text=True,
             )  # nosec B603, B607
             data = json.loads(inspect_result.stdout)
             network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
@@ -75,15 +79,26 @@ def db_session():
         f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url)
+    max_retries = 10
+    retry_delay = 2
+    for i in range(max_retries):
+        try:
+            with engine.connect() as connection:
+                connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+                connection.commit()
+                time.sleep(1)
+                connection.execute(text(f"CREATE SCHEMA {schema_name}"))
+                connection.commit()
+                connection.execute(text(f"SET search_path TO {schema_name}"))
+                connection.commit()
+            break  # Break out of the retry loop if connection is successful
+        except OperationalError as e:
+            if i < max_retries - 1:
+                print(f"Database connection failed, retrying in {retry_delay} seconds... ({i + 1}/{max_retries})")
+                time.sleep(retry_delay)
+            else:
+                pytest.fail(f"Could not connect to database after {max_retries} retries: {e}")
     try:
-        with engine.connect() as connection:
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-            time.sleep(1)
-            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
-            connection.commit()
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.commit()
         from alembic import command
         from alembic.config import Config
 
@@ -230,7 +245,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         if worker_thread.is_alive():
             pytest.fail(
                 "Worker thread got stuck and did not finish.\n\n"
-                "--- CAPTURED WORKER LOGS ---\n"
+                "--- CAPTURED WORKER LOGS ---"
                 f"{log_capture_stream.getvalue()}"
                 "--- END WORKER LOGS ---"
             )
