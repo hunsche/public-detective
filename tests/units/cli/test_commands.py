@@ -139,3 +139,49 @@ class TestPreAnalysisCommand(unittest.TestCase):
         # Verify success message
         self.assertIn("Pre-analysis completed successfully!", result.output)
         self.assertEqual(result.exit_code, 0)
+
+    def test_pre_analysis_command_with_invalid_date_range(self):
+        runner = CliRunner()
+        start_date = "2025-01-02"
+        end_date = "2025-01-01"
+
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+            ],
+        )
+
+        self.assertIn("Start date cannot be after end date.", result.output)
+        self.assertNotEqual(result.exit_code, 0)
+
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_pre_analysis_command_exception(
+        self,
+        mock_db_manager,
+        mock_analysis_service,
+    ):
+        runner = CliRunner()
+        start_date = "2025-01-01"
+        end_date = "2025-01-01"
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.run_pre_analysis.side_effect = Exception("Test error")
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+            ],
+        )
+
+        self.assertIn("An error occurred: Test error", result.output)
+        self.assertEqual(result.exit_code, 0)

@@ -140,7 +140,6 @@ class AnalysisService:
                 version_number=version_number,
                 ai_analysis=Analysis(
                     risk_score=existing_analysis.ai_analysis.risk_score,
-                    summary=existing_analysis.ai_analysis.summary,
                     risk_score_rationale=existing_analysis.ai_analysis.risk_score_rationale,
                     red_flags=existing_analysis.ai_analysis.red_flags,
                 ),

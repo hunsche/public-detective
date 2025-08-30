@@ -2,7 +2,7 @@ import io
 import json
 import time
 from mimetypes import guess_type
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import google.generativeai as genai
 from google.generativeai.types import File
@@ -14,7 +14,7 @@ from pydantic.json_schema import models_json_schema
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
 
-def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict:
+def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict[str, Any]:
     """
     Converts a Pydantic model into a flattened JSON schema, resolving all
     $defs references. This is necessary for compatibility with the Gemini API,
@@ -26,7 +26,9 @@ def _flatten_pydantic_schema(schema: type[PydanticModel]) -> dict:
         [(schema, "validation")],
         ref_template="#/definitions/{model}",
     )
-    return flattened_schema.get(schema.__name__, {})  # type: ignore [no-any-return]
+    definitions: dict[str, Any] = flattened_schema.get("$defs", {})
+    schema_definition: dict[str, Any] = definitions.get(schema.__name__, {})
+    return schema_definition
 
 
 class AiProvider(Generic[PydanticModel]):

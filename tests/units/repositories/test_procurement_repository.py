@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import py7zr
 import pytest
+import rarfile
 import requests
 from google.api_core import exceptions
 from models.procurement import Procurement
@@ -533,3 +534,42 @@ def test_get_updated_procurements_with_raw_data(mock_get, repo):
     assert isinstance(procurements[0][1], dict)
     assert procurements[0][0].pncp_control_number == "1"
     assert procurements[0][1] == raw_procurement_data
+
+
+def test_extract_from_rar_error(repo):
+    """Tests that an empty list is returned if rar extraction fails."""
+    with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
+        result = repo._extract_from_rar(b"not a rar")
+        assert result == []
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_no_city_codes(mock_get, repo):
+    """
+    Tests that a nationwide search is performed for raw data if no city codes are configured.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 204
+    mock_get.return_value = mock_response
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = []
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert mock_get.call_count == 4
+    for call in mock_get.call_args_list:
+        assert "codigoMunicipioIbge" not in call.kwargs["params"]
+
+
+def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
+    """
+    Tests that None is returned when a procurement is not found by ID and version.
+    """
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = None
+
+    result = repo.get_procurement_by_id_and_version("PNCP-999", 1)
+
+    assert result is None

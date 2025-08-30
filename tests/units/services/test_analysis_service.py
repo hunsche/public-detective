@@ -72,8 +72,18 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     """Tests that analysis is skipped if a result with the same hash exists."""
     # Arrange: Mock the return values
     mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
+
+    # Create a mock for the nested ai_analysis object
+    mock_ai_analysis_details = MagicMock(spec=Analysis)
+    mock_ai_analysis_details.risk_score = 5
+    mock_ai_analysis_details.risk_score_rationale = "Reused rationale"
+    mock_ai_analysis_details.red_flags = []
+
+    # Create the main mock for the analysis result
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
-    mock_existing_analysis.ai_analysis = MagicMock(spec=Analysis)
+    mock_existing_analysis.ai_analysis = mock_ai_analysis_details
+    mock_existing_analysis.warnings = ["Reused warning"]
+
     mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
 
     # Act
@@ -82,6 +92,13 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
 
     # Assert: Check that the AI provider was not called
     mock_dependencies["ai_provider"].get_structured_analysis.assert_not_called()
+
+    # Also assert that save_analysis was called with the reused data
+    mock_dependencies["analysis_repo"].save_analysis.assert_called_once()
+    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
+    saved_result = call_args[1]  # second argument is the AnalysisResult object
+    assert saved_result.ai_analysis.risk_score_rationale == "Reused rationale"
+    assert saved_result.warnings == ["Reused warning"]
 
 
 def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):

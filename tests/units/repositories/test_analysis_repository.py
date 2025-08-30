@@ -1,5 +1,5 @@
 import json
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from models.analysis import AnalysisResult, RedFlag, RedFlagCategory
@@ -214,3 +214,61 @@ def test_save_pre_analysis_returns_id(analysis_repository):
     assert params["version_number"] == 1
     assert params["estimated_cost"] == 1.23
     assert params["document_hash"] == "pre-analysis-hash"
+
+
+def test_get_analysis_by_id_not_found(analysis_repository):
+    """Should return None when no analysis is found for a given ID."""
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.fetchone.return_value = None
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    result = analysis_repository.get_analysis_by_id(999)
+
+    assert result is None
+
+
+def test_parse_row_to_model_with_none_red_flags(analysis_repository):
+    """
+    Should correctly parse a row where 'red_flags' is None.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "risk_score_rationale",
+        "red_flags",
+    ]
+    row_tuple = (
+        "12345",
+        8,
+        "High risk",
+        None,
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.ai_analysis.red_flags == []
+
+
+def test_get_analysis_by_hash_found(analysis_repository):
+    """Should return an AnalysisResult when an analysis is found for a given hash."""
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_row = MagicMock()
+    mock_row._fields = ["procurement_control_number"]
+    mock_result_proxy.fetchone.return_value = mock_row
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    with patch.object(
+        analysis_repository, "_parse_row_to_model", return_value=MagicMock(spec=AnalysisResult)
+    ) as mock_parse:
+        result = analysis_repository.get_analysis_by_hash("existent_hash")
+
+    assert result is not None
+    mock_parse.assert_called_once()
