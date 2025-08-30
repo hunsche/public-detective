@@ -44,44 +44,35 @@ def db_session():
 
     config = ConfigProvider.get_config()
 
-    def get_container_ip_by_service(service_name):
-        import subprocess  # nosec B404
+    # Use localhost for services, as docker-compose exposes the ports to the host
+    host = "localhost"
+    os.environ["POSTGRES_HOST"] = host
+    os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
+    os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
 
-        try:
-            container_id_result = subprocess.run(
-                ["sudo", "-n", "docker", "ps", "-q", "--filter", f"label=com.docker.compose.service={service_name}"],
-                check=True,
-                capture_output=True,
-                text=True,
-            )  # nosec B603, B607
-            container_id = container_id_result.stdout.strip()
-            if not container_id:
-                pytest.fail(f"Could not find container for service {service_name}")
-            inspect_result = subprocess.run(
-                ["sudo", "-n", "docker", "inspect", container_id], check=True, capture_output=True, text=True
-            )  # nosec B603, B607
-            data = json.loads(inspect_result.stdout)
-            network_name = list(data[0]["NetworkSettings"]["Networks"].keys())[0]
-            return data[0]["NetworkSettings"]["Networks"][network_name]["IPAddress"]
-        except (subprocess.CalledProcessError, KeyError, IndexError) as e:
-            pytest.fail(f"Could not get IP for service {service_name}: {e}")
-
-    pubsub_ip = get_container_ip_by_service("pubsub")
-    gcs_ip = get_container_ip_by_service("gcs")
-    os.environ["PUBSUB_EMULATOR_HOST"] = f"{pubsub_ip}:8085"
-    os.environ["GCP_GCS_HOST"] = f"http://{gcs_ip}:8086"
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
+        f"{host}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url)
+
+    # Wait for the database to be ready before proceeding
+    for _ in range(15):
+        try:
+            with engine.connect() as connection:
+                connection.execute(text("SELECT 1"))
+            break
+        except Exception:
+            time.sleep(1)
+    else:
+        pytest.fail("Database did not become available in time.")
+
     try:
         with engine.connect() as connection:
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
-            time.sleep(1)
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
             connection.execute(text(f"SET search_path TO {schema_name}"))
