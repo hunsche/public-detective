@@ -6,6 +6,7 @@ import time
 import uuid
 import zipfile
 from contextlib import redirect_stdout
+from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,6 +17,7 @@ from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage
 from models.analysis import Analysis
+from models.procurement import Procurement
 from providers.ai import AiProvider
 from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
@@ -26,7 +28,7 @@ from repositories.procurement import ProcurementRepository
 from services.analysis import AnalysisService
 from sqlalchemy import create_engine, text
 
-from source.cli.commands import analysis_command as cli_main
+from source.cli.__main__ import cli as cli_main
 from source.providers.config import ConfigProvider
 from source.worker.subscription import Subscription
 
@@ -118,6 +120,11 @@ def integration_test_setup(db_session):  # noqa: F841
     gcs_client = storage.Client(credentials=AnonymousCredentials(), project=project_id)
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
+    # Truncate tables before each test run
+    with db_session.connect() as connection:
+        connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
+        connection.execute(text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;"))
+        connection.commit()
     try:
         publisher.create_topic(request={"name": topic_path})
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
@@ -136,6 +143,12 @@ def integration_test_setup(db_session):  # noqa: F841
             publisher.delete_topic(request={"topic": topic_path})
         except exceptions.NotFound:
             pass
+        with db_session.connect() as connection:
+            connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
+            connection.execute(
+                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+            )
+            connection.commit()
 
 
 def load_fixture(path):
@@ -150,12 +163,89 @@ def load_binary_fixture(path):
 
 @pytest.mark.timeout(180)
 def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F841
+    # ... setup fixtures ...
+    ibge_code = "3304557"
+    target_date_str = "2025-08-23"
+    fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
+    procurement_list_fixture = load_fixture(f"{fixture_base_path}/pncp_procurement_list.json")
+    gemini_response_fixture = Analysis.model_validate(load_fixture(f"{fixture_base_path}/gemini_response.json"))
+
+    # Set environment variables BEFORE instantiating components
+    os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
+    os.environ["GCP_GEMINI_PRICE_PER_1K_TOKENS"] = "0.002"
+
+    db_engine = db_session
+    pubsub_provider = PubSubProvider()
+    gcs_provider = GcsProvider()
+    ai_provider = AiProvider(Analysis)
+    analysis_repo = AnalysisRepository(engine=db_engine)
+    file_record_repo = FileRecordRepository(engine=db_engine)
+    procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    analysis_service = AnalysisService(
+        procurement_repo=procurement_repo,
+        analysis_repo=analysis_repo,
+        file_record_repo=file_record_repo,
+        ai_provider=ai_provider,
+        gcs_provider=gcs_provider,
+        pubsub_provider=pubsub_provider,
+    )
+
+    # 1. Manually insert data
+    procurement_to_analyze = Procurement.model_validate(procurement_list_fixture[0])
+    procurement_repo.save_procurement_version(
+        procurement=procurement_to_analyze,
+        raw_data=json.dumps(procurement_list_fixture[0]),
+        version_number=1,
+        content_hash="test-hash-1",
+    )
+    analysis_id = analysis_repo.save_pre_analysis(
+        procurement_control_number=procurement_to_analyze.pncp_control_number,
+        version_number=1,
+        estimated_cost=0.0,
+        document_hash="pre-analysis-hash-1",
+    )
+
+    # 2. Run analyze command
+    with patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture):
+        with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
+            runner = CliRunner()
+            result = runner.invoke(cli_main, ["analyze", f"--analysis-id={analysis_id}"])
+            assert result.exit_code == 0, f"CLI command failed: {result.output}"
+            assert "Analysis triggered successfully!" in result.output
+
+            # 3. Run worker
+            log_capture_stream = io.StringIO()
+            subscription = Subscription(analysis_service=analysis_service)
+            subscription.config.IS_DEBUG_MODE = False
+
+            def worker_target():
+                with redirect_stdout(log_capture_stream):
+                    subscription.run(max_messages=1)
+
+            worker_thread = threading.Thread(target=worker_target, daemon=True)
+            worker_thread.start()
+            worker_thread.join(timeout=60)
+
+            if worker_thread.is_alive():
+                pytest.fail("Worker thread got stuck")
+
+    # 4. Check results
+    with db_engine.connect() as connection:
+        analysis_query = text("SELECT status, risk_score FROM procurement_analysis WHERE analysis_id = :analysis_id")
+        db_analysis = connection.execute(analysis_query, {"analysis_id": analysis_id}).fetchone()
+        assert db_analysis is not None
+        status, risk_score = db_analysis
+        assert status == "ANALYSIS_SUCCESSFUL"
+        assert risk_score == gemini_response_fixture.risk_score
+
+
+@pytest.mark.timeout(180)
+def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # noqa: F841
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
     procurement_list_fixture = load_fixture(f"{fixture_base_path}/pncp_procurement_list.json")
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
-    gemini_response_fixture = Analysis.model_validate(load_fixture(f"{fixture_base_path}/gemini_response.json"))
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
 
     def mock_requests_get(url, **kwargs):
@@ -190,59 +280,40 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         file_record_repo=file_record_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        pubsub_provider=pubsub_provider,
     )
 
     with (
         patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
-        patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture),
-        patch.object(
-            analysis_service, "_calculate_hash", side_effect=[uuid.uuid4().hex for _ in procurement_list_fixture]
-        ),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=1000),
     ):
-        os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
-        runner = CliRunner()
-        result = runner.invoke(cli_main, ["--start-date", target_date_str, "--end-date", target_date_str])
-        assert result.exit_code == 0, f"CLI command failed: {result.output}"
-        assert "Analysis completed successfully!" in result.output
-
-        log_capture_stream = io.StringIO()
-        subscription = Subscription(analysis_service=analysis_service)
-        subscription.config.IS_DEBUG_MODE = False
-        num_procurements = len(procurement_list_fixture)
-
-        def worker_target():
-            with redirect_stdout(log_capture_stream):
-                subscription.run(max_messages=num_procurements)
-
-        worker_thread = threading.Thread(target=worker_target, daemon=True)
-        worker_thread.start()
-        worker_thread.join(timeout=60)
-
-        if worker_thread.is_alive():
-            pytest.fail(
-                "Worker thread got stuck and did not finish.\n\n"
-                "--- CAPTURED WORKER LOGS ---\n"
-                f"{log_capture_stream.getvalue()}"
-                "--- END WORKER LOGS ---"
-            )
+        analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
     with db_engine.connect() as connection:
         # Check total count
-        total_query = text("SELECT COUNT(*) FROM procurement_analysis")
-        analysis_count = connection.execute(total_query).scalar_one()
-        assert (
-            analysis_count == num_procurements
-        ), f"Expected {num_procurements} analyses, but found {analysis_count} in the database."
+        total_query = text("SELECT COUNT(*) FROM procurement")
+        procurement_count = connection.execute(total_query).scalar_one()
+        assert procurement_count == len(
+            procurement_list_fixture
+        ), f"Expected {len(procurement_list_fixture)} procurements, but found {procurement_count} in the database."
 
-        # Check a specific analysis
+        # Check a specific procurement and analysis
         target_procurement = procurement_list_fixture[0]
         pcn = target_procurement["numeroControlePNCP"]
-        specific_query = text(
-            "SELECT risk_score, summary FROM procurement_analysis WHERE " "procurement_control_number = :pcn"
-        )
-        db_result = connection.execute(specific_query, {"pcn": pcn}).fetchone()
+        procurement_query = text("SELECT version_number, raw_data FROM procurement WHERE pncp_control_number = :pcn")
+        db_procurement = connection.execute(procurement_query, {"pcn": pcn}).fetchone()
+        assert db_procurement is not None, f"No procurement found in the database for {pcn}"
+        version, raw_data = db_procurement
+        assert version == 1
+        assert raw_data["anoCompra"] == target_procurement["anoCompra"]
 
-        assert db_result is not None, f"No analysis found in the database for {pcn}"
-        risk_score, summary = db_result
-        assert risk_score == gemini_response_fixture.risk_score
-        assert summary == gemini_response_fixture.summary
+        analysis_query = text(
+            "SELECT version_number, status, estimated_cost FROM procurement_analysis WHERE "
+            "procurement_control_number = :pcn"
+        )
+        db_analysis = connection.execute(analysis_query, {"pcn": pcn}).fetchone()
+        assert db_analysis is not None, f"No analysis found in the database for {pcn}"
+        version, status, estimated_cost = db_analysis
+        assert version == 1
+        assert status == "PENDING_ANALYSIS"
+        assert float(estimated_cost) == 0.002

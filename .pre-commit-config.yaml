@@ -61,13 +61,23 @@ repos:
       types: [python]
       require_serial: true
 
-    - id: bandit
-      name: bandit
-      entry: bandit
-      language: python
-      types: [python]
-      args: ["-c", "pyproject.toml"]
-      additional_dependencies: ["bandit[toml]"]
+    -   id: bandit
+        name: "Bandit (Security Analysis - Application)"
+        entry: bandit
+        language: python
+        types: [python]
+        args: ["-c", "pyproject.toml"]
+        additional_dependencies: ["bandit[toml]"]
+        exclude: ^source/migrations/versions/
+
+    -   id: bandit
+        name: "Bandit (Security Analysis - Migrations)"
+        entry: bandit
+        language: python
+        types: [python]
+        files: ^source/migrations/versions/
+        args: ["-c", "bandit_migrations.yaml"]
+        additional_dependencies: ["bandit[yaml]"]
 
     - id: pytest-cov
       name: pytest-cov

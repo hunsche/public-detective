@@ -25,11 +25,23 @@ This is a research and extension project developed at the **Pontifical Catholic 
 
 ## How It Works
 
-1.  **Fetch:** Queries the public PNCP API to find recent or open bids.
-2.  **Retrieve:** Downloads all documents for a bid.
-3.  **Archive:** Zips and uploads the original documents to Google Cloud Storage.
-4.  **Analyze:** Submits the file contents to a Generative AI model with a specialized prompt.
-5.  **Report:** Processes the AI's analysis, including a risk score and rationale, and saves it to a PostgreSQL database.
+The analysis process is divided into two main, decoupled stages: **Pre-analysis** and **Analysis**.
+
+### 1. Pre-analysis (Zero Cost)
+
+This is a lightweight, zero-cost first pass that prepares procurements for the full analysis. It is designed to be run periodically to discover new and updated public tenders.
+
+- **Fetch & Version:** It fetches new and updated procurement data from the PNCP. For each new version of a procurement, it calculates a unique hash of its contents (metadata and all associated documents) to ensure idempotency.
+- **Cost Estimation:** Before committing to a full analysis, it calculates the number of tokens required and estimates the final cost based on the current price of the AI model.
+- **Persist:** It saves a new, versioned record for the procurement in the database, along with a corresponding `procurement_analysis` entry marked with a `PENDING_ANALYSIS` status and the estimated cost.
+
+### 2. Analysis (AI-Powered)
+
+This is the second stage, where the deep, AI-powered analysis occurs. This step has a cost associated with it and is triggered on-demand for a specific analysis that is pending.
+
+- **Trigger:** An analysis is initiated by its unique ID, which sends a message to a Google Cloud Pub/Sub topic.
+- **Process:** A background worker, subscribed to the topic, picks up the message. It retrieves the specific procurement version and all associated files.
+- **Analyze & Report:** The worker submits the data to the Generative AI model. It then saves the complete analysis, including the risk score, rationale, and any findings, to the database, updating the status to `ANALYSIS_SUCCESSFUL` or `ANALYSIS_FAILED`.
 
 ## Tech Stack
 
@@ -75,9 +87,25 @@ To get a local copy up and running, follow these simple steps.
 
 ## Usage
 
-Example of how to run the main analysis script via the CLI:
+The application is controlled via a Command-Line Interface (CLI) with two main commands.
+
+### `pre-analyze`
+This command runs the first stage of the pipeline, fetching new procurement data and preparing it for analysis.
+
 ```bash
-poetry run python source/cli --start-date 2025-01-01 --end-date 2025-01-02
+# Run pre-analysis for a specific date range
+poetry run python -m source.cli pre-analyze --start-date 2025-01-01 --end-date 2025-01-05
+
+# Run for a single day (default)
+poetry run python -m source.cli pre-analyze
+```
+
+### `analyze`
+This command triggers the full, AI-powered analysis for a single procurement that has already been pre-analyzed.
+
+```bash
+# Trigger the analysis for a specific ID
+poetry run python -m source.cli analyze --analysis-id 123
 ```
 
 ## Contributing

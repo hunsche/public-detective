@@ -6,6 +6,7 @@ analysis pipeline.
 import hashlib
 import json
 import os
+import time
 from datetime import date, datetime, timedelta, timezone
 
 from models.analysis import Analysis, AnalysisResult
@@ -15,6 +16,7 @@ from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
+from providers.pubsub import PubSubProvider
 from repositories.analysis import AnalysisRepository
 from repositories.file_record import FileRecordRepository
 from repositories.procurement import ProcurementRepository
@@ -35,6 +37,7 @@ class AnalysisService:
     file_record_repo: FileRecordRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
+    pubsub_provider: PubSubProvider | None
     logger: Logger
     config: Config
 
@@ -59,6 +62,7 @@ class AnalysisService:
         file_record_repo: FileRecordRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
+        pubsub_provider: PubSubProvider | None = None,
     ) -> None:
         """Initializes the service with its dependencies."""
         self.procurement_repo = procurement_repo
@@ -66,10 +70,34 @@ class AnalysisService:
         self.file_record_repo = file_record_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
+        self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
 
-    def analyze_procurement(self, procurement: Procurement) -> None:
+    def process_analysis_from_message(self, analysis_id: int):
+        analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
+        if not analysis:
+            self.logger.error(f"Analysis with ID {analysis_id} not found.")
+            return
+
+        procurement = self.procurement_repo.get_procurement_by_id_and_version(
+            analysis.procurement_control_number, analysis.version_number
+        )
+        if not procurement:
+            self.logger.error(
+                f"Procurement {analysis.procurement_control_number} version {analysis.version_number} not found."
+            )
+            return
+
+        try:
+            self.analyze_procurement(procurement, analysis.version_number, analysis_id)
+            self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_SUCCESSFUL")
+        except Exception as e:
+            self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
+            self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_FAILED")
+            raise
+
+    def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
@@ -86,7 +114,7 @@ class AnalysisService:
             procurement: The procurement object to be analyzed.
         """
         control_number = procurement.pncp_control_number
-        self.logger.info(f"Starting analysis for procurement {control_number}...")
+        self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
 
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
 
@@ -121,13 +149,14 @@ class AnalysisService:
 
             final_result = AnalysisResult(
                 procurement_control_number=control_number,
+                version_number=version_number,
                 ai_analysis=ai_analysis,
                 warnings=warnings,
                 document_hash=document_hash,
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            analysis_id = self.analysis_repo.save_analysis(final_result)
+            self.analysis_repo.save_analysis(analysis_id, final_result)
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
@@ -349,6 +378,118 @@ class AnalysisService:
         Sua resposta deve ser um objeto JSON que siga estritamente o esquema
         fornecido, incluindo o campo `risk_score_rationale`.
         """
+
+    def run_specific_analysis(self, analysis_id: int):
+        """
+        Runs the analysis for a specific analysis ID.
+        """
+        self.logger.info(f"Running specific analysis for analysis_id: {analysis_id}")
+        analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
+        if not analysis:
+            self.logger.error(f"Analysis with ID {analysis_id} not found.")
+            return
+
+        if analysis.status != "PENDING_ANALYSIS":
+            self.logger.warning(
+                f"Analysis {analysis_id} is not in PENDING_ANALYSIS state (current: {analysis.status}). Skipping."
+            )
+            return
+
+        self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_IN_PROGRESS")
+
+        if not self.pubsub_provider:
+            raise ValueError("PubSubProvider is not configured for AnalysisService")
+
+        message_data = {
+            "procurement_control_number": analysis.procurement_control_number,
+            "version_number": analysis.version_number,
+            "analysis_id": analysis_id,
+        }
+        message_json = json.dumps(message_data)
+        message_bytes = message_json.encode()
+        self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
+        self.logger.info(f"Published analysis request for analysis_id {analysis_id} to Pub/Sub.")
+
+    def run_pre_analysis(self, start_date: date, end_date: date, batch_size: int, sleep_seconds: int):
+        self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
+        current_date = start_date
+        while current_date <= end_date:
+            self.logger.info(f"Processing date: {current_date}")
+            procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
+                target_date=current_date
+            )
+
+            if not procurements_with_raw:
+                self.logger.info(f"No procurements were updated on {current_date}. Moving to next day.")
+                current_date += timedelta(days=1)
+                continue
+
+            batch_count = 0
+            for i in range(0, len(procurements_with_raw), batch_size):
+                batch = procurements_with_raw[i : i + batch_size]
+                batch_count += 1
+                self.logger.info(f"Processing batch {batch_count} with {len(batch)} procurements.")
+
+                for procurement, raw_data in batch:
+                    try:
+                        self._pre_analyze_procurement(procurement, raw_data)
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
+                            exc_info=True,
+                        )
+
+                if i + batch_size < len(procurements_with_raw):
+                    self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
+                    time.sleep(sleep_seconds)
+
+            current_date += timedelta(days=1)
+        self.logger.info("Pre-analysis job for the entire date range has been completed.")
+
+    def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict):
+        # 1. Get documents
+        all_original_files = self.procurement_repo.process_procurement_documents(procurement)
+        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+
+        # 2. Calculate hash for procurement (raw data + all files)
+        raw_data_str = json.dumps(raw_data, sort_keys=True)
+        all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
+        procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
+
+        # 3. Check for idempotency on procurement
+        if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
+            self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
+            return
+
+        # 4. Calculate hash for analysis (files for AI)
+        analysis_document_hash = self._calculate_hash(files_for_ai)
+
+        # 5. Get new version number
+        latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
+        new_version = latest_version + 1
+
+        # 6. Save new procurement version
+        self.procurement_repo.save_procurement_version(
+            procurement=procurement,
+            raw_data=raw_data_str,
+            version_number=new_version,
+            content_hash=procurement_content_hash,
+        )
+
+        # 7. Count tokens
+        prompt = self._build_analysis_prompt(procurement, warnings)
+        token_count = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+
+        # 8. Calculate estimated cost
+        estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
+
+        # 9. Save pre-analysis
+        self.analysis_repo.save_pre_analysis(
+            procurement_control_number=procurement.pncp_control_number,
+            version_number=new_version,
+            estimated_cost=estimated_cost,
+            document_hash=analysis_document_hash,
+        )
 
     def run_analysis(self, start_date: date, end_date: date):
         """

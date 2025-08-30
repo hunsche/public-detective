@@ -214,3 +214,36 @@ def test_upload_file_to_gemini_processing_failed(mock_get_file, mock_upload_file
     provider = AiProvider(MockOutputSchema)
     with pytest.raises(Exception, match="failed processing"):
         provider._upload_file_to_gemini(b"content", "test.pdf")
+
+
+def test_count_tokens_for_analysis(mock_gemini_client, monkeypatch):
+    """
+    Tests that count_tokens_for_analysis correctly formats the request
+    and returns the token count.
+    """
+    # Arrange
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    mock_model_instance = MagicMock()
+    mock_response = MagicMock()
+    mock_response.total_tokens = 123
+    mock_model_instance.count_tokens.return_value = mock_response
+    mock_gemini_client.return_value = mock_model_instance
+
+    provider = AiProvider(MockOutputSchema)
+    prompt = "test prompt"
+    files = [("file1.pdf", b"content1"), ("file2.txt", b"content2")]
+
+    # Act
+    token_count = provider.count_tokens_for_analysis(prompt, files)
+
+    # Assert
+    assert token_count == 123
+    mock_model_instance.count_tokens.assert_called_once()
+    args, _ = mock_model_instance.count_tokens.call_args
+    contents = args[0]
+    assert len(contents) == 3  # prompt + 2 files
+    assert contents[0] == prompt
+    assert contents[1]["mime_type"] == "application/pdf"
+    assert contents[1]["data"] == b"content1"
+    assert contents[2]["mime_type"] == "text/plain"
+    assert contents[2]["data"] == b"content2"

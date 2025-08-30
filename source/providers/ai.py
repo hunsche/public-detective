@@ -93,6 +93,33 @@ class AiProvider(Generic[PydanticModel]):
                 self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
                 genai.delete_file(uploaded_file.name)
 
+    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> int:
+        """
+        Calculates the number of tokens for a given prompt and list of files
+        without making a call to generate content.
+
+        Args:
+            prompt: The instructional prompt for the AI model.
+            files: A list of tuples, where each tuple contains:
+                - The file path (for display name and mime type guessing).
+                - The byte content of the file.
+
+        Returns:
+            The total number of tokens for the given prompt and files.
+        """
+        self.logger.info("Counting tokens for analysis...")
+        parts: list[str | dict] = [prompt]
+        for file_path, file_content in files:
+            mime_type = guess_type(file_path)[0]
+            if not mime_type:
+                mime_type = "application/octet-stream"
+            parts.append({"mime_type": mime_type, "data": file_content})
+
+        response = self.model.count_tokens(parts)
+        token_count = response.total_tokens
+        self.logger.info(f"Estimated token count: {token_count}")
+        return token_count
+
     def _parse_and_validate_response(self, response: genai.types.GenerateContentResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.
 

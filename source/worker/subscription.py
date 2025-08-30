@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.analysis import Analysis
-from models.procurement import Procurement
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.database import DatabaseManager
@@ -118,19 +117,16 @@ class Subscription:
         message_id = message.message_id
         try:
             data_str = message.data.decode()
-            procurement = Procurement.model_validate_json(data_str)
-            correlation_id = f"{procurement.pncp_control_number}_{uuid.uuid4().hex[:8]}"
+            message_data = json.loads(data_str)
+            analysis_id = message_data["analysis_id"]
+            correlation_id = f"{analysis_id}_{uuid.uuid4().hex[:8]}"
 
             with LoggingProvider().set_correlation_id(correlation_id):
-                self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
-                self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
+                self.logger.info(
+                    f"Received message ID: {message_id} for analysis {analysis_id}. Attempting to process..."
+                )
 
-                self.procurement_repo.save_procurement(procurement)
-
-                if self.config.IS_DEBUG_MODE:
-                    self._debug_pause()
-
-                self.analysis_service.analyze_procurement(procurement)
+                self.analysis_service.process_analysis_from_message(analysis_id)
 
                 self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
                 message.ack()
