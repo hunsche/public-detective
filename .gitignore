@@ -122,3 +122,4 @@ tox.ini
 
 .env
 .mypy_cache
+.agents-scripts/
