@@ -20,6 +20,7 @@ def mock_dependencies():
         "file_record_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
+        "pubsub_provider": MagicMock(),
     }
 
 
@@ -75,7 +76,7 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
 
     # Act
     service = AnalysisService(**mock_dependencies)
-    service.analyze_procurement(mock_procurement)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     # Assert: Check that the AI provider was not called
     mock_dependencies["ai_provider"].get_structured_analysis.assert_not_called()
@@ -99,7 +100,7 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
 
     # Act
     service = AnalysisService(**mock_dependencies)
-    service.analyze_procurement(mock_procurement)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     # Assert
     assert mock_dependencies["file_record_repo"].save_file_record.call_count == 2
@@ -147,7 +148,7 @@ def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement)
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = []
 
-    service.analyze_procurement(mock_procurement)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.ai_provider.get_structured_analysis.assert_not_called()
 
@@ -157,7 +158,7 @@ def test_analyze_procurement_no_supported_files(mock_dependencies, mock_procurem
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("unsupported.txt", b"c")]
 
-    service.analyze_procurement(mock_procurement)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.ai_provider.get_structured_analysis.assert_not_called()
 
@@ -171,7 +172,7 @@ def test_analyze_procurement_main_success_path(mock_dependencies, mock_procureme
     mock_ai_analysis.model_dump.return_value = {"risk_score": 1, "summary": "test"}
     service.ai_provider.get_structured_analysis.return_value = mock_ai_analysis
 
-    service.analyze_procurement(mock_procurement)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.analysis_repo.save_analysis.assert_called_once()
     service.gcs_provider.upload_file.assert_called()
@@ -186,7 +187,7 @@ def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurem
     service.ai_provider.get_structured_analysis.side_effect = Exception("AI Error")
 
     with pytest.raises(Exception, match="AI Error"):
-        service.analyze_procurement(mock_procurement)
+        service.analyze_procurement(mock_procurement, 1, 123)
 
 
 def test_run_analysis_no_procurements(mock_dependencies):
@@ -212,3 +213,31 @@ def test_run_analysis_publish_failure(mock_dependencies, mock_procurement):
     service.run_analysis(start_date, end_date)
 
     service.procurement_repo.publish_procurement_to_pubsub.assert_called_once_with(mock_procurement)
+
+
+def test_process_analysis_from_message_analysis_not_found(mock_dependencies):
+    """
+    Tests that the function returns early if the analysis_id is not found.
+    """
+    service = AnalysisService(**mock_dependencies)
+    service.analysis_repo.get_analysis_by_id.return_value = None
+
+    service.process_analysis_from_message(999)
+
+    service.procurement_repo.get_procurement_by_id_and_version.assert_not_called()
+
+
+def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
+    """
+    Tests that the function returns early if the procurement is not found.
+    """
+    service = AnalysisService(**mock_dependencies)
+    mock_analysis = MagicMock()
+    mock_analysis.procurement_control_number = "123"
+    mock_analysis.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = None
+
+    service.process_analysis_from_message(123)
+
+    service.analysis_repo.update_analysis_status.assert_not_called()

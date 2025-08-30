@@ -119,32 +119,40 @@ def test_parse_row_to_model_with_invalid_data(analysis_repository, caplog):
     assert "Failed to parse analysis result from DB" in caplog.text
 
 
-def test_save_analysis_returns_id(analysis_repository):
+def test_save_analysis_updates_record(analysis_repository):
     """
-    Should return the ID of the newly inserted record.
+    Should execute an UPDATE statement with the correct parameters.
     """
     # Arrange
     mock_conn = MagicMock()
-    mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = 123
-    mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
+    analysis_id = 123
     analysis_result = AnalysisResult(
-        procurement_control_number="123",
+        procurement_control_number="PNCP-123",
+        version_number=1,
+        document_hash="test-hash",
         ai_analysis={
-            "risk_score": 1,
-            "risk_score_rationale": "test",
-            "summary": "test",
+            "risk_score": 8,
+            "risk_score_rationale": "High risk",
+            "summary": "This is a test summary.",
             "red_flags": [],
         },
+        warnings=["Warning 1"],
+        original_documents_gcs_path="gcs://bucket/orig",
+        processed_documents_gcs_path="gcs://bucket/proc",
     )
 
     # Act
-    returned_id = analysis_repository.save_analysis(analysis_result)
+    analysis_repository.save_analysis(analysis_id, analysis_result)
 
     # Assert
-    assert returned_id == 123
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["analysis_id"] == analysis_id
+    assert params["risk_score"] == 8
+    assert "UPDATE procurement_analysis" in str(args[0])
 
 
 def test_parse_row_to_model_empty_row(analysis_repository):
@@ -183,3 +191,33 @@ def test_get_analysis_by_hash_not_found(analysis_repository):
     result = analysis_repository.get_analysis_by_hash("nonexistent_hash")
 
     assert result is None
+
+
+def test_save_pre_analysis_returns_id(analysis_repository):
+    """
+    Should return the ID of the newly inserted pre-analysis record.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.scalar_one.return_value = 456
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    returned_id = analysis_repository.save_pre_analysis(
+        "PNCP-456",
+        1,
+        1.23,
+        "pre-analysis-hash",
+    )
+
+    # Assert
+    assert returned_id == 456
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["procurement_control_number"] == "PNCP-456"
+    assert params["version_number"] == 1
+    assert params["estimated_cost"] == 1.23
+    assert params["document_hash"] == "pre-analysis-hash"

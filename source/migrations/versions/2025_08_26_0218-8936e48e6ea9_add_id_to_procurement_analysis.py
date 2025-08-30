@@ -12,7 +12,8 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     table_name = get_table_name("procurement_analysis")
-    op.execute(f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS procurement_analysis_pkey CASCADE;")
+    base_table_name = "procurement_analysis"
+    op.execute(f"ALTER TABLE {table_name} DROP CONSTRAINT IF EXISTS {base_table_name}_pkey CASCADE;")
     op.execute(f"ALTER TABLE {table_name} ADD COLUMN id SERIAL PRIMARY KEY;")
     op.execute(f"ALTER TABLE {table_name} ADD UNIQUE (procurement_control_number);")
 

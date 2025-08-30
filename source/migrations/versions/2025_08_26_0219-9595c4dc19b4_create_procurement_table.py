@@ -12,6 +12,7 @@ depends_on: str | Sequence[str] | None = None
 
 def upgrade() -> None:
     table_name = get_table_name("procurement")
+    op.execute(f"DROP TABLE IF EXISTS {table_name}_dropped CASCADE;")
     op.execute(
         f"""
         CREATE TABLE {table_name} (
@@ -38,4 +39,4 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     table_name = get_table_name("procurement")
-    op.execute(f"DROP TABLE {table_name};")
+    op.execute(f"ALTER TABLE {table_name} RENAME TO {table_name}_dropped;")

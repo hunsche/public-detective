@@ -28,6 +28,7 @@ def upgrade() -> None:
     if schema_name:
         table_name = f"{schema_name}.{table_name}"
 
+    op.execute(f"DROP TABLE IF EXISTS {table_name}_dropped CASCADE;")
     op.execute(
         f"""
         CREATE TABLE {table_name} (
