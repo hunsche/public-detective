@@ -29,12 +29,11 @@ def test_parse_row_to_model_with_json_string(analysis_repository):
         "procurement_control_number",
         "risk_score",
         "risk_score_rationale",
-        "summary",
         "red_flags",
     ]
     red_flags_list = [
         {
-            "category": "OVERPRICE",
+            "category": "SOBREPRECO",
             "description": "Test description",
             "evidence_quote": "Test quote",
             "auditor_reasoning": "Test reasoning",
@@ -44,7 +43,6 @@ def test_parse_row_to_model_with_json_string(analysis_repository):
         "12345",
         8,
         "High risk",
-        "Summary",
         json.dumps(red_flags_list),  # red_flags as a JSON string
     )
 
@@ -71,12 +69,11 @@ def test_parse_row_to_model_with_dict(analysis_repository):
         "procurement_control_number",
         "risk_score",
         "risk_score_rationale",
-        "summary",
         "red_flags",
     ]
     red_flags_list = [
         {
-            "category": "DIRECTING",
+            "category": "DIRECIONAMENTO",
             "description": "Test description 2",
             "evidence_quote": "Test quote 2",
             "auditor_reasoning": "Test reasoning 2",
@@ -86,7 +83,6 @@ def test_parse_row_to_model_with_dict(analysis_repository):
         "67890",
         5,
         "Medium risk",
-        "Another Summary",
         red_flags_list,  # red_flags as a Python list
     )
 
@@ -135,7 +131,6 @@ def test_save_analysis_updates_record(analysis_repository):
         ai_analysis={
             "risk_score": 8,
             "risk_score_rationale": "High risk",
-            "summary": "This is a test summary.",
             "red_flags": [],
         },
         warnings=["Warning 1"],
@@ -166,14 +161,12 @@ def test_parse_row_to_model_invalid_json(analysis_repository):
         "procurement_control_number",
         "risk_score",
         "risk_score_rationale",
-        "summary",
         "red_flags",
     ]
     row_tuple = (
         "12345",
         8,
         "High risk",
-        "Summary",
         "this is not valid json",
     )
     with pytest.raises(json.JSONDecodeError):

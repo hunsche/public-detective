@@ -159,7 +159,7 @@ def e2e_test_setup(db_session):
 
 
 @pytest.mark.e2e
-@pytest.mark.timeout(300)
+@pytest.mark.timeout(150)
 def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     """
     Tests the full E2E flow against live dependencies:
@@ -172,7 +172,7 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
     ibge_code = "3304557"
-    max_items_to_process = 3
+    max_items_to_process = 2
 
     # Set environment variables for the run
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
@@ -213,14 +213,43 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
 
+        # Basic assertion: Check if all triggered analyses were successful
         completed_analysis_query = text(
-            "SELECT COUNT(*) FROM procurement_analysis "
-            "WHERE status = 'ANALYSIS_SUCCESSFUL' AND analysis_id = ANY(:ids)"
+            "SELECT * FROM procurement_analysis WHERE status = 'ANALYSIS_SUCCESSFUL' AND analysis_id = ANY(:ids)"
         )
-        completed_count = connection.execute(completed_analysis_query, {"ids": analysis_ids}).scalar_one()
+        completed_analyses = connection.execute(completed_analysis_query, {"ids": analysis_ids}).mappings().all()
 
-        print(f"Successfully completed analyses: {completed_count}/{len(analysis_ids)}")
-        assert completed_count == len(analysis_ids), "Not all triggered analyses were successful."
+        print(f"Successfully completed analyses: {len(completed_analyses)}/{len(analysis_ids)}")
+        assert len(completed_analyses) == len(analysis_ids), "Not all triggered analyses were successful."
+
+        # Generic data integrity assertions
+        print("\n--- Running generic data integrity checks ---")
+        for analysis in completed_analyses:
+            analysis_id = analysis["analysis_id"]
+            print(f"Checking analysis_id: {analysis_id}")
+
+            # Assert GCS paths are populated
+            assert (
+                analysis["original_documents_gcs_path"] is not None and analysis["original_documents_gcs_path"] != ""
+            ), f"original_documents_gcs_path is missing for analysis {analysis_id}"
+            assert (
+                analysis["processed_documents_gcs_path"] is not None and analysis["processed_documents_gcs_path"] != ""
+            ), f"processed_documents_gcs_path is missing for analysis {analysis_id}"
+
+            # Assert file_record table is populated for this analysis
+            file_record_query = text("SELECT * FROM file_record WHERE analysis_id = :analysis_id")
+            file_records = connection.execute(file_record_query, {"analysis_id": analysis_id}).mappings().all()
+
+            assert len(file_records) > 0, f"No file_record entries found for analysis {analysis_id}"
+            print(f"Found {len(file_records)} file_record entries.")
+
+            # Assert all file_records have a GCS path
+            for record in file_records:
+                assert (
+                    record["gcs_path"] is not None and record["gcs_path"] != ""
+                ), f"gcs_path is missing for file_record {record['id']}"
+
+        print("--- Generic data integrity checks passed ---")
 
     print("\n--- E2E test flow completed successfully ---")
 

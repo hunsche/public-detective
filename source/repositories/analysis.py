@@ -53,10 +53,9 @@ class AnalysisRepository:
             ai_analysis_data = {
                 "risk_score": row_dict.get("risk_score"),
                 "risk_score_rationale": row_dict.get("risk_score_rationale"),
-                "summary": row_dict.get("summary"),
-                "red_flags": red_flags,
+                "findings": red_flags,  # Use 'findings' to match the Pydantic alias
             }
-            row_dict["ai_analysis"] = Analysis(**ai_analysis_data)
+            row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
 
             return AnalysisResult.model_validate(row_dict)
@@ -77,7 +76,6 @@ class AnalysisRepository:
                 document_hash = :document_hash,
                 risk_score = :risk_score,
                 risk_score_rationale = :risk_score_rationale,
-                summary = :summary,
                 red_flags = :red_flags,
                 warnings = :warnings,
                 original_documents_gcs_path = :original_documents_gcs_path,
@@ -95,7 +93,6 @@ class AnalysisRepository:
             "document_hash": result.document_hash,
             "risk_score": result.ai_analysis.risk_score,
             "risk_score_rationale": result.ai_analysis.risk_score_rationale,
-            "summary": result.ai_analysis.summary,
             "red_flags": red_flags_json,
             "warnings": result.warnings,
             "original_documents_gcs_path": result.original_documents_gcs_path,
@@ -112,7 +109,11 @@ class AnalysisRepository:
         """
         Retrieves an analysis result from the database by its document hash.
         """
-        sql = text("SELECT * FROM procurement_analysis WHERE document_hash = :document_hash LIMIT 1;")
+        sql = text(
+            "SELECT * FROM procurement_analysis "
+            "WHERE document_hash = :document_hash AND status = 'ANALYSIS_SUCCESSFUL' "
+            "LIMIT 1;"
+        )
 
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"document_hash": document_hash}).fetchone()
