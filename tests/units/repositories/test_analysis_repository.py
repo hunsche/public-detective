@@ -272,3 +272,49 @@ def test_get_analysis_by_hash_found(analysis_repository):
 
     assert result is not None
     mock_parse.assert_called_once()
+
+
+def test_get_procurement_overall_status_found(analysis_repository):
+    """
+    Should return a dictionary with status info when a record is found.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_row = MagicMock()
+    mock_row._mapping = {
+        "procurement_id": "PNCP-123",
+        "latest_version": 2,
+        "overall_status": "ANALYZED_CURRENT",
+    }
+    mock_result_proxy.fetchone.return_value = mock_row
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    result = analysis_repository.get_procurement_overall_status("PNCP-123")
+
+    # Assert
+    assert result is not None
+    assert result["procurement_id"] == "PNCP-123"
+    assert result["overall_status"] == "ANALYZED_CURRENT"
+    mock_conn.execute.assert_called_once()
+
+
+def test_get_procurement_overall_status_not_found(analysis_repository):
+    """
+    Should return None when no record is found for the given control number.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.fetchone.return_value = None  # Simulate no record found
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    result = analysis_repository.get_procurement_overall_status("PNCP-999")
+
+    # Assert
+    assert result is None
+    mock_conn.execute.assert_called_once()

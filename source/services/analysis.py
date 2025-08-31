@@ -3,6 +3,7 @@ import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
+from typing import Any
 
 from models.analyses import Analysis, AnalysisResult
 from models.file_records import NewFileRecord
@@ -556,3 +557,20 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
+        """
+        Retrieves the overall status of a procurement.
+
+        Args:
+            procurement_control_number: The unique control number of the procurement.
+
+        Returns:
+            A dictionary with the overall status information or None if not found.
+        """
+        self.logger.info(f"Fetching overall status for procurement {procurement_control_number}.")
+        status_info = self.analysis_repo.get_procurement_overall_status(procurement_control_number)
+        if not status_info:
+            self.logger.warning(f"No overall status found for procurement {procurement_control_number}.")
+            return None
+        return status_info  # type: ignore

@@ -260,3 +260,42 @@ def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
     service.process_analysis_from_message(123)
 
     service.analysis_repo.update_analysis_status.assert_not_called()
+
+
+def test_get_procurement_overall_status_calls_repo(mock_dependencies):
+    """
+    Tests that the service method calls the repository method.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    control_number = "PNCP-123"
+    expected_status = {
+        "procurement_id": control_number,
+        "latest_version": 1,
+        "overall_status": "PENDING",
+    }
+    service.analysis_repo.get_procurement_overall_status.return_value = expected_status
+
+    # Act
+    result = service.get_procurement_overall_status(control_number)
+
+    # Assert
+    assert result == expected_status
+    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_get_procurement_overall_status_handles_none(mock_dependencies):
+    """
+    Tests that the service method handles a None response from the repository.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    control_number = "PNCP-999"
+    service.analysis_repo.get_procurement_overall_status.return_value = None
+
+    # Act
+    result = service.get_procurement_overall_status(control_number)
+
+    # Assert
+    assert result is None
+    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
