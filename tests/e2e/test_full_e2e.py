@@ -1,6 +1,8 @@
 import json
 import os
+import socket
 import subprocess  # nosec B404
+import time
 import uuid
 from pathlib import Path
 from zipfile import ZipFile
@@ -60,9 +62,21 @@ def db_session():
     user = os.getenv("POSTGRES_USER", "user")
     password = os.getenv("POSTGRES_PASSWORD", "password")
     db_name = os.getenv("POSTGRES_DB", "public_detective")
-    port = os.getenv("POSTGRES_PORT", "5432")
+    port = int(os.getenv("POSTGRES_PORT", "5432"))
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
+
+    # Wait for postgres to be ready
+    timeout = 30
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            with socket.create_connection((host, port), timeout=1):
+                break
+        except (TimeoutError, ConnectionRefusedError):
+            time.sleep(1)
+    else:
+        pytest.fail(f"Could not connect to postgres at {host}:{port} after {timeout} seconds")
 
     db_url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
     engine = create_engine(db_url)
