@@ -174,6 +174,16 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         assert status == "ANALYSIS_SUCCESSFUL"
         assert risk_score == gemini_response_fixture.risk_score
 
+        # Check history records
+        history_query = text(
+            "SELECT status FROM procurement_analysis_status_history WHERE analysis_id = :analysis_id ORDER BY created_at"
+        )
+        history_records = connection.execute(history_query, {"analysis_id": analysis_id}).fetchall()
+        statuses = [record[0] for record in history_records]
+        assert "PENDING_ANALYSIS" in statuses
+        assert "ANALYSIS_IN_PROGRESS" in statuses
+        assert "ANALYSIS_SUCCESSFUL" in statuses
+
 
 @pytest.mark.timeout(180)
 def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # noqa: F841

@@ -263,6 +263,57 @@ def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
     service.analysis_repo.update_analysis_status.assert_not_called()
 
 
+def test_process_analysis_from_message_success(mock_dependencies, mock_procurement):
+    """
+    Tests the success path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = 123
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
+
+    with patch.object(service, "_update_status_with_history") as mock_update_status:
+        # Act
+        service.process_analysis_from_message(analysis_id)
+
+        # Assert
+        service.analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id)
+        mock_update_status.assert_called_once_with(
+            analysis_id,
+            ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL,
+            "Analysis completed successfully.",
+        )
+
+
+def test_process_analysis_from_message_failure(mock_dependencies, mock_procurement):
+    """
+    Tests the failure path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = 123
+    error_message = "AI provider failed"
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
+    service.analyze_procurement.side_effect = Exception(error_message)
+
+    with patch.object(service, "_update_status_with_history") as mock_update_status:
+        # Act & Assert
+        with pytest.raises(Exception, match=error_message):
+            service.process_analysis_from_message(analysis_id)
+
+        mock_update_status.assert_called_once_with(
+            analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, error_message
+        )
+
+
 def test_get_procurement_overall_status_calls_repo(mock_dependencies):
     """
     Tests that the service method calls the repository method.
