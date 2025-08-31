@@ -144,6 +144,34 @@ If any of these checks fail, your commit will be aborted. Simply review the erro
 ### Git Commit Messages
 As mentioned above, we use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard. This helps us automate changelogs and makes the project history more readable.
 
+## 🤓 Workflow Overview
+The application operates in a two-stage pipeline: a lightweight **Pre-analysis** stage to discover and prepare data, followed by an on-demand, AI-powered **Analysis** stage. This decoupled architecture ensures efficiency and cost-effectiveness.
+
+The diagram below illustrates the complete workflow:
+
+```mermaid
+graph TD
+    subgraph "Stage 1: Pre-analysis (Scheduler)"
+        A[Start: `pre-analyze` command] --> B{Fetch new data from PNCP API};
+        B --> C[Calculate content hash for idempotency];
+        C --> D[Estimate AI analysis cost];
+        D --> E[Save analysis record to Database<br>Status: PENDING_ANALYSIS];
+    end
+
+    E --> F[Start: `analyze` command with ID]
+
+    subgraph "Stage 2: Analysis (On-Demand)"
+        F --> G[Publish message to Pub/Sub];
+        H[Background worker consumes message] --> I[Retrieve data and documents];
+        I --> J[Submit to Google Gemini for analysis];
+        J --> K{Save AI results to Database};
+        K --> L[Status: ANALYSIS_SUCCESSFUL];
+        K --> M[Status: ANALYSIS_FAILED];
+    end
+
+    G -.-> H;
+```
+
 ## Code of Conduct
 We are committed to providing a friendly, safe and welcoming environment for all, regardless of gender, sexual orientation, disability, ethnicity, religion, or similar personal characteristic. Please read our [Code of Conduct](./CODE_OF_CONDUCT.md) to learn more.
 
