@@ -68,37 +68,86 @@ def test_analysis_service_instantiation(mock_dependencies):
     assert service.procurement_repo == mock_dependencies["procurement_repo"]
 
 
-def test_idempotency_check(mock_dependencies, mock_procurement):
-    """Tests that analysis is skipped if a result with the same hash exists."""
-    # Arrange: Mock the return values
-    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
+def test_idempotency_check_successful(mock_dependencies, mock_procurement):
+    """
+    Tests that analysis is skipped and results are reused if a successful
+    analysis with the same hash already exists.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
 
-    # Create a mock for the nested ai_analysis object
-    mock_ai_analysis_details = MagicMock(spec=Analysis)
-    mock_ai_analysis_details.risk_score = 5
-    mock_ai_analysis_details.risk_score_rationale = "Reused rationale"
-    mock_ai_analysis_details.red_flags = []
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.risk_score = 5
+    mock_ai_analysis.risk_score_rationale = "Reused rationale"
+    mock_ai_analysis.red_flags = []
 
-    # Create the main mock for the analysis result
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
-    mock_existing_analysis.ai_analysis = mock_ai_analysis_details
+    mock_existing_analysis.analysis_id = 122  # Different from the current one
+    mock_existing_analysis.status = "ANALYSIS_SUCCESSFUL"
+    mock_existing_analysis.ai_analysis = mock_ai_analysis
     mock_existing_analysis.warnings = ["Reused warning"]
 
-    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
+    service.analysis_repo.get_latest_analysis_by_hash.return_value = mock_existing_analysis
 
     # Act
-    service = AnalysisService(**mock_dependencies)
-    service.analyze_procurement(mock_procurement, 1, 123)
+    service.analyze_procurement(procurement=mock_procurement, version_number=1, analysis_id=123)
 
-    # Assert: Check that the AI provider was not called
-    mock_dependencies["ai_provider"].get_structured_analysis.assert_not_called()
-
-    # Also assert that save_analysis was called with the reused data
-    mock_dependencies["analysis_repo"].save_analysis.assert_called_once()
-    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
-    saved_result = call_args[1]  # second argument is the AnalysisResult object
+    # Assert
+    service.ai_provider.get_structured_analysis.assert_not_called()
+    service.analysis_repo.save_analysis.assert_called_once()
+    _, saved_result = service.analysis_repo.save_analysis.call_args[0]
     assert saved_result.ai_analysis.risk_score_rationale == "Reused rationale"
     assert saved_result.warnings == ["Reused warning"]
+
+
+@pytest.mark.parametrize(
+    "existing_status",
+    ["ANALYSIS_IN_PROGRESS", "PENDING_ANALYSIS"],
+)
+def test_idempotency_check_in_progress(mock_dependencies, mock_procurement, existing_status):
+    """
+    Tests that analysis is skipped if an in-progress or pending analysis
+    with the same hash already exists.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    mock_existing_analysis.analysis_id = 122
+    mock_existing_analysis.status = existing_status
+    service.analysis_repo.get_latest_analysis_by_hash.return_value = mock_existing_analysis
+
+    # Act
+    service.analyze_procurement(procurement=mock_procurement, version_number=1, analysis_id=123)
+
+    # Assert
+    service.ai_provider.get_structured_analysis.assert_not_called()
+    service.analysis_repo.save_analysis.assert_not_called()
+    service.analysis_repo.update_analysis_status.assert_called_once_with(123, "ANALYSIS_SUCCESSFUL")
+
+
+def test_idempotency_check_failed(mock_dependencies, mock_procurement):
+    """
+    Tests that analysis proceeds if a failed analysis with the same hash exists.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    mock_existing_analysis.analysis_id = 122
+    mock_existing_analysis.status = "ANALYSIS_FAILED"
+    service.analysis_repo.get_latest_analysis_by_hash.return_value = mock_existing_analysis
+    service.ai_provider.get_structured_analysis.return_value = MagicMock(spec=Analysis)
+
+    # Act
+    service.analyze_procurement(procurement=mock_procurement, version_number=1, analysis_id=123)
+
+    # Assert
+    service.ai_provider.get_structured_analysis.assert_called_once()
+    service.analysis_repo.save_analysis.assert_called_once()
 
 
 def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):

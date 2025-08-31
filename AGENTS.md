@@ -29,7 +29,9 @@ Key architectural features:
 
 - **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E2E tests.
 
-- **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
+- **Idempotency and Reprocessing Logic:** The system is designed to prevent duplicate work and handle reprocessing intelligently.
+    - **Pre-analysis Phase:** Before a new analysis task is created, the system calculates a SHA-256 hash of the relevant document contents. It then checks if an analysis with this hash already exists. A new task will *only* be created if no previous analysis exists or if the most recent existing analysis has a status of `ANALYSIS_FAILED`. This prevents creating duplicate tasks for procurements that are already successful, pending, or in-progress.
+    - **Worker Phase (Locking):** As a failsafe against race conditions, the worker itself contains a locking mechanism. When a worker picks up a task, it re-checks for any other analysis with the same document hash. If it finds an analysis that is `ANALYSIS_SUCCESSFUL`, it will reuse those results. If it finds one that is `PENDING_ANALYSIS` or `ANALYSIS_IN_PROGRESS`, it will assume another worker is already handling it and will terminate its own process to avoid redundant work.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
 
 ### Architectural Principles
