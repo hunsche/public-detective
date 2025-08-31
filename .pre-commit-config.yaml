@@ -76,7 +76,7 @@ repos:
         language: python
         types: [python]
         files: ^source/migrations/versions/
-        args: ["-c", "bandit_migrations.yaml"]
+        args: ["-c", ".bandit-migrations.yaml"]
         additional_dependencies: ["bandit[yaml]"]
 
     - id: pytest-cov
