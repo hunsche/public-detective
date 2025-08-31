@@ -112,9 +112,27 @@ class AnalysisRepository:
         Retrieves an analysis result from the database by its document hash.
         """
         sql = text(
-            "SELECT * FROM procurement_analyses "
-            "WHERE document_hash = :document_hash AND status = :status "
-            "LIMIT 1;"
+            """
+            SELECT
+                analysis_id,
+                procurement_control_number,
+                version_number,
+                status,
+                risk_score,
+                risk_score_rationale,
+                summary,
+                red_flags,
+                warnings,
+                document_hash,
+                original_documents_gcs_path,
+                processed_documents_gcs_path,
+                estimated_cost,
+                created_at,
+                updated_at
+            FROM procurement_analyses
+            WHERE document_hash = :document_hash AND status = :status
+            LIMIT 1;
+            """
         )
 
         with self.engine.connect() as conn:
@@ -169,7 +187,29 @@ class AnalysisRepository:
         """
         Retrieves an analysis result from the database by its ID.
         """
-        sql = text("SELECT * FROM procurement_analyses WHERE analysis_id = :analysis_id LIMIT 1;")
+        sql = text(
+            """
+            SELECT
+                analysis_id,
+                procurement_control_number,
+                version_number,
+                status,
+                risk_score,
+                risk_score_rationale,
+                summary,
+                red_flags,
+                warnings,
+                document_hash,
+                original_documents_gcs_path,
+                processed_documents_gcs_path,
+                estimated_cost,
+                created_at,
+                updated_at
+            FROM procurement_analyses
+            WHERE analysis_id = :analysis_id
+            LIMIT 1;
+            """
+        )
 
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"analysis_id": analysis_id}).fetchone()
