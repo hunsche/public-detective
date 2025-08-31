@@ -6,6 +6,7 @@ import tempfile
 import zipfile
 from datetime import date
 from http import HTTPStatus
+from typing import cast
 from urllib.parse import urljoin
 
 import py7zr
@@ -129,7 +130,7 @@ class ProcurementsRepository:
         if not result:
             return None
 
-        return result
+        return cast(dict, result)
 
     def process_procurement_documents(self, procurement: Procurement) -> list[tuple[str, bytes]]:
         """Downloads all documents for a procurement, extracts metadata for every

@@ -142,7 +142,9 @@ def test_analyze_procurement_reuses_successful_results(mock_dependencies, mock_p
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
     mock_existing_analysis.analysis_id = 122
     mock_existing_analysis.status = "ANALYSIS_SUCCESSFUL"
-    mock_existing_analysis.ai_analysis = Analysis(risk_score=5, risk_score_rationale="Reused", summary="Reused", red_flags=[])
+    mock_existing_analysis.ai_analysis = Analysis(
+        risk_score=5, risk_score_rationale="Reused", summary="Reused", red_flags=[]
+    )
     mock_existing_analysis.warnings = []  # Ensure all necessary attributes are mocked
 
     service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
@@ -157,7 +159,9 @@ def test_analyze_procurement_reuses_successful_results(mock_dependencies, mock_p
     "existing_status",
     ["ANALYSIS_IN_PROGRESS"],
 )
-def test_analyze_procurement_skips_in_progress(mock_dependencies, mock_procurement, raw_procurement_data, existing_status):
+def test_analyze_procurement_skips_in_progress(
+    mock_dependencies, mock_procurement, raw_procurement_data, existing_status
+):
     """
     Tests that analysis is skipped if an in-progress analysis with the same hash exists.
     """
@@ -169,7 +173,9 @@ def test_analyze_procurement_skips_in_progress(mock_dependencies, mock_procureme
     mock_existing_analysis.status = existing_status
     service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
 
-    service.analyze_procurement(procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data)
+    service.analyze_procurement(
+        procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data
+    )
 
     service.ai_provider.get_structured_analysis.assert_not_called()
     service.analysis_repo.save_analysis.assert_not_called()
@@ -179,7 +185,9 @@ def test_analyze_procurement_skips_in_progress(mock_dependencies, mock_procureme
     "existing_status",
     ["PENDING_ANALYSIS", "ANALYSIS_FAILED"],
 )
-def test_analyze_procurement_proceeds_on_pending_or_failed(mock_dependencies, mock_procurement, raw_procurement_data, existing_status):
+def test_analyze_procurement_proceeds_on_pending_or_failed(
+    mock_dependencies, mock_procurement, raw_procurement_data, existing_status
+):
     """
     Tests that analysis proceeds if a pending or failed analysis with the same hash exists.
     """
@@ -195,7 +203,9 @@ def test_analyze_procurement_proceeds_on_pending_or_failed(mock_dependencies, mo
     mock_ai_analysis = Analysis(risk_score=1, risk_score_rationale="test", summary="test", red_flags=[])
     service.ai_provider.get_structured_analysis.return_value = mock_ai_analysis
 
-    service.analyze_procurement(procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data)
+    service.analyze_procurement(
+        procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data
+    )
 
     service.ai_provider.get_structured_analysis.assert_called_once()
     service.analysis_repo.save_analysis.assert_called_once()
