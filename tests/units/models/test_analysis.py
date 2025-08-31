@@ -2,9 +2,6 @@
 Unit tests for the analysis models.
 """
 
-import json
-
-import pytest
 from models.analysis import Analysis, RedFlag, RedFlagCategory
 
 
@@ -31,8 +28,8 @@ def test_analysis_creation():
     assert analysis.risk_score_rationale == "Test rationale"
 
 
-def test_parse_red_flags_validator():
-    """Tests the parse_red_flags validator."""
+def test_red_flag_parsing():
+    """Tests that red_flags are correctly parsed from dicts."""
     # Test with a list of dicts
     red_flags_dicts = [
         {
@@ -42,25 +39,5 @@ def test_parse_red_flags_validator():
             "auditor_reasoning": "Test",
         }
     ]
-    analysis = Analysis(risk_score=1, risk_score_rationale="test", findings=red_flags_dicts)
+    analysis = Analysis(risk_score=1, risk_score_rationale="test", red_flags=red_flags_dicts)
     assert isinstance(analysis.red_flags[0], RedFlag)
-
-    # Test with a list of JSON strings
-    red_flags_json = [json.dumps(flag) for flag in red_flags_dicts]
-    analysis = Analysis(risk_score=1, risk_score_rationale="test", findings=red_flags_json)
-    assert isinstance(analysis.red_flags[0], RedFlag)
-
-    # Test with invalid JSON string
-    red_flags_invalid_json = ["invalid json"]
-    analysis = Analysis(risk_score=1, risk_score_rationale="test", findings=red_flags_invalid_json)
-    assert analysis.red_flags == []
-
-    # Test with a mix of valid and invalid
-    red_flags_mixed = [red_flags_dicts[0], "invalid json"]
-    analysis = Analysis(risk_score=1, risk_score_rationale="test", findings=red_flags_mixed)
-    assert len(analysis.red_flags) == 1
-    assert isinstance(analysis.red_flags[0], RedFlag)
-
-    # Test with non-list input
-    with pytest.raises(ValueError):
-        Analysis(risk_score=1, risk_score_rationale="test", findings="not a list")

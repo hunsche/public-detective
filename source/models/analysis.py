@@ -2,10 +2,9 @@
 This module defines the Pydantic models for the analysis data structures.
 """
 
-import json
 from enum import StrEnum
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
 class RedFlagCategory(StrEnum):
@@ -48,35 +47,15 @@ class Analysis(BaseModel):
     """
 
     risk_score: int | None = Field(
-        None,
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
     risk_score_rationale: str | None = Field(
-        None,
         description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
     )
     red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
-        alias="findings",
     )
-
-    @field_validator("red_flags", mode="before")
-    @classmethod
-    def parse_red_flags(cls, v):
-        if not isinstance(v, list):
-            return v
-        parsed_flags = []
-        for item in v:
-            if isinstance(item, str):
-                try:
-                    parsed_flags.append(json.loads(item))
-                except json.JSONDecodeError:
-                    # Handle cases where the string is not valid JSON
-                    continue
-            else:
-                parsed_flags.append(item)
-        return parsed_flags
 
 
 class AnalysisResult(BaseModel):

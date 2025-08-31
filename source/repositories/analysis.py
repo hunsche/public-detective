@@ -53,7 +53,7 @@ class AnalysisRepository:
             ai_analysis_data = {
                 "risk_score": row_dict.get("risk_score"),
                 "risk_score_rationale": row_dict.get("risk_score_rationale"),
-                "findings": red_flags,  # Use 'findings' to match the Pydantic alias
+                "red_flags": red_flags,
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
