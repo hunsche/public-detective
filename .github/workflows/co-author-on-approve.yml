@@ -1,0 +1,87 @@
+name: Add Co-author on Approve
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  add-co-author:
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: read
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.ref }}
+          fetch-depth: 0 # We need all history for rebase
+
+      - name: Configure Git
+        run: |
+          git config user.name "Jules"
+          git config user.email "jules@example.com"
+
+      - name: Add co-author and approval trailers to Jules' commits
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPROVER_LOGIN: ${{ github.event.review.user.login }}
+          PR_BASE_REF: ${{ github.event.pull_request.base.ref }}
+        run: |
+          set -e
+          set -x
+
+          # 1. Get Approver Info
+          echo "Fetching info for approver: ${APPROVER_LOGIN}"
+          approver_info=$(gh api users/${APPROVER_LOGIN})
+          approver_name=$(echo "$approver_info" | jq -r .name)
+          approver_email=$(echo "$approver_info" | jq -r .email)
+          if [ "$approver_email" == "null" ]; then
+            approver_email="${APPROVER_LOGIN}@users.noreply.github.com"
+          fi
+
+          export CO_AUTHOR_TRAILER="Co-authored-by: ${approver_name} <${approver_email}>"
+          export APPROVAL_TRAILER="Codeowner-approval: @${APPROVER_LOGIN}"
+          echo "Co-author trailer: ${CO_AUTHOR_TRAILER}"
+          echo "Approval trailer: ${APPROVAL_TRAILER}"
+
+          # 2. Find Merge Base
+          merge_base=$(git merge-base origin/${PR_BASE_REF} HEAD)
+          echo "Merge base is ${merge_base}"
+
+          # 3. Create the script for rebase --exec
+          cat << 'SCRIPT' > /tmp/amend_script.sh
+          #!/bin/bash
+          set -e
+
+          if git show -s --format='%an' HEAD | grep -q 'Jules'; then
+            # Check for the specific approval trailer to prevent duplication
+            if ! git show -s --format='%b' HEAD | grep -qF "$APPROVAL_TRAILER"; then
+              echo "Amending commit $(git rev-parse --short HEAD) to add trailers."
+              git commit --amend --no-edit --trailer="$CO_AUTHOR_TRAILER" --trailer="$APPROVAL_TRAILER"
+            else
+              echo "Commit $(git rev-parse --short HEAD) already has this approval trailer."
+            fi
+          else
+            echo "Skipping commit $(git rev-parse --short HEAD) by $(git show -s --format='%an' HEAD)."
+          fi
+          SCRIPT
+          chmod +x /tmp/amend_script.sh
+
+          # 4. Execute the rebase
+          echo "Starting rebase from ${merge_base}"
+          git rebase "${merge_base}" --exec="/tmp/amend_script.sh" || {
+            echo "::error::Rebase failed. Aborting rebase and failing the workflow."
+            git rebase --abort
+            exit 1
+          }
+          echo "Rebase successful."
+
+      - name: Force push to PR branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "Force pushing changes to ${{ github.event.pull_request.head.ref }}"
+          git push --force
