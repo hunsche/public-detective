@@ -3,10 +3,11 @@ Unit tests for the AnalysisService.
 """
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from models.analyses import Analysis, AnalysisResult
+from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from services.analysis import AnalysisService
 
@@ -18,6 +19,7 @@ def mock_dependencies():
         "procurement_repo": MagicMock(),
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
+        "status_history_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
@@ -262,6 +264,62 @@ def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
     service.analysis_repo.update_analysis_status.assert_not_called()
 
 
+def test_process_analysis_from_message_success(mock_dependencies, mock_procurement):
+    """
+    Tests the success path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = 123
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
+
+    with (
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+        patch.object(service, "analyze_procurement") as mock_analyze_procurement,
+    ):
+        # Act
+        service.process_analysis_from_message(analysis_id)
+
+        # Assert
+        mock_analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id)
+        mock_update_status.assert_called_once_with(
+            analysis_id,
+            ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL,
+            "Analysis completed successfully.",
+        )
+
+
+def test_process_analysis_from_message_failure(mock_dependencies, mock_procurement):
+    """
+    Tests the failure path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = 123
+    error_message = "AI provider failed"
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
+
+    with (
+        patch.object(service, "analyze_procurement", side_effect=Exception(error_message)),
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+    ):
+        # Act & Assert
+        with pytest.raises(Exception, match=error_message):
+            service.process_analysis_from_message(analysis_id)
+
+        mock_update_status.assert_called_once_with(
+            analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, error_message
+        )
+
+
 def test_get_procurement_overall_status_calls_repo(mock_dependencies):
     """
     Tests that the service method calls the repository method.
@@ -299,3 +357,29 @@ def test_get_procurement_overall_status_handles_none(mock_dependencies):
     # Assert
     assert result is None
     service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_reap_stale_analyses(mock_dependencies):
+    """
+    Tests that the reap_stale_analyses method correctly calls the repository
+    and creates history records for each stale analysis.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    stale_ids = [1, 2, 3]
+    timeout = 15
+    service.analysis_repo.reset_stale_analyses.return_value = stale_ids
+
+    # Act
+    result_count = service.reap_stale_analyses(timeout)
+
+    # Assert
+    assert result_count == len(stale_ids)
+    service.analysis_repo.reset_stale_analyses.assert_called_once_with(timeout)
+    assert service.status_history_repo.create_record.call_count == len(stale_ids)
+    service.status_history_repo.create_record.assert_any_call(
+        1, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
+    )
+    service.status_history_repo.create_record.assert_any_call(
+        3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
+    )

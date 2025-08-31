@@ -149,6 +149,26 @@ INFO: Triggering analysis for ID: 123...
 INFO: Message published successfully. A background worker will process the analysis shortly.
 ```
 
+---
+### `reap-stale-tasks`
+This is a maintenance command to clean up "orphan" tasks. If a worker crashes mid-process, a task could be stuck in the `IN_PROGRESS` state indefinitely. This command finds such tasks and resets them to `TIMEOUT`, allowing them to be re-processed.
+
+**Example: Reset tasks that have been in-progress for more than 15 minutes (default)**
+```bash
+$ poetry run python -m source.cli reap-stale-tasks
+
+INFO: Searching for stale tasks with a timeout of 15 minutes...
+INFO: Successfully reset 1 stale task to TIMEOUT status.
+```
+
+**Example: Use a custom 60-minute timeout**
+```bash
+$ poetry run python -m source.cli reap-stale-tasks --timeout-minutes 60
+
+INFO: Searching for stale tasks with a timeout of 60 minutes...
+INFO: No stale tasks found.
+```
+
 ## 🙌 Join the Mission!
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**. Please refer to the `CONTRIBUTING.md` file for details.

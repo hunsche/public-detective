@@ -31,6 +31,8 @@ Key architectural features:
 
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
+- **Status Auditing:** Every change to an analysis's status is recorded in a dedicated `procurement_analysis_status_history` table, providing a full audit trail for debugging and observability.
+- **Orphan Task Handling:** A dedicated CLI command, `reap-stale-tasks`, is provided to find and reset tasks that have been stuck in the `IN_PROGRESS` state for too long.
 
 ### Architectural Principles
 
@@ -64,6 +66,14 @@ The flow of control is always orchestrated by the **Service** layer.
 5.  The Repository and Provider return data to the Service, which continues its execution until the use case is complete.
 
 This ensures a unidirectional flow of dependencies and maintains a clear separation of responsibilities.
+
+#### Dependency Injection Pattern
+
+The glue that holds these layers together is a form of Dependency Injection (DI).
+
+- **Concept**: Instead of a class creating its own dependencies (e.g., a Service creating its own Repository instance), the dependencies are "injected" from the outside, typically during the class's initialization.
+- **Our Pattern: Constructor Injection**: Dependencies are passed in as arguments to the `__init__` method of a class. The main application entry points (e.g., the CLI command handlers) act as the "composition root" where the application's object graph is constructed.
+- **Rule**: All dependencies (Repositories, Providers, etc.) **must** be passed into a Service's constructor. Do not instantiate dependencies inside a Service. This is critical for testability, as it allows mock dependencies to be injected during unit tests.
 
 ## 2. Environment Setup
 

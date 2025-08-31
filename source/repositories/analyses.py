@@ -237,6 +237,39 @@ class AnalysisRepository:
             conn.commit()
         self.logger.info("Analysis status updated successfully.")
 
+    def reset_stale_analyses(self, timeout_minutes: int) -> list[int]:
+        """
+        Finds analyses that are 'IN_PROGRESS' for longer than the timeout
+        and resets their status to 'TIMEOUT'.
+        """
+        self.logger.info(f"Resetting analyses that have been in progress for more than {timeout_minutes} minutes.")
+        sql = text(
+            """
+            UPDATE procurement_analyses
+            SET status = :new_status, updated_at = NOW()
+            WHERE
+                status = :old_status
+                AND updated_at < NOW() - (INTERVAL '1 minute' * :timeout_minutes)
+            RETURNING analysis_id;
+            """
+        )
+        params = {
+            "new_status": ProcurementAnalysisStatus.TIMEOUT.value,
+            "old_status": ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value,
+            "timeout_minutes": timeout_minutes,
+        }
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, params)
+            stale_ids = [row[0] for row in result]
+            conn.commit()
+
+        if stale_ids:
+            self.logger.info(f"Reset {len(stale_ids)} stale analyses: {stale_ids}")
+        else:
+            self.logger.info("No stale analyses found.")
+
+        return stale_ids
+
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """
         Retrieves the overall status of a procurement based on its analysis history.

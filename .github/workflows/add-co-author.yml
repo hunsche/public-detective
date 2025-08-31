@@ -1,4 +1,4 @@
-name: Add Co-author to PR Body
+name: Add Co-author
 
 on:
   pull_request_review:

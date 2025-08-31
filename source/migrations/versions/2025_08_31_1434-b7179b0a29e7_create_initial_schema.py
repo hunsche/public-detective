@@ -21,6 +21,7 @@ def upgrade() -> None:
     procurements_table = get_qualified_name("procurements")
     procurement_analyses_table = get_qualified_name("procurement_analyses")
     file_records_table = get_qualified_name("file_records")
+    history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
 
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
@@ -34,7 +35,8 @@ def upgrade() -> None:
             'PENDING_ANALYSIS',
             'ANALYSIS_IN_PROGRESS',
             'ANALYSIS_SUCCESSFUL',
-            'ANALYSIS_FAILED'
+            'ANALYSIS_FAILED',
+            'TIMEOUT'
         );
 
         CREATE TABLE {procurements_table} (
@@ -107,6 +109,16 @@ def upgrade() -> None:
             ON {procurement_analyses_table} USING btree (document_hash);
         CREATE INDEX ix_procurement_content_hash
             ON {procurements_table} USING btree (content_hash);
+
+        CREATE TABLE {get_qualified_name("procurement_analysis_status_history")} (
+            id SERIAL PRIMARY KEY,
+            analysis_id INTEGER NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
+            status {procurement_analysis_status_type} NOT NULL,
+            details TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE INDEX idx_history_analysis_id ON {history_table} (analysis_id);
     """
     )
 
@@ -115,8 +127,10 @@ def downgrade() -> None:
     procurements_table = get_qualified_name("procurements")
     procurement_analyses_table = get_qualified_name("procurement_analyses")
     file_records_table = get_qualified_name("file_records")
+    history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
 
+    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")

@@ -17,6 +17,7 @@ from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
 
 
 class AnalysisService:
@@ -32,6 +33,7 @@ class AnalysisService:
     procurement_repo: ProcurementsRepository
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
+    status_history_repo: StatusHistoryRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -57,6 +59,7 @@ class AnalysisService:
         procurement_repo: ProcurementsRepository,
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
+        status_history_repo: StatusHistoryRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -65,11 +68,19 @@ class AnalysisService:
         self.procurement_repo = procurement_repo
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
+        self.status_history_repo = status_history_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
+
+    def _update_status_with_history(
+        self, analysis_id: int, status: ProcurementAnalysisStatus, details: str | None = None
+    ) -> None:
+        """Updates the analysis status and records the change in the history table."""
+        self.analysis_repo.update_analysis_status(analysis_id, status)
+        self.status_history_repo.create_record(analysis_id, status, details)
 
     def process_analysis_from_message(self, analysis_id: int):
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
@@ -88,10 +99,12 @@ class AnalysisService:
 
         try:
             self.analyze_procurement(procurement, analysis.version_number, analysis_id)
-            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL)
+            self._update_status_with_history(
+                analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
+            )
         except Exception as e:
             self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
-            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED)
+            self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
             raise
 
     def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
@@ -428,7 +441,9 @@ class AnalysisService:
             )
             return
 
-        self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS)
+        self._update_status_with_history(
+            analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS, "Worker picked up the task."
+        )
 
         if not self.pubsub_provider:
             raise ValueError("PubSubProvider is not configured for AnalysisService")
@@ -524,11 +539,14 @@ class AnalysisService:
         estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
 
         # 9. Save pre-analysis
-        self.analysis_repo.save_pre_analysis(
+        analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             estimated_cost=estimated_cost,
             document_hash=analysis_document_hash,
+        )
+        self.status_history_repo.create_record(
+            analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
 
     def run_analysis(self, start_date: date, end_date: date):
@@ -559,6 +577,19 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def reap_stale_analyses(self, timeout_minutes: int) -> int:
+        """
+        Resets the status of stale analyses to TIMEOUT and records the change.
+        """
+        stale_ids = self.analysis_repo.reset_stale_analyses(timeout_minutes)
+        for analysis_id in stale_ids:
+            self._update_status_with_history(
+                analysis_id,
+                ProcurementAnalysisStatus.TIMEOUT,
+                f"Analysis timed out after {timeout_minutes} minutes.",
+            )
+        return len(stale_ids)
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """
