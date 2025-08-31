@@ -26,11 +26,11 @@ def get_gcs_url_from_db(control_number: str) -> str | None:
         )
         cursor = conn.cursor()
 
-        # ASSUMINDO que a sua tabela se chama 'procurement_analysis' e a
+        # ASSUMINDO que a sua tabela se chama 'procurement_analyses' e a
         # coluna 'gcs_document_url'. Ajuste se os nomes forem diferentes.
         sql_query = """
             SELECT gcs_document_url
-            FROM procurement_analysis
+            FROM procurement_analyses
             WHERE procurement_control_number = %s
             ORDER BY created_at DESC
             LIMIT 1;

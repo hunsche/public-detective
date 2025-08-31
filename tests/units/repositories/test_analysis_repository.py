@@ -2,8 +2,8 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from models.analysis import AnalysisResult, RedFlag, RedFlagCategory
-from repositories.analysis import AnalysisRepository
+from models.analyses import AnalysisResult, RedFlag, RedFlagCategory
+from repositories.analyses import AnalysisRepository
 
 
 @pytest.fixture
@@ -147,7 +147,7 @@ def test_save_analysis_updates_record(analysis_repository):
     params = args[1]
     assert params["analysis_id"] == analysis_id
     assert params["risk_score"] == 8
-    assert "UPDATE procurement_analysis" in str(args[0])
+    assert "UPDATE procurement_analyses" in str(args[0])
 
 
 def test_parse_row_to_model_empty_row(analysis_repository):

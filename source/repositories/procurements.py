@@ -12,7 +12,7 @@ import py7zr
 import rarfile
 import requests
 from google.api_core import exceptions
-from models.procurement import (
+from models.procurements import (
     DocumentType,
     Procurement,
     ProcurementDocument,
@@ -26,7 +26,7 @@ from pydantic import ValidationError
 from sqlalchemy import Engine, text
 
 
-class ProcurementRepository:
+class ProcurementsRepository:
     """Repository for fetching procurement data and related documents from the
     PNCP API, extracting file metadata, and creating aggregated ZIP archives.
 
@@ -50,7 +50,7 @@ class ProcurementRepository:
         """
         Retrieves the latest version number for a given procurement.
         """
-        sql = text("SELECT MAX(version_number) FROM procurement WHERE pncp_control_number = :pncp_control_number")
+        sql = text("SELECT MAX(version_number) FROM procurements WHERE pncp_control_number = :pncp_control_number")
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"pncp_control_number": pncp_control_number}).scalar_one_or_none()
         return result or 0
@@ -59,7 +59,7 @@ class ProcurementRepository:
         """
         Checks if a procurement with the given content hash already exists.
         """
-        sql = text("SELECT 1 FROM procurement WHERE content_hash = :content_hash")
+        sql = text("SELECT 1 FROM procurements WHERE content_hash = :content_hash")
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"content_hash": content_hash}).scalar_one_or_none()
         return result is not None
@@ -75,7 +75,7 @@ class ProcurementRepository:
         )
         sql = text(
             """
-            INSERT INTO procurement (
+            INSERT INTO procurements (
                 pncp_control_number, proposal_opening_date, proposal_closing_date,
                 object_description, total_awarded_value, is_srp, procurement_year,
                 procurement_sequence, pncp_publication_date, last_update_date,
@@ -118,7 +118,7 @@ class ProcurementRepository:
         Retrieves a specific version of a procurement from the database.
         """
         sql = text(
-            "SELECT raw_data FROM procurement "
+            "SELECT raw_data FROM procurements "
             "WHERE pncp_control_number = :pncp_control_number AND version_number = :version_number"
         )
         with self.engine.connect() as conn:

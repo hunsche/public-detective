@@ -13,7 +13,7 @@ class FileRecord(BaseModel):
         created_at: The timestamp when the record was created.
         updated_at: The timestamp when the record was last updated.
         analysis_id: A foreign key linking this file record to the specific
-            procurement_analysis run it belongs to.
+            procurement_analyses run it belongs to.
         file_name: The original name of the file.
         gcs_path: The full path to the file in Google Cloud Storage.
         extension: The file's extension (e.g., '.pdf', '.docx').

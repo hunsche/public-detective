@@ -135,7 +135,7 @@ def e2e_test_setup(db_session):
             print("Truncating tables before test run...")
             connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
             connection.execute(
-                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
             )
             connection.commit()
             print("Tables truncated.")
@@ -191,7 +191,7 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
         result = connection.execute(
-            text("SELECT analysis_id FROM procurement_analysis ORDER BY analysis_id DESC LIMIT :limit"),
+            text("SELECT analysis_id FROM procurement_analyses ORDER BY analysis_id DESC LIMIT :limit"),
             {"limit": max_items_to_process},
         )
         analysis_ids = [row[0] for row in result]
@@ -214,7 +214,7 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
 
         # Basic assertion: Check if all triggered analyses were successful
         completed_analysis_query = text(
-            "SELECT * FROM procurement_analysis WHERE status = 'ANALYSIS_SUCCESSFUL' AND analysis_id = ANY(:ids)"
+            "SELECT * FROM procurement_analyses WHERE status = 'ANALYSIS_SUCCESSFUL' AND analysis_id = ANY(:ids)"
         )
         completed_analyses = connection.execute(completed_analysis_query, {"ids": analysis_ids}).mappings().all()
 
@@ -235,18 +235,18 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
                 analysis["processed_documents_gcs_path"] is not None and analysis["processed_documents_gcs_path"] != ""
             ), f"processed_documents_gcs_path is missing for analysis {analysis_id}"
 
-            # Assert file_record table is populated for this analysis
-            file_record_query = text("SELECT * FROM file_record WHERE analysis_id = :analysis_id")
+            # Assert file_records table is populated for this analysis
+            file_record_query = text("SELECT * FROM file_records WHERE analysis_id = :analysis_id")
             file_records = connection.execute(file_record_query, {"analysis_id": analysis_id}).mappings().all()
 
-            assert len(file_records) > 0, f"No file_record entries found for analysis {analysis_id}"
-            print(f"Found {len(file_records)} file_record entries.")
+            assert len(file_records) > 0, f"No file_records entries found for analysis {analysis_id}"
+            print(f"Found {len(file_records)} file_records entries.")
 
             # Assert all file_records have a GCS path
             for record in file_records:
                 assert (
                     record["gcs_path"] is not None and record["gcs_path"] != ""
-                ), f"gcs_path is missing for file_record {record['id']}"
+                ), f"gcs_path is missing for file_records {record['id']}"
 
         print("--- Generic data integrity checks passed ---")
 

@@ -14,8 +14,8 @@ class TestAnalysisCommand(unittest.TestCase):
     @patch("source.cli.commands.GcsProvider")
     @patch("source.cli.commands.AiProvider")
     @patch("source.cli.commands.AnalysisRepository")
-    @patch("source.cli.commands.FileRecordRepository")
-    @patch("source.cli.commands.ProcurementRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
     @patch("source.cli.commands.AnalysisService")
     def test_analyze_command_success(
         self,
@@ -49,8 +49,8 @@ class TestAnalysisCommand(unittest.TestCase):
         self.assertNotEqual(result.exit_code, 0)
 
     @patch("source.cli.commands.AnalysisService")
-    @patch("source.cli.commands.ProcurementRepository")
-    @patch("source.cli.commands.FileRecordRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
     @patch("source.cli.commands.AnalysisRepository")
     @patch("source.cli.commands.AiProvider")
     @patch("source.cli.commands.GcsProvider")
@@ -86,8 +86,8 @@ if __name__ == "__main__":
 
 class TestPreAnalysisCommand(unittest.TestCase):
     @patch("source.cli.commands.AnalysisService")
-    @patch("source.cli.commands.ProcurementRepository")
-    @patch("source.cli.commands.FileRecordRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
     @patch("source.cli.commands.AnalysisRepository")
     @patch("source.cli.commands.AiProvider")
     @patch("source.cli.commands.GcsProvider")

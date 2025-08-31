@@ -2,7 +2,7 @@
 Unit tests for the analysis models.
 """
 
-from models.analysis import Analysis, RedFlag, RedFlagCategory
+from models.analyses import Analysis, RedFlag, RedFlagCategory
 
 
 def test_red_flag_creation():

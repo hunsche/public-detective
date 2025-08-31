@@ -138,11 +138,11 @@ Without the `-s` flag, the test might appear to pass, but you will not see the c
 #### E2E Test Workflow
 
 The test script automates the following application workflow:
-1.  **`pre-analyze`**: The CLI is called to find new procurements for a specific date and create initial `procurement_analysis` records in the database with a `PENDING_ANALYSIS` status.
+1.  **`pre-analyze`**: The CLI is called to find new procurements for a specific date and create initial `procurement_analyses` records in the database with a `PENDING_ANALYSIS` status.
 2.  **Fetch IDs**: The test queries the database to get the `analysis_id`s of the records created in the previous step.
 3.  **`analyze`**: The CLI is called in a loop for each `analysis_id`, which publishes a message to the Pub/Sub queue, triggering the full analysis for that item.
 4.  **`worker`**: The worker process is started. It listens to the Pub/Sub queue, consumes the messages, and executes the core analysis logic for each one.
-5.  **Validation**: The test asserts that the status of the processed records in the `procurement_analysis` table is now `ANALYSIS_SUCCESSFUL`.
+5.  **Validation**: The test asserts that the status of the processed records in the `procurement_analyses` table is now `ANALYSIS_SUCCESSFUL`.
 6.  **Data Dump**: At the end of a successful run, the test prints a complete dump of all data from all tables in the test schema, formatted as JSON.
 
 #### Agent's Task - Critical Analysis
@@ -150,7 +150,7 @@ The test script automates the following application workflow:
 When running this test, your primary role is to act as a critical auditor of the output. A passing test is not enough.
 1.  **Scrutinize the Logs:** The test is designed to stream logs from each CLI command in real-time. Pay close attention to these logs for warnings, errors, or unexpected behavior during the run.
 2.  **Examine the Final Data Dump:** This is the most critical part. The JSON dump at the end of the test shows the final state of the database. You must:
-    -   **Verify Correctness:** Do not assume the data is correct. Does the `procurement` data match the `procurement_analysis` data? Are timestamps (`created_at`, `updated_at`) logical? Is the `risk_score` plausible?
+    -   **Verify Correctness:** Do not assume the data is correct. Does the `procurement` data match the `procurement_analyses` data? Are timestamps (`created_at`, `updated_at`) logical? Is the `risk_score` plausible?
     -   **Identify Inconsistencies:** Look for any anomalies, missing data, or unexpected values. For example, if the worker log shows it processed 3 messages, does the data dump show exactly 3 updated records?
     -   **Be Demanding:** Question every field. Your goal is to catch subtle bugs in business logic, data integrity, or component interaction that a simple pass/fail status might miss.
 
@@ -198,6 +198,9 @@ The `downgrade` function of a migration **must never be destructive**. Instead o
 def downgrade() -> None:
     op.execute("ALTER TABLE old_table_name RENAME TO old_table_name_dropped;")
 ```
+
+### C. Table Naming Conventions
+All database tables must be named using the plural form of the entity they represent. For example, the table for users is named `users`, not `user`.
 
 ## 7. Pre-commit Hooks
 

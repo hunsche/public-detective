@@ -3,7 +3,7 @@ Tests for the JSON schema of the analysis models, ensuring Gemini API compatibil
 """
 
 import pytest
-from models.analysis import Analysis, RedFlag
+from models.analyses import Analysis, RedFlag
 from pydantic import BaseModel
 
 

@@ -5,7 +5,7 @@ from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
-from models.analysis import Analysis
+from models.analyses import Analysis
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.database import DatabaseManager
@@ -13,9 +13,9 @@ from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
-from repositories.analysis import AnalysisRepository
-from repositories.file_record import FileRecordRepository
-from repositories.procurement import ProcurementRepository
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
 from services.analysis import AnalysisService
 
 
@@ -32,7 +32,7 @@ class Subscription:
     config: Config
     logger: Logger
     analysis_service: AnalysisService
-    procurement_repo: ProcurementRepository
+    procurement_repo: ProcurementsRepository
     processed_messages_count: int
     streaming_pull_future: StreamingPullFuture | None
     pubsub_provider: PubSubProvider
@@ -57,8 +57,8 @@ class Subscription:
             ai_provider = AiProvider(Analysis)
 
             analysis_repo = AnalysisRepository(engine=db_engine)
-            file_record_repo = FileRecordRepository(engine=db_engine)
-            self.procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
+            file_record_repo = FileRecordsRepository(engine=db_engine)
+            self.procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
 
             self.analysis_service = AnalysisService(
                 procurement_repo=self.procurement_repo,

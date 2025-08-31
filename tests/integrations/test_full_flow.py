@@ -16,15 +16,15 @@ from click.testing import CliRunner
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage
-from models.analysis import Analysis
-from models.procurement import Procurement
+from models.analyses import Analysis
+from models.procurements import Procurement
 from providers.ai import AiProvider
 from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
 from providers.pubsub import PubSubProvider
-from repositories.analysis import AnalysisRepository
-from repositories.file_record import FileRecordRepository
-from repositories.procurement import ProcurementRepository
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
 from services.analysis import AnalysisService
 from sqlalchemy import create_engine, text
 
@@ -86,7 +86,7 @@ def db_session():
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.execute(
-                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
             )
             connection.commit()
         yield engine
@@ -94,7 +94,7 @@ def db_session():
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.execute(
-                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
             )
             connection.commit()
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
@@ -123,7 +123,7 @@ def integration_test_setup(db_session):  # noqa: F841
     # Truncate tables before each test run
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
-        connection.execute(text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;"))
+        connection.execute(text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;"))
         connection.commit()
     try:
         publisher.create_topic(request={"name": topic_path})
@@ -146,7 +146,7 @@ def integration_test_setup(db_session):  # noqa: F841
         with db_session.connect() as connection:
             connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
             connection.execute(
-                text("TRUNCATE procurement, procurement_analysis, file_record RESTART IDENTITY CASCADE;")
+                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
             )
             connection.commit()
 
@@ -179,8 +179,8 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     gcs_provider = GcsProvider()
     ai_provider = AiProvider(Analysis)
     analysis_repo = AnalysisRepository(engine=db_engine)
-    file_record_repo = FileRecordRepository(engine=db_engine)
-    procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    file_record_repo = FileRecordsRepository(engine=db_engine)
+    procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
@@ -231,7 +231,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
 
     # 4. Check results
     with db_engine.connect() as connection:
-        analysis_query = text("SELECT status, risk_score FROM procurement_analysis WHERE analysis_id = :analysis_id")
+        analysis_query = text("SELECT status, risk_score FROM procurement_analyses WHERE analysis_id = :analysis_id")
         db_analysis = connection.execute(analysis_query, {"analysis_id": analysis_id}).fetchone()
         assert db_analysis is not None
         status, risk_score = db_analysis
@@ -272,8 +272,8 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     gcs_provider = GcsProvider()
     ai_provider = AiProvider(Analysis)
     analysis_repo = AnalysisRepository(engine=db_engine)
-    file_record_repo = FileRecordRepository(engine=db_engine)
-    procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    file_record_repo = FileRecordsRepository(engine=db_engine)
+    procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
@@ -284,14 +284,14 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     )
 
     with (
-        patch("source.repositories.procurement.requests.get", side_effect=mock_requests_get),
+        patch("source.repositories.procurements.requests.get", side_effect=mock_requests_get),
         patch.object(ai_provider, "count_tokens_for_analysis", return_value=1000),
     ):
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
     with db_engine.connect() as connection:
         # Check total count
-        total_query = text("SELECT COUNT(*) FROM procurement")
+        total_query = text("SELECT COUNT(*) FROM procurements")
         procurement_count = connection.execute(total_query).scalar_one()
         assert procurement_count == len(
             procurement_list_fixture
@@ -300,7 +300,7 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         # Check a specific procurement and analysis
         target_procurement = procurement_list_fixture[0]
         pcn = target_procurement["numeroControlePNCP"]
-        procurement_query = text("SELECT version_number, raw_data FROM procurement WHERE pncp_control_number = :pcn")
+        procurement_query = text("SELECT version_number, raw_data FROM procurements WHERE pncp_control_number = :pcn")
         db_procurement = connection.execute(procurement_query, {"pcn": pcn}).fetchone()
         assert db_procurement is not None, f"No procurement found in the database for {pcn}"
         version, raw_data = db_procurement
@@ -308,7 +308,7 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         assert raw_data["anoCompra"] == target_procurement["anoCompra"]
 
         analysis_query = text(
-            "SELECT version_number, status, estimated_cost FROM procurement_analysis WHERE "
+            "SELECT version_number, status, estimated_cost FROM procurement_analyses WHERE "
             "procurement_control_number = :pcn"
         )
         db_analysis = connection.execute(analysis_query, {"pcn": pcn}).fetchone()
