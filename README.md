@@ -119,7 +119,6 @@ This command runs the first stage of the pipeline, fetching new procurement data
 
 **Example 1: Run for a specific date range**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli pre-analyze --start-date 2025-01-01 --end-date 2025-01-05
 
 INFO: Starting pre-analysis for dates: 2025-01-01 to 2025-01-05...
@@ -130,7 +129,6 @@ INFO: Pre-analysis complete. 5 items are now pending full analysis.
 
 **Example 2: Run for the current day (default)**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli pre-analyze
 
 INFO: Starting pre-analysis for date: 2025-08-31...
@@ -145,7 +143,6 @@ This command triggers the full, AI-powered analysis for a specific item that has
 
 **Example: Trigger the analysis for a specific ID**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli analyze --analysis-id 123
 
 INFO: Triggering analysis for ID: 123...
