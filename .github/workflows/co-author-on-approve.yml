@@ -83,5 +83,5 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          echo "Force pushing changes to ${{ github.event.pull_request.head.ref }}"
-          git push --force
+          echo "Force pushing changes to ${{ github.event.pull_request.head.ref }} with --force-with-lease"
+          git push --force-with-lease
