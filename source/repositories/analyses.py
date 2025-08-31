@@ -7,6 +7,7 @@ import json
 from typing import cast
 
 from models.analyses import Analysis, AnalysisResult
+from models.procurement_analysis_status import ProcurementAnalysisStatus
 from providers.logging import Logger, LoggingProvider
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
@@ -80,7 +81,7 @@ class AnalysisRepository:
                 warnings = :warnings,
                 original_documents_gcs_path = :original_documents_gcs_path,
                 processed_documents_gcs_path = :processed_documents_gcs_path,
-                status = 'ANALYSIS_SUCCESSFUL',
+                status = :status,
                 updated_at = now()
             WHERE analysis_id = :analysis_id;
         """
@@ -97,6 +98,7 @@ class AnalysisRepository:
             "warnings": result.warnings,
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
+            "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
         }
 
         with self.engine.connect() as conn:
@@ -111,12 +113,18 @@ class AnalysisRepository:
         """
         sql = text(
             "SELECT * FROM procurement_analyses "
-            "WHERE document_hash = :document_hash AND status = 'ANALYSIS_SUCCESSFUL' "
+            "WHERE document_hash = :document_hash AND status = :status "
             "LIMIT 1;"
         )
 
         with self.engine.connect() as conn:
-            result = conn.execute(sql, {"document_hash": document_hash}).fetchone()
+            result = conn.execute(
+                sql,
+                {
+                    "document_hash": document_hash,
+                    "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
+                },
+            ).fetchone()
             if not result:
                 return None
             columns = list(result._fields)
@@ -138,7 +146,7 @@ class AnalysisRepository:
                 status, document_hash
             ) VALUES (
                 :procurement_control_number, :version_number, :estimated_cost,
-                'PENDING_ANALYSIS', :document_hash
+                :status, :document_hash
             )
             RETURNING analysis_id;
             """
@@ -148,6 +156,7 @@ class AnalysisRepository:
             "version_number": version_number,
             "estimated_cost": estimated_cost,
             "document_hash": document_hash,
+            "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
@@ -171,7 +180,7 @@ class AnalysisRepository:
 
         return self._parse_row_to_model(row, columns)
 
-    def update_analysis_status(self, analysis_id: int, status: str) -> None:
+    def update_analysis_status(self, analysis_id: int, status: ProcurementAnalysisStatus) -> None:
         """
         Updates the status of an analysis record.
         """
@@ -184,6 +193,6 @@ class AnalysisRepository:
             """
         )
         with self.engine.connect() as conn:
-            conn.execute(sql, {"analysis_id": analysis_id, "status": status})
+            conn.execute(sql, {"analysis_id": analysis_id, "status": status.value})
             conn.commit()
         self.logger.info("Analysis status updated successfully.")
