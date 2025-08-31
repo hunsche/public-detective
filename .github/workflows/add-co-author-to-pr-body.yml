@@ -1,0 +1,111 @@
+name: Add Co-author to PR Body
+
+on:
+  pull_request_review:
+    types: [submitted]
+
+jobs:
+  add-co-author:
+    # Run this job only when a PR is approved.
+    if: github.event.review.state == 'approved'
+    runs-on: ubuntu-latest
+    permissions:
+      # Need to read PR body and CODEOWNERS file
+      contents: read
+      # Need to update the PR body
+      pull-requests: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check if PR author is Jules and approver is a Code Owner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          APPROVER: ${{ github.event.review.user.login }}
+        run: |
+          set -e
+          set -x
+
+          # The user is 'Jules' but the git commits are by 'google-labs-jules[bot]'
+          # The PR author will be 'google-labs-jules[bot]'
+          if [[ "$PR_AUTHOR" != "google-labs-jules[bot]" ]]; then
+            echo "PR author is not 'google-labs-jules[bot]'. No action needed."
+            exit 0
+          fi
+
+          if [ ! -f .github/CODEOWNERS ]; then
+            echo "::warning::The .github/CODEOWNERS file does not exist. Cannot verify the approver."
+            exit 0
+          fi
+
+          # Extract usernames from CODEOWNERS. This handles lines with comments etc.
+          codeowners=$(cat .github/CODEOWNERS | grep -o -E '@[a-zA-Z0-9_-]+' | sed 's/@//g')
+          if [ -z "$codeowners" ]; then
+            echo "::warning::Could not find any code owners in .github/CODEOWNERS file."
+            exit 0
+          fi
+
+          # Check if the approver is in the list of codeowners
+          is_codeowner=false
+          for owner in $codeowners; do
+            if [[ "$owner" == "$APPROVER" ]]; then
+              is_codeowner=true
+              break
+            fi
+          done
+
+          if [ "$is_codeowner" = false ]; then
+            echo "Approver @${APPROVER} is not a CODEOWNER. No action needed."
+            exit 0
+          fi
+
+          echo "Approver @${APPROVER} is a CODEOWNER. Proceeding to add co-author line."
+          # Set an output to use in the next step
+          echo "run_next_step=true" >> $GITHUB_ENV
+
+      - name: Add Co-author to PR Body
+        # Only run if the previous step determined it should
+        if: env.run_next_step == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          APPROVER_LOGIN: ${{ github.event.review.user.login }}
+        run: |
+          set -e
+          set -x
+
+          # 1. Get Approver's Name and Email
+          approver_info=$(gh api users/${APPROVER_LOGIN})
+          approver_name=$(echo "$approver_info" | jq -r .name)
+          approver_email=$(echo "$approver_info" | jq -r .email)
+
+          # Use noreply email if public email is not available
+          if [ -z "$approver_email" ] || [ "$approver_email" == "null" ]; then
+            approver_email="${APPROVER_LOGIN}@users.noreply.github.com"
+          fi
+
+          co_author_line="Co-authored-by: ${approver_name} <${approver_email}>"
+          echo "Generated co-author line: ${co_author_line}"
+
+          # 2. Get current PR body
+          pr_body=$(gh pr view $PR_NUMBER --json body -q .body)
+
+          # 3. Check if the co-author line is already present
+          if echo "$pr_body" | grep -q -F "$co_author_line"; then
+            echo "Co-author line already exists in the PR body."
+            exit 0
+          fi
+
+          # 4. Append the co-author line to the PR body
+          # Use a heredoc to handle multiline bodies correctly
+          new_body=$(cat <<EOF
+          ${pr_body}
+
+          ${co_author_line}
+          EOF
+          )
+
+          gh pr edit $PR_NUMBER --body "$new_body"
+          echo "Successfully added co-author line to PR #${PR_NUMBER}."
