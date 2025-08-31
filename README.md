@@ -4,7 +4,11 @@
   <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZDNzZ2ZleWluM2p2dWhqY3Z2ZDNpM212c3ZkZzJzZzZzZzZzZzZzZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3oKIPnAiaMCws8nOsE/giphy.gif" alt="AI Detective" width="400"/>
 </div>
 
+<div align="center">
+
 > An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement.
+
+</div>
 
 <div align="center">
 
@@ -166,6 +170,7 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
       <b>Matheus Hunsche</b>
       <br />
       <a href="https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
+      <br />
       <a href="mailto:mthunsche+public-detective@gmail.com"><img src="https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white" /></a>
     </td>
   </tr>
