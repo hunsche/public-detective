@@ -406,7 +406,9 @@ class AnalysisService:
           forte suspeita de fraude.
 
         Sua resposta deve ser um objeto JSON que siga estritamente o esquema
-        fornecido, incluindo o campo `risk_score_rationale`.
+        fornecido, incluindo os campos `summary` e `risk_score_rationale`.
+
+        Forneça um resumo conciso (em pt-br) de uma frase sobre os principais pontos e riscos da licitação.
         """
 
     def run_specific_analysis(self, analysis_id: int):
