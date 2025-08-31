@@ -1,7 +1,9 @@
 <!-- omit in toc -->
 # 🕵️ Contributing to Public Detective
 
-<img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZmxrZTdqNDgzNTdwaXVjbDVubWQ0b2xuNzA4aDZ3N2NzcXhhajJsMCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/Ae7SI3LoPYj8Q/200.gif" alt="One of us" width="400"/>
+<div align="center">
+  <img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExZmxrZTdqNDgzNTdwaXVjbDVubWQ0b2xuNzA4aDZ3N2NzcXhhajJsMCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/Ae7SI3LoPYj8Q/200.gif" alt="One of us" width="400"/>
+</div>
 
 First off, thank you for considering contributing to Public Detective! It's people like you that make the open-source community such an amazing place. We love to receive contributions from our community — you!
 
@@ -37,7 +39,9 @@ There are many ways to contribute, and many of them don't involve writing a sing
 ### 🐛 Reporting Bugs
 If you find a bug—something isn't working as expected—please [open a bug report issue](https://github.com/hunsche/public-detective/issues/new?template=bug_report.md). Be sure to include as much detail as possible, including steps to reproduce the bug, the expected outcome, and the actual outcome.
 
-<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExaW5vNjA3dHgzb3BmOWY4c3NkMGk3YXhmdTFtczB0OXh3NzV1Z2RsaiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/l0HlErdfKzQyupvd6/200.gif" alt="Detective" width="400"/>
+<div align="center">
+  <img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExaW5vNjA3dHgzb3BmOWY4c3NkMGk3YXhmdTFtczB0OXh3NzV1Z2RsaiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/l0HlErdfKzQyupvd6/200.gif" alt="Detective" width="400"/>
+</div>
 
 ### 💡 Suggesting Enhancements
 Have an idea for a new feature or an improvement to an existing one? We'd love to hear it. [Open a feature request issue](https://github.com/hunsche/public-detective/issues/new?template=feature_request.md) to start the discussion. This is a great way to contribute your ideas and domain expertise.
@@ -58,7 +62,9 @@ Ready to submit code? Here’s our workflow. It’s as easy as 1-2-3-4-5-6-7!
 ### 1. Fork the Repository
 Fork the project to your own GitHub account by clicking the "Fork" button at the top right of the main repository page.
 
-<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExOXE2ZDBpb2I1aW45MWFjZDNkeHdqbXI2eGFhandvNjNtNXZoNWZ5cCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/103R2H9RN2QZgc/200.gif" alt="Fork" width="400"/>
+<div align="center">
+  <img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExOXE2ZDBpb2I1aW45MWFjZDNkeHdqbXI2eGFhandvNjNtNXZoNWZ5cCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/103R2H9RN2QZgc/200.gif" alt="Fork" width="400"/>
+</div>
 
 ### 2. Create a Branch
 Create a new branch from `main` in your fork for your feature or bug fix. Use a descriptive name.
@@ -66,7 +72,9 @@ Create a new branch from `main` in your fork for your feature or bug fix. Use a 
 git checkout -b feature/my-new-amazing-feature
 ```
 
-<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExNDUxM2RrdXRic3AybXc4YXU4M240Z285cmhpcHpocjRvMXFlYmpsZCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/yHcCxdzyXqraNfKxep/200.gif" alt="Branching out" width="400"/>
+<div align="center">
+  <img src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDhhMzk3Y2Z5cmFkdWJpejg4NW9vZzQ5MXUzdDdkaDljMW40Z2hrZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/e5zHi5hgalk1sLVI1m/giphy.gif" alt="Branching out" width="400"/>
+</div>
 
 ### 3. Set Up Your Dev Lair (Environment)
 Make sure your development environment is set up by following the instructions in the `README.md`.
@@ -79,7 +87,9 @@ poetry install
 ### 4. Make Your Changes
 Implement your feature or fix the bug. Make sure your code is clean, and follows the project's style.
 
-<img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMWI2a3RpNnJpZjNzZ2FyNnNhYmdiZW9qNTkyMWMxa2JxcmlsYzJiZCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/Dh5q0sShxgp13DwrvG/200.gif" alt="Coding" width="400"/>
+<div align="center">
+  <img src="https://media1.giphy.com/media/v1.Y2lkPTc5MGI3NjExMWI2a3RpNnJpZjNzZ2FyNnNhYmdiZW9qNTkyMWMxa2JxcmlsYzJiZCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/Dh5q0sShxgp13DwrvG/200.gif" alt="Coding" width="400"/>
+</div>
 
 ### 5. Commit Your Changes
 Commit your changes with a clear and descriptive commit message. We follow the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) specification.
@@ -114,7 +124,9 @@ Go to the `hunsche/public-detective` repository on GitHub and open a new Pull Re
 
 Once your PR is open, a project maintainer will review it. We may ask for changes, but we'll work with you to get your contribution merged. We appreciate your effort!
 
-<img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNTM4cGV1djZydmVvMXZlZXlpejlmNTl3dG15dXVqN2lzdnFoYzZ6dSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/9xhPHyrqjj65fDpX3t/200.gif" alt="Pull Request" width="400"/>
+<div align="center">
+  <img src="https://media4.giphy.com/media/v1.Y2lkPTc5MGI3NjExNTM4cGV1djZydmVvMXZlZXlpejlmNTl3dG15dXVqN2lzdnFoYzZ6dSZlcD12MV9naWZzX3NlYXJjaCZjdD1n/9xhPHyrqjj65fDpX3t/200.gif" alt="Pull Request" width="400"/>
+</div>
 
 ## The Detective's Toolkit (Style Guides)
 
@@ -138,4 +150,6 @@ We are committed to providing a friendly, safe and welcoming environment for all
 ## Thank You!
 Thank you again for your interest in contributing to **Public Detective**!
 
-<img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExam1uNHFrbGt2emlydThxOXkwbGtqbXZwOGxjaDF4cnp3NjBtbm1vciZlcD12MV9naWZzX3NlYXJjaCZjdD1n/5xtDarmwsuR9sDRObyU/200.gif" alt="Thank You" width="400"/>
+<div align="center">
+  <img src="https://media2.giphy.com/media/v1.Y2lkPTc5MGI3NjExam1uNHFrbGt2emlydThxOXkwbGtqbXZwOGxjaDF4cnp3NjBtbm1vciZlcD12MV9naWZzX3NlYXJjaCZjdD1n/5xtDarmwsuR9sDRObyU/200.gif" alt="Thank You" width="400"/>
+</div>
