@@ -290,12 +290,12 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
     with db_engine.connect() as connection:
-        # Check total count
+        # Check total count - should be 1 because the second one has the same hash and is skipped
         total_query = text("SELECT COUNT(*) FROM procurements")
         procurement_count = connection.execute(total_query).scalar_one()
-        assert procurement_count == len(
-            procurement_list_fixture
-        ), f"Expected {len(procurement_list_fixture)} procurements, but found {procurement_count} in the database."
+        assert (
+            procurement_count == 1
+        ), f"Expected 1 procurement due to deduplication, but found {procurement_count} in the database."
 
         # Check a specific procurement and analysis
         target_procurement = procurement_list_fixture[0]
