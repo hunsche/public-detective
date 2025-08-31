@@ -5,22 +5,21 @@ Revises: 014b9fad2247
 Create Date: 2025-08-31 11:25:29.983519
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
-import sqlalchemy as sa
 
 from source.migrations.helpers import get_table_name
 
-
 # revision identifiers, used by Alembic.
-revision: str = '306b4a0d0604'
-down_revision: Union[str, None] = '014b9fad2247'
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "306b4a0d0604"
+down_revision: str | None = "014b9fad2247"
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 TABLE_NAME = get_table_name("procurement_analyses")
-ENUM_NAME = "procurement_analysis_status"
+ENUM_NAME = get_table_name("procurement_analysis_status")
 CONSTRAINT_NAME = "chk_status"
 
 
@@ -31,11 +30,14 @@ def upgrade() -> None:
     op.execute(f"DROP VIEW {view_name};")
     op.execute(f"ALTER TABLE {TABLE_NAME} DROP CONSTRAINT {CONSTRAINT_NAME};")
     op.execute(
-        f"CREATE TYPE {ENUM_NAME} AS ENUM('PENDING_ANALYSIS', 'ANALYSIS_IN_PROGRESS', 'ANALYSIS_SUCCESSFUL', 'ANALYSIS_FAILED');"
+        f"""CREATE TYPE {ENUM_NAME} AS ENUM(
+            'PENDING_ANALYSIS',
+            'ANALYSIS_IN_PROGRESS',
+            'ANALYSIS_SUCCESSFUL',
+            'ANALYSIS_FAILED'
+        );"""
     )
-    op.execute(
-        f"ALTER TABLE {TABLE_NAME} ALTER COLUMN status TYPE {ENUM_NAME} USING status::text::{ENUM_NAME};"
-    )
+    op.execute(f"ALTER TABLE {TABLE_NAME} ALTER COLUMN status TYPE {ENUM_NAME} USING status::text::{ENUM_NAME};")
 
     sql = f"""
         CREATE OR REPLACE VIEW {view_name} AS
