@@ -42,36 +42,37 @@ This isn't just code; it's a mission. Developed at **PUCPR** with the help of th
 
 The application operates in a two-stage pipeline: a lightweight **Pre-analysis** stage to discover and prepare data, followed by an on-demand, AI-powered **Analysis** stage. This decoupled architecture ensures efficiency and cost-effectiveness.
 
-The diagram below illustrates the complete workflow:
+Here’s a simplified look at how it works:
 
 ```mermaid
-graph TD
-    subgraph "Stage 1: Pre-analysis (Scheduler)"
-        A[Start: `pre-analyze` command] --> B{Fetch new data from PNCP API};
-        B --> C[Calculate content hash for idempotency];
-        C --> D[Estimate AI analysis cost];
-        D --> E[Save analysis record to Database<br>Status: PENDING_ANALYSIS];
+graph LR
+    subgraph "Input"
+        A[Public Procurement Data]
     end
 
-    E --> F[Start: `analyze` command with ID]
-
-    subgraph "Stage 2: Analysis (On-Demand)"
-        F --> G[Publish message to Pub/Sub];
-        H[Background worker consumes message] --> I[Retrieve data and documents];
-        I --> J[Submit to Google Gemini for analysis];
-        J --> K{Save AI results to Database};
-        K --> L[Status: ANALYSIS_SUCCESSFUL];
-        K --> M[Status: ANALYSIS_FAILED];
+    subgraph "Public Detective's Magic"
+        B(Automated Analysis)
+        C(AI-Powered Insights)
+        D(Risk Scoring)
     end
 
-    G -.-> H;
+    subgraph "Output"
+        E[Transparency Reports]
+        F[Actionable Insights for Journalists & Activists]
+    end
+
+    A --> B;
+    B --> C;
+    C --> D;
+    D --> E;
+    D --> F;
 ```
 
 ## 🛠️ Built With
 
 - **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
--- **Database:** PostgreSQL with Psycopg2
+- **Database:** PostgreSQL
 - **Infrastructure:** Docker, Google Cloud Storage, Google Cloud Pub/Sub
 
 ## 🏁 Get Started
@@ -118,7 +119,6 @@ This command runs the first stage of the pipeline, fetching new procurement data
 
 **Example 1: Run for a specific date range**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli pre-analyze --start-date 2025-01-01 --end-date 2025-01-05
 
 INFO: Starting pre-analysis for dates: 2025-01-01 to 2025-01-05...
@@ -129,7 +129,6 @@ INFO: Pre-analysis complete. 5 items are now pending full analysis.
 
 **Example 2: Run for the current day (default)**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli pre-analyze
 
 INFO: Starting pre-analysis for date: 2025-08-31...
@@ -144,7 +143,6 @@ This command triggers the full, AI-powered analysis for a specific item that has
 
 **Example: Trigger the analysis for a specific ID**
 ```bash
-# ~/Projects/public-detective on main
 $ poetry run python -m source.cli analyze --analysis-id 123
 
 INFO: Triggering analysis for ID: 123...
@@ -161,6 +159,7 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
 
 ## 📬 Get In Touch
 
+<div align="center">
 <table>
   <tr>
     <td valign="top">
@@ -175,3 +174,4 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
     </td>
   </tr>
 </table>
+</div>
