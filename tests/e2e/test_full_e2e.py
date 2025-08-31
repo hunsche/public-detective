@@ -172,7 +172,7 @@ def e2e_test_setup(db_session):
         print("E2E test environment torn down.")
 
 
-@pytest.mark.timeout(180)
+@pytest.mark.timeout(300)
 def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     """
     Tests the full E2E flow against live dependencies:

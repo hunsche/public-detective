@@ -263,7 +263,7 @@ class AnalysisService:
                 analysis_id=analysis_id,
                 file_name=file_name,
                 gcs_path=gcs_path,
-                extension=os.path.splitext(file_name)[1],
+                extension=os.path.splitext(file_name)[1].lstrip("."),
                 size_bytes=len(file_content),
                 nesting_level=0,
                 included_in_analysis=is_included,
