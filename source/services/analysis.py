@@ -6,6 +6,7 @@ from datetime import date, datetime, timedelta, timezone
 
 from models.analyses import Analysis, AnalysisResult
 from models.file_records import NewFileRecord
+from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
@@ -86,10 +87,10 @@ class AnalysisService:
 
         try:
             self.analyze_procurement(procurement, analysis.version_number, analysis_id)
-            self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_SUCCESSFUL")
+            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL)
         except Exception as e:
             self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
-            self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_FAILED")
+            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED)
             raise
 
     def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
@@ -418,13 +419,13 @@ class AnalysisService:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
             return
 
-        if analysis.status != "PENDING_ANALYSIS":
+        if analysis.status != ProcurementAnalysisStatus.PENDING_ANALYSIS.value:
             self.logger.warning(
                 f"Analysis {analysis_id} is not in PENDING_ANALYSIS state (current: {analysis.status}). Skipping."
             )
             return
 
-        self.analysis_repo.update_analysis_status(analysis_id, "ANALYSIS_IN_PROGRESS")
+        self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS)
 
         if not self.pubsub_provider:
             raise ValueError("PubSubProvider is not configured for AnalysisService")

@@ -36,10 +36,10 @@ def upgrade() -> None:
           SELECT
             pa.procurement_control_number,
             pa.version_number,
-            BOOL_OR(pa.status = 'ANALYSIS_SUCCESSFUL') AS v_has_success,
-            BOOL_OR(pa.status = 'ANALYSIS_IN_PROGRESS') AS v_has_in_progress,
-            BOOL_OR(pa.status = 'ANALYSIS_FAILED')     AS v_has_failed,
-            BOOL_OR(pa.status = 'PENDING_ANALYSIS')    AS v_has_pending
+            BOOL_OR(pa.status::text = 'ANALYSIS_SUCCESSFUL') AS v_has_success,
+            BOOL_OR(pa.status::text = 'ANALYSIS_IN_PROGRESS') AS v_has_in_progress,
+            BOOL_OR(pa.status::text = 'ANALYSIS_FAILED')     AS v_has_failed,
+            BOOL_OR(pa.status::text = 'PENDING_ANALYSIS')    AS v_has_pending
           FROM {analysis_table} pa
           GROUP BY pa.procurement_control_number, pa.version_number
         ),
