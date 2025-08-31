@@ -113,6 +113,7 @@ def pre_analyze(
         click.secho("Pre-analysis completed successfully!", fg="green")
     except Exception as e:
         click.secho(f"An error occurred: {e}", fg="red")
+        raise click.Abort()
 
 
 @click.command("reap-stale-tasks")

@@ -193,7 +193,7 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
 
-    def mock_requests_get(url, **kwargs):
+    def mock_requests_get(url, **kwargs):  # noqa: F841
         mock_response = requests.Response()
         mock_response.status_code = 200
         if "contratacoes/atualizacao" in url:
@@ -291,7 +291,13 @@ def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F
         connection.execute(
             text(
                 """
-                INSERT INTO procurement_analyses (analysis_id, procurement_control_number, version_number, status, updated_at)
+                INSERT INTO procurement_analyses (
+                    analysis_id,
+                    procurement_control_number,
+                    version_number,
+                    status,
+                    updated_at
+                )
                 VALUES (:id, :pcn, 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
                 """
             ),
