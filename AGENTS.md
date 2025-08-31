@@ -67,6 +67,14 @@ The flow of control is always orchestrated by the **Service** layer.
 
 This ensures a unidirectional flow of dependencies and maintains a clear separation of responsibilities.
 
+#### Dependency Injection Pattern
+
+The glue that holds these layers together is a form of Dependency Injection (DI).
+
+- **Concept**: Instead of a class creating its own dependencies (e.g., a Service creating its own Repository instance), the dependencies are "injected" from the outside, typically during the class's initialization.
+- **Our Pattern: Constructor Injection**: Dependencies are passed in as arguments to the `__init__` method of a class. The main application entry points (e.g., the CLI command handlers) act as the "composition root" where the application's object graph is constructed.
+- **Rule**: All dependencies (Repositories, Providers, etc.) **must** be passed into a Service's constructor. Do not instantiate dependencies inside a Service. This is critical for testability, as it allows mock dependencies to be injected during unit tests.
+
 ## 2. Environment Setup
 
 The project is standardized on **Python 3.12**.

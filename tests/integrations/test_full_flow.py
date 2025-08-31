@@ -2,12 +2,9 @@ import io
 import json
 import os
 import threading
-import time
 import uuid
-import zipfile
 from contextlib import redirect_stdout
 from datetime import date
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -17,6 +14,7 @@ from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage
 from models.analyses import Analysis
+from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from providers.ai import AiProvider
 from providers.gcs import GcsProvider
@@ -27,13 +25,10 @@ from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 
 from source.cli.__main__ import cli as cli_main
-from source.providers.config import ConfigProvider
 from source.worker.subscription import Subscription
-
-
 
 
 @pytest.fixture(scope="function")
@@ -140,6 +135,9 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         estimated_cost=0.0,
         document_hash="pre-analysis-hash-1",
     )
+    status_history_repo.create_record(
+        analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Initial pre-analysis record."
+    )
 
     # 2. Run analyze command
     with patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture):
@@ -176,7 +174,8 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
 
         # Check history records
         history_query = text(
-            "SELECT status FROM procurement_analysis_status_history WHERE analysis_id = :analysis_id ORDER BY created_at"
+            "SELECT status FROM procurement_analysis_status_history "
+            "WHERE analysis_id = :analysis_id ORDER BY created_at"
         )
         history_records = connection.execute(history_query, {"analysis_id": analysis_id}).fetchall()
         statuses = [record[0] for record in history_records]
@@ -268,29 +267,44 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
 
 
 @pytest.mark.timeout(180)
-def test_reaper_flow_integration(integration_test_setup, db_session):
+def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F841
     """
     Tests that the reaper command correctly identifies and resets a stale task.
     """
-    # 1. Manually insert a stale analysis record
+    # 1. Manually insert a procurement and a stale analysis record
     analysis_id = 555
+    control_number = "stale_control"
     with db_session.connect() as connection:
+        # Insert a dummy procurement to satisfy the foreign key constraint
+        connection.execute(
+            text(
+                """
+                INSERT INTO procurements (
+                    pncp_control_number, version_number, object_description, procurement_year,
+                    procurement_sequence, pncp_publication_date, last_update_date,
+                    modality_id, procurement_status_id, is_srp, raw_data
+                ) VALUES (:pcn, 1, 'dummy', 2025, 1, NOW(), NOW(), 1, 1, false, '{}');
+                """
+            ),
+            {"pcn": control_number},
+        )
         connection.execute(
             text(
                 """
                 INSERT INTO procurement_analyses (analysis_id, procurement_control_number, version_number, status, updated_at)
-                VALUES (:id, 'stale_control', 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
+                VALUES (:id, :pcn, 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
                 """
             ),
-            {"id": analysis_id},
+            {"id": analysis_id, "pcn": control_number},
         )
         connection.commit()
 
     # 2. Run the reaper command
-    runner = CliRunner()
-    result = runner.invoke(cli_main, ["reap-stale-tasks", "--timeout-minutes", "15"])
-    assert result.exit_code == 0, f"CLI command failed: {result.output}"
-    assert "Successfully reset 1 stale tasks" in result.output
+    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_session):
+        runner = CliRunner()
+        result = runner.invoke(cli_main, ["reap-stale-tasks", "--timeout-minutes", "15"])
+        assert result.exit_code == 0, f"CLI command failed: {result.output}"
+        assert "Successfully reset 1 stale tasks" in result.output
 
     # 3. Check the status in the database
     with db_session.connect() as connection:
@@ -299,7 +313,9 @@ def test_reaper_flow_integration(integration_test_setup, db_session):
         assert new_status == "TIMEOUT"
 
         # 4. Check that a history record was created
-        history_query = text("SELECT status, details FROM procurement_analysis_status_history WHERE analysis_id = :id")
+        history_query = text(
+            "SELECT status, details FROM procurement_analysis_status_history " "WHERE analysis_id = :id"
+        )
         history_record = connection.execute(history_query, {"id": analysis_id}).fetchone()
         assert history_record is not None
         status, details = history_record

@@ -1,13 +1,16 @@
 import os
-import uuid
 import time
-from pathlib import Path
+import uuid
 import zipfile
+from pathlib import Path
+
 import pytest
-from sqlalchemy import create_engine, text
-from source.providers.config import ConfigProvider
 from alembic import command
 from alembic.config import Config
+from sqlalchemy import create_engine, text
+
+from source.providers.config import ConfigProvider
+
 
 @pytest.fixture(scope="function")
 def db_session():
@@ -59,9 +62,11 @@ def db_session():
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.execute(
-                text("TRUNCATE procurements, procurement_analyses, file_records, procurement_analysis_status_history RESTART IDENTITY CASCADE;")
+            truncate_sql = text(
+                "TRUNCATE procurements, procurement_analyses, file_records, "
+                "procurement_analysis_status_history RESTART IDENTITY CASCADE;"
             )
+            connection.execute(truncate_sql)
             connection.commit()
         yield engine
     finally:

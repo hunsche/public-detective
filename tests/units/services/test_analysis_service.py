@@ -3,10 +3,11 @@ Unit tests for the AnalysisService.
 """
 
 from datetime import date
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from models.analyses import Analysis, AnalysisResult
+from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from services.analysis import AnalysisService
 
@@ -276,12 +277,15 @@ def test_process_analysis_from_message_success(mock_dependencies, mock_procureme
     service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
     service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
-    with patch.object(service, "_update_status_with_history") as mock_update_status:
+    with (
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+        patch.object(service, "analyze_procurement") as mock_analyze_procurement,
+    ):
         # Act
         service.process_analysis_from_message(analysis_id)
 
         # Assert
-        service.analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id)
+        mock_analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id)
         mock_update_status.assert_called_once_with(
             analysis_id,
             ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL,
@@ -302,9 +306,11 @@ def test_process_analysis_from_message_failure(mock_dependencies, mock_procureme
     mock_analysis_result.version_number = 1
     service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
     service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
-    service.analyze_procurement.side_effect = Exception(error_message)
 
-    with patch.object(service, "_update_status_with_history") as mock_update_status:
+    with (
+        patch.object(service, "analyze_procurement", side_effect=Exception(error_message)),
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+    ):
         # Act & Assert
         with pytest.raises(Exception, match=error_message):
             service.process_analysis_from_message(analysis_id)

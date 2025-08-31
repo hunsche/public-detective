@@ -539,11 +539,14 @@ class AnalysisService:
         estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
 
         # 9. Save pre-analysis
-        self.analysis_repo.save_pre_analysis(
+        analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             estimated_cost=estimated_cost,
             document_hash=analysis_document_hash,
+        )
+        self.status_history_repo.create_record(
+            analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
 
     def run_analysis(self, start_date: date, end_date: date):

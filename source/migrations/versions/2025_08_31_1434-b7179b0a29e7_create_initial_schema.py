@@ -118,7 +118,7 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
-        CREATE INDEX idx_history_analysis_id ON {get_qualified_name("procurement_analysis_status_history")} (analysis_id);
+        CREATE INDEX idx_history_analysis_id ON {history_table} (analysis_id);
     """
     )
 

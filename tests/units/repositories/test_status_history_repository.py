@@ -32,7 +32,7 @@ def test_create_history_record_executes_insert(status_history_repository):
     details = "Worker started processing."
 
     # Act
-    status_history_repository.create_history_record(analysis_id, status, details)
+    status_history_repository.create_record(analysis_id, status, details)
 
     # Assert
     mock_conn.execute.assert_called_once()

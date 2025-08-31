@@ -1,6 +1,7 @@
 from sqlalchemy import Engine, text
-from source.providers.logging import Logger, LoggingProvider
+
 from source.models.procurement_analysis_status import ProcurementAnalysisStatus
+from source.providers.logging import Logger, LoggingProvider
 
 
 class StatusHistoryRepository:
