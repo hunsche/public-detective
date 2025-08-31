@@ -21,11 +21,13 @@ Key architectural features:
               self.engine = DatabaseManager.get_engine()
 
           def get_user(self, user_id: int):
-              sql = text("SELECT * FROM users WHERE id = :user_id")
+              sql = text("SELECT id, name, email FROM users WHERE id = :user_id")
               with self.engine.connect() as conn:
                   result = conn.execute(sql, {"user_id": user_id}).first()
               return result
       ```
+
+- **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E2E tests.
 
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
