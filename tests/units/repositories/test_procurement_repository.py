@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import py7zr
 import pytest
+import rarfile
 import requests
 from google.api_core import exceptions
 from models.procurement import Procurement
@@ -218,6 +219,19 @@ def test_download_file_content_error(mock_get, repo):
     assert content is None
 
 
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_request_error(mock_get, repo):
+    """Tests that a request exception is handled when fetching raw data."""
+    mock_get.side_effect = requests.RequestException("API down")
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert procurements == []
+
+
 @patch("requests.head")
 def test_determine_original_filename_success(mock_head, repo):
     """Tests successful determination of filename from Content-Disposition header."""
@@ -294,31 +308,6 @@ def test_publish_procurement_to_pubsub_success(repo, mock_pubsub_provider):
     mock_pubsub_provider.publish.assert_called_once()
 
 
-def test_save_procurement(repo, mock_engine):
-    """Tests saving a procurement to the database."""
-    procurement = MagicMock(spec=Procurement)
-    procurement.pncp_control_number = "PNCP-123"
-    procurement.proposal_opening_date = "2025-01-01"
-    procurement.proposal_closing_date = "2025-01-10"
-    procurement.object_description = "Test Object"
-    procurement.total_awarded_value = 1000.50
-    procurement.is_srp = True
-    procurement.procurement_year = 2025
-    procurement.procurement_sequence = 1
-    procurement.pncp_publication_date = "2025-01-01"
-    procurement.last_update_date = "2025-01-02"
-    procurement.modality = 1
-    procurement.procurement_status = 1
-    procurement.total_estimated_value = 1200.00
-
-    repo.save_procurement(procurement)
-
-    mock_engine.connect.assert_called_once()
-    conn_mock = mock_engine.connect().__enter__()
-    conn_mock.execute.assert_called_once()
-    conn_mock.commit.assert_called_once()
-
-
 def test_recursive_file_processing_non_archive(repo):
     """Tests that non-archive files are added directly to the collection."""
     file_collection = []
@@ -393,6 +382,19 @@ def test_get_updated_procurements_no_city_codes(mock_get, repo):
         assert "codigoMunicipioIbge" not in call.kwargs["params"]
 
 
+@patch("requests.get")
+def test_get_updated_procurements_request_error(mock_get, repo):
+    """Tests that a request exception is handled when fetching procurements."""
+    mock_get.side_effect = requests.RequestException("API down")
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements(target_date)
+
+    assert procurements == []
+
+
 def test_process_procurement_documents_no_docs(repo):
     """Tests that an empty list is returned when no documents are found."""
     procurement = MagicMock(spec=Procurement)
@@ -450,3 +452,147 @@ def test_determine_original_filename_no_match(mock_head, repo):
     mock_head.return_value = mock_response
     filename = repo._determine_original_filename("http://test.url/download")
     assert filename is None
+
+
+def test_get_latest_version(repo, mock_engine):
+    """Tests retrieving the latest version number for a procurement."""
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = 5
+
+    version = repo.get_latest_version("PNCP-123")
+
+    assert version == 5
+    conn_mock.execute.assert_called_once()
+
+
+def test_get_latest_version_none_found(repo, mock_engine):
+    """Tests retrieving the latest version when none exists."""
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = None
+
+    version = repo.get_latest_version("PNCP-123")
+
+    assert version == 0
+
+
+def test_get_procurement_by_hash(repo, mock_engine):
+    """Tests checking for a procurement by its content hash."""
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = 1
+
+    exists = repo.get_procurement_by_hash("some-hash")
+
+    assert exists is True
+
+
+def test_get_procurement_by_hash_not_found(repo, mock_engine):
+    """Tests checking for a procurement by hash when it does not exist."""
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = None
+
+    exists = repo.get_procurement_by_hash("some-hash")
+
+    assert exists is False
+
+
+def test_save_procurement_version(repo, mock_engine):
+    """Tests saving a new version of a procurement."""
+    procurement = Procurement.model_validate(_get_mock_procurement_data("PNCP-123"))
+
+    repo.save_procurement_version(procurement, '{"key":"value"}', 2, "some-hash")
+
+    mock_engine.connect.assert_called_once()
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.assert_called_once()
+    conn_mock.commit.assert_called_once()
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data(mock_get, repo):
+    """Tests fetching updated procurements with raw data."""
+    raw_procurement_data = _get_mock_procurement_data("1")
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "data": [raw_procurement_data],
+        "totalPaginas": 1,
+        "numeroPagina": 1,
+        "totalRegistros": 1,
+    }
+    mock_response_empty = MagicMock()
+    mock_response_empty.status_code = 204
+    mock_get.side_effect = [mock_response, mock_response_empty, mock_response_empty, mock_response_empty]
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert len(procurements) == 1
+    assert isinstance(procurements[0][0], Procurement)
+    assert isinstance(procurements[0][1], dict)
+    assert procurements[0][0].pncp_control_number == "1"
+    assert procurements[0][1] == raw_procurement_data
+
+
+def test_extract_from_rar_error(repo):
+    """Tests that an empty list is returned if rar extraction fails."""
+    with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
+        result = repo._extract_from_rar(b"not a rar")
+        assert result == []
+
+
+def test_extract_from_rar_success(repo):
+    """Tests extracting files from a RAR archive."""
+    mock_rar_info1 = MagicMock()
+    mock_rar_info1.filename = "file1.txt"
+    mock_rar_info1.isdir.return_value = False
+
+    mock_rar_info2 = MagicMock()
+    mock_rar_info2.filename = "file2.txt"
+    mock_rar_info2.isdir.return_value = False
+
+    mock_rar_archive = MagicMock()
+    mock_rar_archive.infolist.return_value = [mock_rar_info1, mock_rar_info2]
+    mock_rar_archive.read.side_effect = [b"content1", b"content2"]
+
+    with patch("rarfile.RarFile") as mock_rar_file_class:
+        mock_rar_file_class.return_value.__enter__.return_value = mock_rar_archive
+        extracted_files = repo._extract_from_rar(b"dummy rar content")
+
+    assert len(extracted_files) == 2
+    assert ("file1.txt", b"content1") in extracted_files
+    assert ("file2.txt", b"content2") in extracted_files
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_no_city_codes(mock_get, repo):
+    """
+    Tests that a nationwide search is performed for raw data if no city codes are configured.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 204
+    mock_get.return_value = mock_response
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = []
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert mock_get.call_count == 4
+    for call in mock_get.call_args_list:
+        assert "codigoMunicipioIbge" not in call.kwargs["params"]
+
+
+def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
+    """
+    Tests that None is returned when a procurement is not found by ID and version.
+    """
+    conn_mock = mock_engine.connect().__enter__()
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = None
+
+    result = repo.get_procurement_by_id_and_version("PNCP-999", 1)
+
+    assert result is None

@@ -1,93 +1,190 @@
+import os
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
 
-from cli.commands import analysis_command
 from click.testing import CliRunner
+
+from source.cli.commands import analyze, pre_analyze
 
 
 class TestAnalysisCommand(unittest.TestCase):
-    @patch("cli.commands.AnalysisService")
-    @patch("cli.commands.ProcurementRepository")
-    @patch("cli.commands.FileRecordRepository")
-    @patch("cli.commands.AnalysisRepository")
-    @patch("cli.commands.AiProvider")
-    @patch("cli.commands.GcsProvider")
-    @patch("cli.commands.PubSubProvider")
-    @patch("cli.commands.DatabaseManager")
-    def test_analysis_command_with_valid_dates(
+    @patch("source.cli.commands.DatabaseManager")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.FileRecordRepository")
+    @patch("source.cli.commands.ProcurementRepository")
+    @patch("source.cli.commands.AnalysisService")
+    def test_analyze_command_success(
         self,
+        mock_analysis_service,
+        mock_procurement_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
         mock_db_manager,
-        mock_pubsub_provider,
-        mock_gcs_provider,
-        mock_ai_provider,
-        mock_analysis_repo,
-        mock_file_record_repo,
-        mock_procurement_repo,
+    ):
+        runner = CliRunner()
+        analysis_id = 123
+
+        mock_service_instance = MagicMock()
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
+
+        mock_db_manager.get_engine.assert_called_once()
+        mock_analysis_service.assert_called_once()
+        mock_service_instance.run_specific_analysis.assert_called_once_with(analysis_id)
+        self.assertIn("Analysis triggered successfully!", result.output)
+        self.assertEqual(result.exit_code, 0)
+
+    def test_analyze_command_missing_id(self):
+        runner = CliRunner()
+        result = runner.invoke(analyze, [], catch_exceptions=False)
+        self.assertIn("Missing option '--analysis-id'", result.output)
+        self.assertNotEqual(result.exit_code, 0)
+
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.ProcurementRepository")
+    @patch("source.cli.commands.FileRecordRepository")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_analyze_command_exception(
+        self,
+        mock_db_manager,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
+        mock_analysis_service,
+    ):
+        runner = CliRunner()
+        analysis_id = 456
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.run_specific_analysis.side_effect = Exception("Test error")
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
+
+        self.assertIn("An error occurred: Test error", result.output)
+        self.assertNotEqual(result.exit_code, 0)
+
+
+if __name__ == "__main__":
+    unittest.main()
+
+
+class TestPreAnalysisCommand(unittest.TestCase):
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.ProcurementRepository")
+    @patch("source.cli.commands.FileRecordRepository")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_pre_analysis_command_with_valid_dates(
+        self,
+        mock_db_manager,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
         mock_analysis_service,
     ):
         runner = CliRunner()
         start_date = "2025-01-01"
         end_date = "2025-01-02"
+        batch_size = 50
+        sleep_seconds = 30
 
         # Mock the service instance
         mock_service_instance = MagicMock()
         mock_analysis_service.return_value = mock_service_instance
 
-        result = runner.invoke(analysis_command, ["--start-date", start_date, "--end-date", end_date])
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+                "--batch-size",
+                str(batch_size),
+                "--sleep-seconds",
+                str(sleep_seconds),
+            ],
+        )
 
         # Verify that the service was called correctly
-        mock_service_instance.run_analysis.assert_called_once_with(
+        mock_service_instance.run_pre_analysis.assert_called_once_with(
             date(2025, 1, 1),
             date(2025, 1, 2),
+            batch_size,
+            sleep_seconds,
+            None,  # max_messages
         )
 
         # Verify success message
-        self.assertIn("Analysis completed successfully!", result.output)
+        self.assertIn("Pre-analysis completed successfully!", result.output)
         self.assertEqual(result.exit_code, 0)
 
-    def test_analysis_command_with_invalid_dates(self):
+    def test_pre_analysis_command_with_invalid_date_range(self):
         runner = CliRunner()
         start_date = "2025-01-02"
         end_date = "2025-01-01"
-        result = runner.invoke(analysis_command, ["--start-date", start_date, "--end-date", end_date])
+
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+            ],
+        )
+
         self.assertIn("Start date cannot be after end date.", result.output)
         self.assertNotEqual(result.exit_code, 0)
 
-    @patch("cli.commands.AnalysisService")
-    @patch("cli.commands.ProcurementRepository")
-    @patch("cli.commands.FileRecordRepository")
-    @patch("cli.commands.AnalysisRepository")
-    @patch("cli.commands.AiProvider")
-    @patch("cli.commands.GcsProvider")
-    @patch("cli.commands.PubSubProvider")
-    @patch("cli.commands.DatabaseManager")
-    def test_analysis_command_exception(
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_pre_analysis_command_exception(
         self,
         mock_db_manager,
-        mock_pubsub_provider,
-        mock_gcs_provider,
-        mock_ai_provider,
-        mock_analysis_repo,
-        mock_file_record_repo,
-        mock_procurement_repo,
         mock_analysis_service,
     ):
+        os.environ["GCP_GEMINI_API_KEY"] = "dummy_key"
+
         runner = CliRunner()
         start_date = "2025-01-01"
-        end_date = "2025-01-02"
+        end_date = "2025-01-01"
 
-        # Mock the service to raise an exception
         mock_service_instance = MagicMock()
-        mock_service_instance.run_analysis.side_effect = Exception("Test error")
+        mock_service_instance.run_pre_analysis.side_effect = Exception("Test error")
         mock_analysis_service.return_value = mock_service_instance
 
-        result = runner.invoke(analysis_command, ["--start-date", start_date, "--end-date", end_date])
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+            ],
+        )
 
-        # Verify error message
         self.assertIn("An error occurred: Test error", result.output)
-        self.assertEqual(result.exit_code, 0)  # Click commands exit 0 on handled exceptions
-
-
-if __name__ == "__main__":
-    unittest.main()
+        self.assertEqual(result.exit_code, 0)

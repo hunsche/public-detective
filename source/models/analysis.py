@@ -10,9 +10,9 @@ from pydantic import BaseModel, Field
 class RedFlagCategory(StrEnum):
     """Enumeration for the categories of identified procurement risks."""
 
-    DIRECTING = "DIRECTING"
-    COMPETITION_RESTRICTION = "COMPETITION_RESTRICTION"
-    OVERPRICE = "OVERPRICE"
+    DIRECTING = "DIRECIONAMENTO"
+    COMPETITION_RESTRICTION = "RESTRICAO_COMPETITIVIDADE"
+    OVERPRICE = "SOBREPRECO"
 
 
 class RedFlag(BaseModel):
@@ -46,17 +46,11 @@ class Analysis(BaseModel):
     Defines the structured output of a procurement document analysis.
     """
 
-    risk_score: int = Field(
-        ...,
+    risk_score: int | None = Field(
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
-    risk_score_rationale: str = Field(
-        ...,
+    risk_score_rationale: str | None = Field(
         description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
-    )
-    summary: str = Field(
-        ...,
-        description=("A concise summary (maximum of 3 sentences, in pt-br) of the overall " "analysis."),
     )
     red_flags: list[RedFlag] = Field(
         default_factory=list,
@@ -85,8 +79,10 @@ class AnalysisResult(BaseModel):
     """
 
     procurement_control_number: str
+    version_number: int | None = None
+    status: str | None = None
     ai_analysis: Analysis
-    warnings: list[str] = []
+    warnings: list[str] | None = []
     document_hash: str | None = None
     original_documents_gcs_path: str | None = None
     processed_documents_gcs_path: str | None = None

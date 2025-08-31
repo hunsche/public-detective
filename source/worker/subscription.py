@@ -6,7 +6,6 @@ from contextlib import contextmanager
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.analysis import Analysis
-from models.procurement import Procurement
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.database import DatabaseManager
@@ -118,19 +117,16 @@ class Subscription:
         message_id = message.message_id
         try:
             data_str = message.data.decode()
-            procurement = Procurement.model_validate_json(data_str)
-            correlation_id = f"{procurement.pncp_control_number}_{uuid.uuid4().hex[:8]}"
+            message_data = json.loads(data_str)
+            analysis_id = message_data["analysis_id"]
+            correlation_id = f"{analysis_id}_{uuid.uuid4().hex[:8]}"
 
             with LoggingProvider().set_correlation_id(correlation_id):
-                self.logger.info(f"Received message ID: {message_id}. Attempting to process...")
-                self.logger.info(f"Validated message for procurement {procurement.pncp_control_number}.")
+                self.logger.info(
+                    f"Received message ID: {message_id} for analysis {analysis_id}. Attempting to process..."
+                )
 
-                self.procurement_repo.save_procurement(procurement)
-
-                if self.config.IS_DEBUG_MODE:
-                    self._debug_pause()
-
-                self.analysis_service.analyze_procurement(procurement)
+                self.analysis_service.process_analysis_from_message(analysis_id)
 
                 self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
                 message.ack()
@@ -171,12 +167,16 @@ class Subscription:
                 if self.streaming_pull_future:
                     self.streaming_pull_future.cancel()
 
-    def run(self, max_messages: int | None = None):
+    def run(self, max_messages: int | None = None, timeout: int | None = None):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
-        and blocks indefinitely, waiting for messages. It includes logic for
-        graceful shutdown upon interruption.
+        and blocks, waiting for messages. It includes logic for graceful
+        shutdown upon interruption or timeout.
+
+        Args:
+            max_messages: The maximum number of messages to process before stopping.
+            timeout: The maximum time in seconds to wait for messages.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
@@ -187,18 +187,26 @@ class Subscription:
             self._message_callback(message, max_messages)
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
-        self.logger.info("Worker is now running and waiting for messages...")
+        self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
 
         try:
-            self.streaming_pull_future.result(timeout=None)
-        except (TimeoutError, GoogleAPICallError, KeyboardInterrupt) as e:
+            self.streaming_pull_future.result(timeout=timeout)
+        except TimeoutError:
+            self.logger.warning(f"Worker timed out after {timeout} seconds of inactivity.")
+        except (GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
+            # When max_messages is reached, a Cancelled exception is expected.
             if "cancelled" not in str(e).lower():
                 self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
         finally:
             self.logger.info("Stopping worker...")
             if self.streaming_pull_future and not self.streaming_pull_future.cancelled():
                 self.streaming_pull_future.cancel()
-                self.streaming_pull_future.result()
+                # Wait for the future to be cancelled. It's safe to ignore
+                # exceptions here as the worker is already shutting down.
+                try:
+                    self.streaming_pull_future.result(timeout=10)
+                except Exception:  # nosec B110
+                    pass
             self.logger.info("Worker has stopped gracefully.")

@@ -46,23 +46,48 @@ class ProcurementRepository:
         self.pubsub_provider = pubsub_provider
         self.engine = engine
 
-    def save_procurement(self, procurement: Procurement) -> None:
-        """Saves a procurement object to the database."""
-        self.logger.info(f"Saving procurement {procurement.pncp_control_number} to the database.")
+    def get_latest_version(self, pncp_control_number: str) -> int:
+        """
+        Retrieves the latest version number for a given procurement.
+        """
+        sql = text("SELECT MAX(version_number) FROM procurement WHERE pncp_control_number = :pncp_control_number")
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"pncp_control_number": pncp_control_number}).scalar_one_or_none()
+        return result or 0
+
+    def get_procurement_by_hash(self, content_hash: str) -> bool:
+        """
+        Checks if a procurement with the given content hash already exists.
+        """
+        sql = text("SELECT 1 FROM procurement WHERE content_hash = :content_hash")
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"content_hash": content_hash}).scalar_one_or_none()
+        return result is not None
+
+    def save_procurement_version(
+        self, procurement: Procurement, raw_data: str, version_number: int, content_hash: str
+    ) -> None:
+        """
+        Saves a new version of a procurement to the database.
+        """
+        self.logger.info(
+            f"Saving procurement {procurement.pncp_control_number} version {version_number} to the database."
+        )
         sql = text(
             """
             INSERT INTO procurement (
                 pncp_control_number, proposal_opening_date, proposal_closing_date,
                 object_description, total_awarded_value, is_srp, procurement_year,
                 procurement_sequence, pncp_publication_date, last_update_date,
-                modality_id, procurement_status_id, total_estimated_value
+                modality_id, procurement_status_id, total_estimated_value,
+                version_number, raw_data, content_hash
             ) VALUES (
                 :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
                 :object_description, :total_awarded_value, :is_srp, :procurement_year,
                 :procurement_sequence, :pncp_publication_date, :last_update_date,
-                :modality_id, :procurement_status_id, :total_estimated_value
-            )
-            ON CONFLICT (pncp_control_number) DO NOTHING;
+                :modality_id, :procurement_status_id, :total_estimated_value,
+                :version_number, :raw_data, :content_hash
+            );
         """
         )
         params = {
@@ -79,11 +104,32 @@ class ProcurementRepository:
             "modality_id": procurement.modality,
             "procurement_status_id": procurement.procurement_status,
             "total_estimated_value": procurement.total_estimated_value,
+            "version_number": version_number,
+            "raw_data": raw_data,
+            "content_hash": content_hash,
         }
         with self.engine.connect() as conn:
             conn.execute(sql, params)
             conn.commit()
-        self.logger.info("Procurement saved successfully.")
+        self.logger.info("Procurement version saved successfully.")
+
+    def get_procurement_by_id_and_version(self, pncp_control_number: str, version_number: int) -> Procurement | None:
+        """
+        Retrieves a specific version of a procurement from the database.
+        """
+        sql = text(
+            "SELECT raw_data FROM procurement "
+            "WHERE pncp_control_number = :pncp_control_number AND version_number = :version_number"
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql, {"pncp_control_number": pncp_control_number, "version_number": version_number}
+            ).scalar_one_or_none()
+
+        if not result:
+            return None
+
+        return Procurement.model_validate(result)
 
     def process_procurement_documents(self, procurement: Procurement) -> list[tuple[str, bytes]]:
         """Downloads all documents for a procurement, extracts metadata for every
@@ -193,11 +239,15 @@ class ProcurementRepository:
     def _extract_from_rar(self, content: bytes) -> list[tuple[str, bytes]]:
         """Extracts all members from a RAR archive."""
         extracted = []
-        with io.BytesIO(content) as stream:
-            with rarfile.RarFile(stream) as archive:
-                for member_info in archive.infolist():
-                    if not member_info.isdir():
-                        extracted.append((member_info.filename, archive.read(member_info.filename)))
+        try:
+            with io.BytesIO(content) as stream:
+                with rarfile.RarFile(stream) as archive:
+                    for member_info in archive.infolist():
+                        if not member_info.isdir():
+                            extracted.append((member_info.filename, archive.read(member_info.filename)))
+        except rarfile.BadRarFile:
+            self.logger.warning("Failed to extract from a corrupted or invalid RAR file.")
+            return []
         return extracted
 
     def _extract_from_7z(self, content: bytes) -> list[tuple[str, bytes]]:
@@ -328,6 +378,66 @@ class ProcurementRepository:
                         if not parsed_data.data:
                             break
                         all_procurements.extend(parsed_data.data)
+                        if page >= parsed_data.total_pages:
+                            break
+                        page += 1
+                    except requests.exceptions.RequestException as e:
+                        self.logger.error(f"Error fetching updates on page {page}: {e}")
+                        break
+                    except ValidationError as e:
+                        self.logger.error(f"Data validation error on page {page}: {e}")
+                        break
+        self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
+        return all_procurements
+
+    def get_updated_procurements_with_raw_data(self, target_date: date) -> list[tuple[Procurement, dict]]:
+        """Fetches all procurements updated on a specific date, returning both
+        the Pydantic model and the raw JSON data.
+        """
+        all_procurements: list[tuple[Procurement, dict]] = []
+        modalities_to_check = [
+            ProcurementModality.ELECTRONIC_REVERSE_AUCTION,
+            ProcurementModality.BIDDING_WAIVER,
+            ProcurementModality.BIDDING_UNENFORCEABILITY,
+            ProcurementModality.ELECTRONIC_COMPETITION,
+        ]
+        self.logger.info(f"Fetching all procurements updated on {target_date} with raw data...")
+        codes_to_check = self.config.TARGET_IBGE_CODES
+        if not codes_to_check:
+            self.logger.warning("No TARGET_IBGE_CODES configured. The search will be nationwide.")
+            codes_to_check = [None]
+        for city_code in codes_to_check:
+            if city_code:
+                self.logger.info(f"Searching for city with IBGE code: {city_code}")
+            for modality in modalities_to_check:
+                page = 1
+                while True:
+                    endpoint = "contratacoes/atualizacao"
+                    params = {
+                        "dataInicial": target_date.strftime("%Y%m%d"),
+                        "dataFinal": target_date.strftime("%Y%m%d"),
+                        "codigoModalidadeContratacao": str(modality.value),
+                        "pagina": str(page),
+                    }
+                    if city_code:
+                        params["codigoMunicipioIbge"] = city_code
+                    try:
+                        response = requests.get(
+                            urljoin(self.config.PNCP_PUBLIC_QUERY_API_URL, endpoint),
+                            params=params,
+                            timeout=30,
+                        )
+                        if response.status_code == HTTPStatus.NO_CONTENT:
+                            break
+                        response.raise_for_status()
+                        raw_json = response.json()
+                        parsed_data = ProcurementListResponse.model_validate(raw_json)
+                        if not parsed_data.data:
+                            break
+
+                        for i, procurement_model in enumerate(parsed_data.data):
+                            all_procurements.append((procurement_model, raw_json["data"][i]))
+
                         if page >= parsed_data.total_pages:
                             break
                         page += 1

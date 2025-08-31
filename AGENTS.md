@@ -117,9 +117,50 @@ These require the Docker services to be running.
     ```bash
     poetry run pytest tests/integrations/
     ```
+
+### End-to-End (E2E) Tests
+
+**Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment, including a valid `GCP_GEMINI_API_KEY`.
+
+-   **Who Should Run This?** Agents working on the full application flow or making changes that could impact multiple components.
+-   **Purpose:** The E2E test (`tests/e2e/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.
+
+#### How to Run the E2E Test for Analysis
+
+To properly execute the E2E test and view all the necessary output for critical analysis, you must run `pytest` with the `-s` flag. This flag disables output capturing, allowing you to see the real-time logs from the CLI commands and, most importantly, the final JSON data dump.
+
+```bash
+poetry run pytest -s tests/e2e/test_full_e2e.py
+```
+
+Without the `-s` flag, the test might appear to pass, but you will not see the critical data required for your audit.
+
+#### E2E Test Workflow
+
+The test script automates the following application workflow:
+1.  **`pre-analyze`**: The CLI is called to find new procurements for a specific date and create initial `procurement_analysis` records in the database with a `PENDING_ANALYSIS` status.
+2.  **Fetch IDs**: The test queries the database to get the `analysis_id`s of the records created in the previous step.
+3.  **`analyze`**: The CLI is called in a loop for each `analysis_id`, which publishes a message to the Pub/Sub queue, triggering the full analysis for that item.
+4.  **`worker`**: The worker process is started. It listens to the Pub/Sub queue, consumes the messages, and executes the core analysis logic for each one.
+5.  **Validation**: The test asserts that the status of the processed records in the `procurement_analysis` table is now `ANALYSIS_SUCCESSFUL`.
+6.  **Data Dump**: At the end of a successful run, the test prints a complete dump of all data from all tables in the test schema, formatted as JSON.
+
+#### Agent's Task - Critical Analysis
+
+When running this test, your primary role is to act as a critical auditor of the output. A passing test is not enough.
+1.  **Scrutinize the Logs:** The test is designed to stream logs from each CLI command in real-time. Pay close attention to these logs for warnings, errors, or unexpected behavior during the run.
+2.  **Examine the Final Data Dump:** This is the most critical part. The JSON dump at the end of the test shows the final state of the database. You must:
+    -   **Verify Correctness:** Do not assume the data is correct. Does the `procurement` data match the `procurement_analysis` data? Are timestamps (`created_at`, `updated_at`) logical? Is the `risk_score` plausible?
+    -   **Identify Inconsistencies:** Look for any anomalies, missing data, or unexpected values. For example, if the worker log shows it processed 3 messages, does the data dump show exactly 3 updated records?
+    -   **Be Demanding:** Question every field. Your goal is to catch subtle bugs in business logic, data integrity, or component interaction that a simple pass/fail status might miss.
+
+#### E2E Best Practices & Learnings
+- **Real-time Logging is Crucial**: The test uses a helper function (`run_command`) to execute CLI commands as subprocesses while streaming their `stdout` and `stderr`. This is essential for debugging complex, multi-step interactions, as it shows exactly what each component is doing in real-time.
+- **Timeouts Prevent Deadlocks**: The worker can hang indefinitely if it's waiting for messages that never arrive. The E2E test invokes the worker with a `--timeout` parameter. This ensures the test will fail fast rather than getting stuck, which is critical for CI/CD environments.
+
 **Important**: Test coverage must always be greater than the threshold defined in `pyproject.toml`.
 #### Test Database Schema
-Integration tests run on a separate, temporary database schema to ensure isolation from the development data. This is handled automatically by setting the `POSTGRES_DB_SCHEMA` environment variable during the test run (see `pytest.ini`). The `DatabaseManager` and Alembic migrations will use this schema if the variable is present.
+Integration and E2E tests run on a separate, temporary database schema to ensure isolation from development data. This is handled automatically by setting the `POSTGRES_DB_SCHEMA` environment variable during the test run (see `pytest.ini`). The `DatabaseManager` and Alembic migrations will use this schema if the variable is present.
 
 ## 5. Code Philosophy
 
