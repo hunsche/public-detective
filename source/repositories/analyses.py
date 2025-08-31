@@ -4,7 +4,7 @@ related to procurement analysis results.
 """
 
 import json
-from typing import cast
+from typing import Any, cast
 
 from models.analyses import Analysis, AnalysisResult
 from models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -196,3 +196,94 @@ class AnalysisRepository:
             conn.execute(sql, {"analysis_id": analysis_id, "status": status.value})
             conn.commit()
         self.logger.info("Analysis status updated successfully.")
+
+    def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
+        """
+        Retrieves the overall status of a procurement based on its analysis history.
+
+        This method executes a complex query that determines the single, most relevant
+        status for a procurement, considering all its versions and analysis states.
+
+        Args:
+            procurement_control_number: The unique control number of the procurement.
+
+        Returns:
+            A dictionary containing the 'procurement_id', 'latest_version', and
+            'overall_status', or None if the procurement is not found.
+        """
+        sql = text(
+            """
+            WITH latest_procurement AS (
+              SELECT
+                pncp_control_number,
+                MAX(version_number) AS latest_version
+              FROM procurements
+              WHERE pncp_control_number = :pncp_control_number
+              GROUP BY pncp_control_number
+            ),
+            analysis_status_per_version AS (
+              SELECT
+                procurement_analyses.procurement_control_number,
+                procurement_analyses.version_number,
+                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_SUCCESSFUL') AS version_has_success,
+                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_IN_PROGRESS') AS version_has_in_progress,
+                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_FAILED')     AS version_has_failed,
+                BOOL_OR(procurement_analyses.status::text = 'PENDING_ANALYSIS')    AS version_has_pending
+              FROM procurement_analyses
+              WHERE procurement_analyses.procurement_control_number = :pncp_control_number
+              GROUP BY
+                procurement_analyses.procurement_control_number,
+                procurement_analyses.version_number
+            ),
+            any_previous_version_analyzed AS (
+              SELECT
+                latest_procurement.pncp_control_number,
+                BOOL_OR(analysis_status_per_version.version_has_success) AS has_success_in_previous_versions
+              FROM latest_procurement
+              JOIN analysis_status_per_version
+                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
+               AND analysis_status_per_version.version_number < latest_procurement.latest_version
+              GROUP BY latest_procurement.pncp_control_number
+            ),
+            latest_version_status_rollup AS (
+              SELECT
+                latest_procurement.pncp_control_number,
+                latest_procurement.latest_version,
+                COALESCE(analysis_status_per_version.version_has_success, false)     AS latest_version_has_success,
+                COALESCE(analysis_status_per_version.version_has_in_progress, false) AS latest_version_has_in_progress,
+                COALESCE(analysis_status_per_version.version_has_failed, false)      AS latest_version_has_failed,
+                COALESCE(analysis_status_per_version.version_has_pending, false)     AS latest_version_has_pending
+              FROM latest_procurement
+              LEFT JOIN analysis_status_per_version
+                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
+               AND analysis_status_per_version.version_number = latest_procurement.latest_version
+            )
+            SELECT
+              latest_version_status_rollup.pncp_control_number AS procurement_id,
+              latest_version_status_rollup.latest_version,
+              CASE
+                WHEN latest_version_status_rollup.latest_version_has_in_progress THEN 'ANALYSIS_IN_PROGRESS'
+                WHEN latest_version_status_rollup.latest_version_has_success     THEN 'ANALYZED_CURRENT'
+                WHEN latest_version_status_rollup.latest_version_has_failed      THEN 'FAILED_CURRENT'
+                WHEN
+                    any_previous_version_analyzed.has_success_in_previous_versions IS TRUE
+                THEN 'ANALYZED_OUTDATED'
+                WHEN
+                    latest_version_status_rollup.latest_version_has_pending OR
+                    latest_version_status_rollup.latest_version IS NOT NULL
+                THEN 'PENDING'
+                ELSE 'NOT_ANALYZED'
+              END AS overall_status
+            FROM latest_version_status_rollup
+            LEFT JOIN any_previous_version_analyzed
+              ON any_previous_version_analyzed.pncp_control_number = latest_version_status_rollup.pncp_control_number;
+            """
+        )
+
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"pncp_control_number": procurement_control_number}).fetchone()
+
+        if not result:
+            return None
+
+        return dict(result._mapping)
