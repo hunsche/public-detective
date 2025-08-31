@@ -1,6 +1,8 @@
 import json
 import os
+import socket
 import subprocess  # nosec B404
+import time
 import uuid
 from pathlib import Path
 from zipfile import ZipFile
@@ -33,8 +35,6 @@ def run_command(command: str):
     print(f"--- Command finished: {command} ---")
 
 
-import socket
-import time
 @pytest.fixture(scope="session", autouse=True)
 def db_session():
     """
@@ -73,7 +73,7 @@ def db_session():
         try:
             with socket.create_connection((host, port), timeout=1):
                 break
-        except (socket.timeout, ConnectionRefusedError):
+        except (TimeoutError, ConnectionRefusedError):
             time.sleep(1)
     else:
         pytest.fail(f"Could not connect to postgres at {host}:{port} after {timeout} seconds")
