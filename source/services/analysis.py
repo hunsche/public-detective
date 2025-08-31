@@ -128,7 +128,9 @@ class AnalysisService:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
             return
 
-        document_hash = self._calculate_super_hash(raw_procurement_data, all_original_files, files_for_ai, excluded_files)
+        document_hash = self._calculate_super_hash(
+            raw_procurement_data, all_original_files, files_for_ai, excluded_files
+        )
         existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
 
         if existing_analysis and existing_analysis.analysis_id != analysis_id:
@@ -167,9 +169,6 @@ class AnalysisService:
                 return
 
         # If we are here, we are clear to proceed with the analysis.
-        # The old `_calculate_hash` is no longer needed, we use the super hash.
-        final_document_hash = document_hash
-
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis = self.ai_provider.get_structured_analysis(
@@ -530,7 +529,8 @@ class AnalysisService:
         # If this exact state has been processed before, skip.
         if self.analysis_repo.get_analysis_by_hash(document_hash):
             self.logger.info(
-                f"Skipping procurement {procurement.pncp_control_number} as an analysis with the exact same hash {document_hash} already exists."
+                f"Skipping procurement {procurement.pncp_control_number} "
+                f"as an analysis with the exact same hash {document_hash} already exists."
             )
             return
 
