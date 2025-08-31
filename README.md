@@ -1,4 +1,10 @@
-# 🔎 Public Detective
+# ✨ Public Detective ✨
+
+<img src="https://media.giphy.com/media/l3vR1tookIhM6nLd6/giphy.gif" alt="AI Detective" width="400"/>
+
+> An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement.
+
+🚀 **[See the live platform!](https://detetive-publico.com)** 🚀
 
 [![CI](https://github.com/hunsche/public-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
 ![Coverage](./.github/badges/coverage.svg)
@@ -6,24 +12,23 @@
 [![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
 
-> An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement.
 
-## About The Project
+## 🕵️‍♂️ What's This All About?
 
-Public procurement in Brazil is a multi-billion dollar enterprise, but its complexity can make it opaque and vulnerable to inefficiencies, fraud, and corruption. **Public Detective** is an academic project designed to address this challenge by leveraging modern technology for social good.
+Ever feel like public spending is a black box? In Brazil, billions are spent on public contracts, but keeping an eye on all of it is a Herculean task. Mistakes, inefficiencies, and even fraud can hide in mountains of documents.
 
-This tool automatically fetches public tender data from Brazil's National Public Procurement Portal (PNCP) and uses Artificial Intelligence to analyze the full text of bid documents. The primary goal is to identify and flag potential irregularities, making it easier for journalists, civil society organizations, and citizens to scrutinize public spending.
+**Public Detective** is here to change the game. We're an AI-powered watchdog that sniffs out irregularities in public tenders. Think of it as a digital detective, working 24/7 to help journalists, activists, and you demand transparency.
 
-This is a research and extension project developed at the **Pontifical Catholic University of Paraná (PUCPR)**, and it benefits from the valuable feedback and expertise of the NGO **Transparência Brasil**.
+This isn't just code; it's a mission. Developed at **PUCPR** with the help of the amazing folks at **Transparência Brasil**, this project puts cutting-edge tech in the hands of the people.
 
-## ✨ Key Features
+## 🌟 Core Features
 
-- **Automated Data Retrieval:** Fetches procurement data directly from the official PNCP APIs.
-- **AI-Powered Irregularity Detection:** Uses a Generative AI model to flag potential red flags and provide a detailed risk score with a rationale.
-- **Traceability:** Archives both original and processed documents in Google Cloud Storage for every analysis.
-- **Idempotency:** Avoids re-analyzing unchanged documents by checking a content hash.
+- **🤖 Automated Data Retrieval:** Fetches procurement data directly from the official PNCP APIs.
+- **💡 AI-Powered Analysis:** Uses a Generative AI model to flag potential red flags and provide a detailed risk score with a rationale.
+- **🗃️ Full Traceability:** Archives both original and processed documents in Google Cloud Storage for every analysis.
+- **🛡️ Idempotent by Design:** Avoids re-analyzing unchanged documents by checking a content hash.
 
-## 🚀 How It Works
+## ⚙️ How the Magic Happens
 
 The application operates in a two-stage pipeline: a lightweight **Pre-analysis** stage to discover and prepare data, followed by an on-demand, AI-powered **Analysis** stage. This decoupled architecture ensures efficiency and cost-effectiveness.
 
@@ -38,8 +43,10 @@ graph TD
         D --> E[Save analysis record to Database<br>Status: PENDING_ANALYSIS];
     end
 
+    E --> F[Start: `analyze` command with ID]
+
     subgraph "Stage 2: Analysis (On-Demand)"
-        F[Start: `analyze` command with ID] --> G[Publish message to Pub/Sub];
+        F --> G[Publish message to Pub/Sub];
         H[Background worker consumes message] --> I[Retrieve data and documents];
         I --> J[Submit to Google Gemini for analysis];
         J --> K{Save AI results to Database};
@@ -50,14 +57,14 @@ graph TD
     G -.-> H;
 ```
 
-## 🛠️ Tech Stack
+## 🛠️ Built With
 
 - **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
-- **Database:** PostgreSQL with Psycopg2
+-- **Database:** PostgreSQL with Psycopg2
 - **Infrastructure:** Docker, Google Cloud Storage, Google Cloud Pub/Sub
 
-## 🏁 Getting Started
+## 🏁 Get Started
 
 To get a local copy up and running, follow these simple steps.
 
@@ -92,7 +99,7 @@ To get a local copy up and running, follow these simple steps.
     poetry run alembic upgrade head
     ```
 
-## 💻 Usage
+## 💻 How to Use
 
 The application is controlled via a Command-Line Interface (CLI) with two main commands.
 
@@ -134,7 +141,7 @@ INFO: Triggering analysis for ID: 123...
 INFO: Message published successfully. A background worker will process the analysis shortly.
 ```
 
-## 🙌 Contributing
+## 🙌 Join the Mission!
 
 Contributions are what make the open-source community such an amazing place to learn, inspire, and create. Any contributions you make are **greatly appreciated**. Please refer to the `CONTRIBUTING.md` file for details.
 
@@ -142,8 +149,11 @@ Contributions are what make the open-source community such an amazing place to l
 
 Distributed under the Creative Commons Attribution-NonCommercial 4.0 International License. See `LICENSE` for more information.
 
-## 📬 Contact
+## 📬 Get In Touch
 
-Matheus Hunsche - [LinkedIn](https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/) - mthunsche+public-detective@gmail.com
-
-Project Link: [https://detetive-publico.com](https://detetive-publico.com)
+<a href="https://github.com/hunsche"><img src="https://github.com/hunsche.png" width="100px;" alt="Matheus Hunsche"/></a>
+<br />
+<b>Matheus Hunsche</b>
+<br />
+<a href="https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
+<a href="mailto:mthunsche+public-detective@gmail.com"><img src="https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white" /></a>
