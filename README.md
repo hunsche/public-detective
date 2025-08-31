@@ -72,7 +72,7 @@ graph LR
 
 - **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
--- **Database:** PostgreSQL with Psycopg2
+- **Database:** PostgreSQL
 - **Infrastructure:** Docker, Google Cloud Storage, Google Cloud Pub/Sub
 
 ## 🏁 Get Started
