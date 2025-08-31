@@ -4,11 +4,10 @@ Revises:
 Create Date: 2025-08-31 14:34:00.000000
 
 """
-import os
 from typing import Sequence, Union
 
 from alembic import op
-from source.migrations.helpers import get_table_name
+from source.migrations.helpers import get_qualified_name
 
 
 revision: str = 'b7179b0a29e7'
@@ -18,13 +17,10 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-    procurements_table = get_table_name("procurements")
-    procurement_analyses_table = get_table_name("procurement_analyses")
-    file_records_table = get_table_name("file_records")
-
-    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
-    procurement_analysis_status_type = f"{schema_name}.procurement_analysis_status" if schema_name else "procurement_analysis_status"
-
+    procurements_table = get_qualified_name("procurements")
+    procurement_analyses_table = get_qualified_name("procurement_analyses")
+    file_records_table = get_qualified_name("file_records")
+    procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
 
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
@@ -108,12 +104,10 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    procurements_table = get_table_name("procurements")
-    procurement_analyses_table = get_table_name("procurement_analyses")
-    file_records_table = get_table_name("file_records")
-
-    schema_name = os.getenv("POSTGRES_DB_SCHEMA")
-    procurement_analysis_status_type = f"{schema_name}.procurement_analysis_status" if schema_name else "procurement_analysis_status"
+    procurements_table = get_qualified_name("procurements")
+    procurement_analyses_table = get_qualified_name("procurement_analyses")
+    file_records_table = get_qualified_name("file_records")
+    procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
 
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
