@@ -1,5 +1,6 @@
 ---
 name: Request a feature
+about: Suggest an idea for this project
 description: Suggest an idea for this project
 title: "[FEAT] <title>"
 labels: ["enhancement", "triage"]

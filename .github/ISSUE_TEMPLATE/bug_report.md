@@ -1,6 +1,7 @@
 ---
 name: Report a bug
 description: File a bug report
+about: File a bug report
 title: "[BUG] <title>"
 labels: ["bug", "triage"]
 assignees:
