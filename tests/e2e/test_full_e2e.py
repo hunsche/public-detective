@@ -172,7 +172,7 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
     ibge_code = "3304557"
-    max_items_to_process = 2
+    max_items_to_process = 3
 
     # Set environment variables for the run
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
