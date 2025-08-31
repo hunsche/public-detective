@@ -56,7 +56,8 @@ jobs:
           #!/bin/bash
           set -e
 
-          if git show -s --format='%an' HEAD | grep -q 'Jules'; then
+          # Check for the correct author name: google-labs-jules[bot]
+          if git show -s --format='%an' HEAD | grep -q 'google-labs-jules[bot]'; then
             # Check for the specific approval trailer to prevent duplication
             if ! git show -s --format='%b' HEAD | grep -qF "$APPROVAL_TRAILER"; then
               echo "Amending commit $(git rev-parse --short HEAD) to add trailers."
@@ -80,8 +81,6 @@ jobs:
           echo "Rebase successful."
 
       - name: Force push to PR branch
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           echo "Force pushing changes to ${{ github.event.pull_request.head.ref }} with --force-with-lease"
           git push --force-with-lease
