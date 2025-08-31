@@ -314,7 +314,7 @@ def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F
 
         # 4. Check that a history record was created
         history_query = text(
-            "SELECT status, details FROM procurement_analysis_status_history " "WHERE analysis_id = :id"
+            "SELECT status, details FROM " "procurement_analysis_status_history " "WHERE analysis_id = :id"
         )
         history_record = connection.execute(history_query, {"id": analysis_id}).fetchone()
         assert history_record is not None
