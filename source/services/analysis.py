@@ -77,24 +77,27 @@ class AnalysisService:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
             return
 
-        procurement = self.procurement_repo.get_procurement_by_id_and_version(
+        raw_procurement_data = self.procurement_repo.get_procurement_by_id_and_version(
             analysis.procurement_control_number, analysis.version_number
         )
-        if not procurement:
+        if not raw_procurement_data:
             self.logger.error(
                 f"Procurement {analysis.procurement_control_number} version {analysis.version_number} not found."
             )
             return
+        procurement = Procurement.model_validate(raw_procurement_data)
 
         try:
-            self.analyze_procurement(procurement, analysis.version_number, analysis_id)
+            self.analyze_procurement(procurement, analysis.version_number, analysis_id, raw_procurement_data)
             self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL)
         except Exception as e:
             self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
             self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED)
             raise
 
-    def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
+    def analyze_procurement(
+        self, procurement: Procurement, version_number: int, analysis_id: int, raw_procurement_data: dict
+    ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
@@ -125,10 +128,9 @@ class AnalysisService:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
             return
 
-        document_hash = self._calculate_hash(files_for_ai)
-        existing_analysis = self.analysis_repo.get_latest_analysis_by_hash(document_hash)
+        document_hash = self._calculate_super_hash(raw_procurement_data, all_original_files, files_for_ai, excluded_files)
+        existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
 
-        # Check for race conditions or completed work
         if existing_analysis and existing_analysis.analysis_id != analysis_id:
             status = ProcurementAnalysisStatus(existing_analysis.status)
             if status == ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL:
@@ -157,15 +159,16 @@ class AnalysisService:
                 )
                 self.logger.info(f"Successfully reused analysis for {control_number}.")
                 return
-            elif status in [ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS, ProcurementAnalysisStatus.PENDING_ANALYSIS]:
+            elif status == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS:
                 self.logger.warning(
-                    f"Analysis with hash {document_hash} is already being processed (status: {status.value}). "
+                    f"Analysis with hash {document_hash} is already in progress. "
                     f"Skipping analysis for procurement {control_number} to avoid duplicate work."
                 )
-                self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL)
                 return
 
-        # No reusable or in-progress analysis found, proceed with new analysis.
+        # If we are here, we are clear to proceed with the analysis.
+        # The old `_calculate_hash` is no longer needed, we use the super hash.
+        final_document_hash = document_hash
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
@@ -211,6 +214,31 @@ class AnalysisService:
         hasher = hashlib.sha256()
         for _, content in sorted(files, key=lambda x: x[0]):
             hasher.update(content)
+        return hasher.hexdigest()
+
+    def _calculate_super_hash(
+        self,
+        raw_data: dict,
+        all_files: list[tuple[str, bytes]],
+        files_for_ai: list[tuple[str, bytes]],
+        excluded_files: dict[str, str],
+    ) -> str:
+        hasher = hashlib.sha256()
+
+        # Add raw procurement data
+        hasher.update(json.dumps(raw_data, sort_keys=True).encode("utf-8"))
+
+        # Add info about all files
+        included_filenames = {f[0] for f in files_for_ai}
+        for file_path, file_content in sorted(all_files, key=lambda x: x[0]):
+            hasher.update(file_path.encode("utf-8"))
+            hasher.update(file_content)
+            is_included = file_path in included_filenames
+            hasher.update(str(is_included).encode("utf-8"))
+            if not is_included:
+                reason = excluded_files.get(file_path, "")
+                hasher.update(reason.encode("utf-8"))
+
         return hasher.hexdigest()
 
     def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
@@ -491,57 +519,44 @@ class AnalysisService:
         self.logger.info("Pre-analysis job for the entire date range has been completed.")
 
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict):
-        # 1. Get documents
+        # 1. Get documents and prepare for AI analysis
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
-        # 2. Calculate hash for procurement (raw data + all files)
-        raw_data_str = json.dumps(raw_data, sort_keys=True)
-        all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
-        procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
+        # 2. Calculate the single comprehensive hash for the entire work unit
+        document_hash = self._calculate_super_hash(raw_data, all_original_files, files_for_ai, excluded_files)
 
-        # 3. Check for idempotency on procurement
-        if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
-            self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
-            return
-
-        # 4. Calculate hash for analysis (files for AI)
-        analysis_document_hash = self._calculate_hash(files_for_ai)
-
-        # Idempotency Check: if an analysis with the same hash exists and is not in a failed state, skip.
-        existing_status = self.analysis_repo.get_analysis_status_by_hash(analysis_document_hash)
-        if existing_status and existing_status != ProcurementAnalysisStatus.ANALYSIS_FAILED:
+        # 3. Check for idempotency using the super hash.
+        # If this exact state has been processed before, skip.
+        if self.analysis_repo.get_analysis_by_hash(document_hash):
             self.logger.info(
-                f"Skipping procurement {procurement.pncp_control_number} "
-                f"as an analysis with hash {analysis_document_hash} already exists with status {existing_status.value}."
+                f"Skipping procurement {procurement.pncp_control_number} as an analysis with the exact same hash {document_hash} already exists."
             )
             return
 
-        # 5. Get new version number
+        # 4. Get new version number for the procurement
         latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
         new_version = latest_version + 1
 
-        # 6. Save new procurement version
+        # 5. Save the new version of the procurement
         self.procurement_repo.save_procurement_version(
             procurement=procurement,
-            raw_data=raw_data_str,
+            raw_data=json.dumps(raw_data, sort_keys=True),
             version_number=new_version,
-            content_hash=procurement_content_hash,
+            content_hash=document_hash,  # The super hash now also serves as the content hash
         )
 
-        # 7. Count tokens
+        # 6. Prepare for analysis cost estimation
         prompt = self._build_analysis_prompt(procurement, warnings)
         token_count = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
-
-        # 8. Calculate estimated cost
         estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
 
-        # 9. Save pre-analysis
+        # 7. Save the pre-analysis record, which creates the analysis task
         self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             estimated_cost=estimated_cost,
-            document_hash=analysis_document_hash,
+            document_hash=document_hash,
         )
 
     def run_analysis(self, start_date: date, end_date: date):

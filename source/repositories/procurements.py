@@ -113,7 +113,7 @@ class ProcurementsRepository:
             conn.commit()
         self.logger.info("Procurement version saved successfully.")
 
-    def get_procurement_by_id_and_version(self, pncp_control_number: str, version_number: int) -> Procurement | None:
+    def get_procurement_by_id_and_version(self, pncp_control_number: str, version_number: int) -> dict | None:
         """
         Retrieves a specific version of a procurement from the database.
         """
@@ -129,7 +129,7 @@ class ProcurementsRepository:
         if not result:
             return None
 
-        return Procurement.model_validate(result)
+        return result
 
     def process_procurement_documents(self, procurement: Procurement) -> list[tuple[str, bytes]]:
         """Downloads all documents for a procurement, extracts metadata for every
