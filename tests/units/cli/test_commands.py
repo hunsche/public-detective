@@ -1,3 +1,4 @@
+import os
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
@@ -165,6 +166,8 @@ class TestPreAnalysisCommand(unittest.TestCase):
         mock_db_manager,
         mock_analysis_service,
     ):
+        os.environ["GCP_GEMINI_API_KEY"] = "dummy_key"
+
         runner = CliRunner()
         start_date = "2025-01-01"
         end_date = "2025-01-01"

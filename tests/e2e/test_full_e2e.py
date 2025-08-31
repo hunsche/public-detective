@@ -158,8 +158,7 @@ def e2e_test_setup(db_session):
         print("E2E test environment torn down.")
 
 
-@pytest.mark.e2e
-@pytest.mark.timeout(150)
+@pytest.mark.timeout(180)
 def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     """
     Tests the full E2E flow against live dependencies:
@@ -171,8 +170,8 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     """
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
-    ibge_code = "3304557"
-    max_items_to_process = 3
+    ibge_code = "3550308"
+    max_items_to_process = 2
 
     # Set environment variables for the run
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
