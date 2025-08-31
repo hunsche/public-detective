@@ -186,7 +186,7 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
       <a href="https://github.com/hunsche"><img src="https://github.com/hunsche.png" width="100px;" alt="Matheus Hunsche"/></a>
     </td>
     <td valign="top">
-      <b>Matheus Aoki Hunsche</b>
+      <b>Matheus Hunsche</b>
       <br />
       <a href="https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
       <br />
