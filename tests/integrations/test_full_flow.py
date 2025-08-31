@@ -25,6 +25,7 @@ from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 from sqlalchemy import create_engine, text
 
@@ -33,73 +34,6 @@ from source.providers.config import ConfigProvider
 from source.worker.subscription import Subscription
 
 
-@pytest.fixture(scope="session", autouse=True)
-def db_session():
-    fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
-    fixture_path = fixture_dir / "Anexos.zip"
-    if not fixture_path.exists():
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(fixture_path, "w") as zf:
-            zf.writestr("dummy_document.pdf", b"dummy pdf content")
-
-    config = ConfigProvider.get_config()
-
-    # Use localhost for services, as docker-compose exposes the ports to the host
-    host = "localhost"
-    os.environ["POSTGRES_HOST"] = host
-    os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
-    os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
-
-    schema_name = f"test_schema_{uuid.uuid4().hex}"
-    os.environ["POSTGRES_DB_SCHEMA"] = schema_name
-    db_url = (
-        f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-        f"{host}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
-    )
-    engine = create_engine(db_url)
-
-    # Wait for the database to be ready before proceeding
-    for _ in range(15):
-        try:
-            with engine.connect() as connection:
-                connection.execute(text("SELECT 1"))
-            break
-        except Exception:
-            time.sleep(1)
-    else:
-        pytest.fail("Database did not become available in time.")
-
-    try:
-        with engine.connect() as connection:
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
-            connection.commit()
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.commit()
-        from alembic import command
-        from alembic.config import Config
-
-        alembic_cfg = Config("alembic.ini")
-        command.upgrade(alembic_cfg, "head")
-
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.execute(
-                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
-            )
-            connection.commit()
-        yield engine
-    finally:
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.execute(
-                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
-            )
-            connection.commit()
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-        engine.dispose()
 
 
 @pytest.fixture(scope="function")
@@ -181,10 +115,12 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     analysis_repo = AnalysisRepository(engine=db_engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    status_history_repo = StatusHistoryRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
+        status_history_repo=status_history_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -274,10 +210,12 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     analysis_repo = AnalysisRepository(engine=db_engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    status_history_repo = StatusHistoryRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
+        status_history_repo=status_history_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -317,3 +255,43 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         assert version == 1
         assert status == "PENDING_ANALYSIS"
         assert float(estimated_cost) == 0.002
+
+
+@pytest.mark.timeout(180)
+def test_reaper_flow_integration(integration_test_setup, db_session):
+    """
+    Tests that the reaper command correctly identifies and resets a stale task.
+    """
+    # 1. Manually insert a stale analysis record
+    analysis_id = 555
+    with db_session.connect() as connection:
+        connection.execute(
+            text(
+                """
+                INSERT INTO procurement_analyses (analysis_id, procurement_control_number, version_number, status, updated_at)
+                VALUES (:id, 'stale_control', 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
+                """
+            ),
+            {"id": analysis_id},
+        )
+        connection.commit()
+
+    # 2. Run the reaper command
+    runner = CliRunner()
+    result = runner.invoke(cli_main, ["reap-stale-tasks", "--timeout-minutes", "15"])
+    assert result.exit_code == 0, f"CLI command failed: {result.output}"
+    assert "Successfully reset 1 stale tasks" in result.output
+
+    # 3. Check the status in the database
+    with db_session.connect() as connection:
+        status_query = text("SELECT status FROM procurement_analyses WHERE analysis_id = :id")
+        new_status = connection.execute(status_query, {"id": analysis_id}).scalar_one()
+        assert new_status == "TIMEOUT"
+
+        # 4. Check that a history record was created
+        history_query = text("SELECT status, details FROM procurement_analysis_status_history WHERE analysis_id = :id")
+        history_record = connection.execute(history_query, {"id": analysis_id}).fetchone()
+        assert history_record is not None
+        status, details = history_record
+        assert status == "TIMEOUT"
+        assert "timed out after 15 minutes" in details

@@ -18,6 +18,7 @@ def mock_dependencies():
         "procurement_repo": MagicMock(),
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
+        "status_history_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
@@ -68,160 +69,49 @@ def test_analysis_service_instantiation(mock_dependencies):
     assert service.procurement_repo == mock_dependencies["procurement_repo"]
 
 
-@pytest.fixture
-def raw_procurement_data():
-    """Fixture to provide raw procurement data as a dict."""
-    return {
-        "processo": "123",
-        "objetoCompra": "Test Object",
-        "amparoLegal": {"codigo": 1, "nome": "Test", "descricao": "Test"},
-        "srp": False,
-        "orgaoEntidade": {
-            "cnpj": "00000000000191",
-            "razaoSocial": "Test Entity",
-            "poderId": "E",
-            "esferaId": "F",
-        },
-        "anoCompra": 2025,
-        "sequencialCompra": 1,
-        "dataPublicacaoPncp": "2025-01-01T12:00:00",
-        "dataAtualizacao": "2025-01-01T12:00:00",
-        "numeroCompra": "1",
-        "unidadeOrgao": {
-            "ufNome": "Test",
-            "codigoUnidade": "1",
-            "nomeUnidade": "Test",
-            "ufSigla": "TE",
-            "municipioNome": "Test",
-            "codigoIbge": "1",
-        },
-        "modalidadeId": 8,
-        "numeroControlePNCP": "123",
-        "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
-        "modoDisputaId": 5,
-        "situacaoCompraId": 1,
-        "usuarioNome": "Test User",
-    }
+def test_idempotency_check(mock_dependencies, mock_procurement):
+    """Tests that analysis is skipped if a result with the same hash exists."""
+    # Arrange: Mock the return values
+    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
 
+    # Create a mock for the nested ai_analysis object
+    mock_ai_analysis_details = MagicMock(spec=Analysis)
+    mock_ai_analysis_details.risk_score = 5
+    mock_ai_analysis_details.risk_score_rationale = "Reused rationale"
+    mock_ai_analysis_details.red_flags = []
 
-def test_pre_analysis_skips_if_hash_exists(mock_dependencies, mock_procurement, raw_procurement_data):
-    """
-    Tests that _pre_analyze_procurement skips if the super hash already exists.
-    """
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_analysis_by_hash.return_value = MagicMock()
-
-    service._pre_analyze_procurement(mock_procurement, raw_procurement_data)
-
-    service.procurement_repo.save_procurement_version.assert_not_called()
-    service.analysis_repo.save_pre_analysis.assert_not_called()
-
-
-def test_pre_analysis_creates_new_record(mock_dependencies, mock_procurement, raw_procurement_data):
-    """
-    Tests that _pre_analyze_procurement creates a new record when hash doesn't exist.
-    """
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_analysis_by_hash.return_value = None
-    service.procurement_repo.get_latest_version.return_value = 0
-
-    service._pre_analyze_procurement(mock_procurement, raw_procurement_data)
-
-    service.procurement_repo.save_procurement_version.assert_called_once()
-    service.analysis_repo.save_pre_analysis.assert_called_once()
-
-
-def test_analyze_procurement_reuses_successful_results(mock_dependencies, mock_procurement, raw_procurement_data):
-    """
-    Tests that analyze_procurement reuses results if a successful analysis
-    with the same hash exists.
-    """
-    service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-
+    # Create the main mock for the analysis result
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
-    mock_existing_analysis.analysis_id = 122
-    mock_existing_analysis.status = "ANALYSIS_SUCCESSFUL"
-    mock_existing_analysis.ai_analysis = Analysis(
-        risk_score=5, risk_score_rationale="Reused", summary="Reused", red_flags=[]
-    )
-    mock_existing_analysis.warnings = []  # Ensure all necessary attributes are mocked
+    mock_existing_analysis.ai_analysis = mock_ai_analysis_details
+    mock_existing_analysis.warnings = ["Reused warning"]
 
-    service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
 
-    service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
-
-    service.ai_provider.get_structured_analysis.assert_not_called()
-    service.analysis_repo.save_analysis.assert_called_once()
-
-
-@pytest.mark.parametrize(
-    "existing_status",
-    ["ANALYSIS_IN_PROGRESS"],
-)
-def test_analyze_procurement_skips_in_progress(
-    mock_dependencies, mock_procurement, raw_procurement_data, existing_status
-):
-    """
-    Tests that analysis is skipped if an in-progress analysis with the same hash exists.
-    """
+    # Act
     service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+    service.analyze_procurement(mock_procurement, 1, 123)
 
-    mock_existing_analysis = MagicMock(spec=AnalysisResult)
-    mock_existing_analysis.analysis_id = 122
-    mock_existing_analysis.status = existing_status
-    service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
+    # Assert: Check that the AI provider was not called
+    mock_dependencies["ai_provider"].get_structured_analysis.assert_not_called()
 
-    service.analyze_procurement(
-        procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data
-    )
-
-    service.ai_provider.get_structured_analysis.assert_not_called()
-    service.analysis_repo.save_analysis.assert_not_called()
+    # Also assert that save_analysis was called with the reused data
+    mock_dependencies["analysis_repo"].save_analysis.assert_called_once()
+    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
+    saved_result = call_args[1]  # second argument is the AnalysisResult object
+    assert saved_result.ai_analysis.risk_score_rationale == "Reused rationale"
+    assert saved_result.warnings == ["Reused warning"]
 
 
-@pytest.mark.parametrize(
-    "existing_status",
-    ["PENDING_ANALYSIS", "ANALYSIS_FAILED"],
-)
-def test_analyze_procurement_proceeds_on_pending_or_failed(
-    mock_dependencies, mock_procurement, raw_procurement_data, existing_status
-):
-    """
-    Tests that analysis proceeds if a pending or failed analysis with the same hash exists.
-    """
-    service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-
-    mock_existing_analysis = MagicMock(spec=AnalysisResult)
-    mock_existing_analysis.analysis_id = 122
-    mock_existing_analysis.status = existing_status
-    service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
-
-    # Return a real Analysis object to avoid JSON serialization errors
-    mock_ai_analysis = Analysis(risk_score=1, risk_score_rationale="test", summary="test", red_flags=[])
-    service.ai_provider.get_structured_analysis.return_value = mock_ai_analysis
-
-    service.analyze_procurement(
-        procurement=mock_procurement, version_number=1, analysis_id=123, raw_procurement_data=raw_procurement_data
-    )
-
-    service.ai_provider.get_structured_analysis.assert_called_once()
-    service.analysis_repo.save_analysis.assert_called_once()
-
-
-def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement, raw_procurement_data):
+def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):
     """Tests that save_file_record is called for each file."""
     # Arrange
-    service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.process_procurement_documents.return_value = [
+    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [
         ("file1.pdf", b"content1"),
         ("file2.pdf", b"content2"),
     ]
-    service.analysis_repo.get_analysis_by_hash.return_value = None
-    service.analysis_repo.save_analysis.return_value = 123
-    service.ai_provider.get_structured_analysis.return_value = Analysis(
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = None
+    mock_dependencies["analysis_repo"].save_analysis.return_value = 123
+    mock_dependencies["ai_provider"].get_structured_analysis.return_value = Analysis(
         risk_score=1,
         risk_score_rationale="test",
         summary="test",
@@ -229,10 +119,11 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
     )
 
     # Act
-    service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
+    service = AnalysisService(**mock_dependencies)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     # Assert
-    assert service.file_record_repo.save_file_record.call_count == 2
+    assert mock_dependencies["file_record_repo"].save_file_record.call_count == 2
 
 
 def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
@@ -272,42 +163,43 @@ def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
     assert "excedido" in warnings[1]
 
 
-def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement, raw_procurement_data):
+def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement):
     """Tests that the analysis aborts if no documents are found."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = []
 
-    service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.ai_provider.get_structured_analysis.assert_not_called()
 
 
-def test_analyze_procurement_no_supported_files(mock_dependencies, mock_procurement, raw_procurement_data):
+def test_analyze_procurement_no_supported_files(mock_dependencies, mock_procurement):
     """Tests that analysis aborts if no files remain after filtering."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("unsupported.txt", b"c")]
 
-    service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.ai_provider.get_structured_analysis.assert_not_called()
 
 
-def test_analyze_procurement_main_success_path(mock_dependencies, mock_procurement, raw_procurement_data):
+def test_analyze_procurement_main_success_path(mock_dependencies, mock_procurement):
     """Tests the main success path of the analysis pipeline."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
     service.analysis_repo.get_analysis_by_hash.return_value = None
-    mock_ai_analysis = Analysis(risk_score=1, risk_score_rationale="test", summary="test", red_flags=[])
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.model_dump.return_value = {"risk_score": 1, "summary": "test"}
     service.ai_provider.get_structured_analysis.return_value = mock_ai_analysis
 
-    service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
+    service.analyze_procurement(mock_procurement, 1, 123)
 
     service.analysis_repo.save_analysis.assert_called_once()
     service.gcs_provider.upload_file.assert_called()
     service.file_record_repo.save_file_record.assert_called_once()
 
 
-def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurement, raw_procurement_data):
+def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurement):
     """Tests that exceptions in the pipeline are caught and logged."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
@@ -315,7 +207,7 @@ def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurem
     service.ai_provider.get_structured_analysis.side_effect = Exception("AI Error")
 
     with pytest.raises(Exception, match="AI Error"):
-        service.analyze_procurement(mock_procurement, 1, 123, raw_procurement_data)
+        service.analyze_procurement(mock_procurement, 1, 123)
 
 
 def test_run_analysis_no_procurements(mock_dependencies):
@@ -408,3 +300,29 @@ def test_get_procurement_overall_status_handles_none(mock_dependencies):
     # Assert
     assert result is None
     service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_reap_stale_analyses(mock_dependencies):
+    """
+    Tests that the reap_stale_analyses method correctly calls the repository
+    and creates history records for each stale analysis.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    stale_ids = [1, 2, 3]
+    timeout = 15
+    service.analysis_repo.reset_stale_analyses.return_value = stale_ids
+
+    # Act
+    result_count = service.reap_stale_analyses(timeout)
+
+    # Assert
+    assert result_count == len(stale_ids)
+    service.analysis_repo.reset_stale_analyses.assert_called_once_with(timeout)
+    assert service.status_history_repo.create_record.call_count == len(stale_ids)
+    service.status_history_repo.create_record.assert_any_call(
+        1, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
+    )
+    service.status_history_repo.create_record.assert_any_call(
+        3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
+    )

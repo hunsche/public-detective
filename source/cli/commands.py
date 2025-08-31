@@ -10,6 +10,7 @@ from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 
 
@@ -30,11 +31,13 @@ def analyze(analysis_id: int):
         analysis_repo = AnalysisRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        status_history_repo = StatusHistoryRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
+            status_history_repo=status_history_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -93,11 +96,13 @@ def pre_analyze(
         analysis_repo = AnalysisRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        status_history_repo = StatusHistoryRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
+            status_history_repo=status_history_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -108,3 +113,51 @@ def pre_analyze(
         click.secho("Pre-analysis completed successfully!", fg="green")
     except Exception as e:
         click.secho(f"An error occurred: {e}", fg="red")
+
+
+@click.command("reap-stale-tasks")
+@click.option(
+    "--timeout-minutes",
+    type=int,
+    default=15,
+    help="The timeout in minutes to consider a task stale.",
+    show_default=True,
+)
+def reap_stale_tasks(timeout_minutes: int):
+    """
+    Finds tasks that have been in the 'IN_PROGRESS' state for too long and
+    resets them to 'TIMEOUT' status so they can be re-processed.
+    """
+    click.echo(f"Searching for stale tasks with a timeout of {timeout_minutes} minutes...")
+
+    try:
+        db_engine = DatabaseManager.get_engine()
+        pubsub_provider = PubSubProvider()
+        gcs_provider = GcsProvider()
+        ai_provider = AiProvider(Analysis)
+
+        analysis_repo = AnalysisRepository(engine=db_engine)
+        file_record_repo = FileRecordsRepository(engine=db_engine)
+        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        status_history_repo = StatusHistoryRepository(engine=db_engine)
+
+        service = AnalysisService(
+            procurement_repo=procurement_repo,
+            analysis_repo=analysis_repo,
+            file_record_repo=file_record_repo,
+            status_history_repo=status_history_repo,
+            ai_provider=ai_provider,
+            gcs_provider=gcs_provider,
+            pubsub_provider=pubsub_provider,
+        )
+
+        reaped_count = service.reap_stale_analyses(timeout_minutes)
+
+        if reaped_count > 0:
+            click.secho(f"Successfully reset {reaped_count} stale tasks to TIMEOUT status.", fg="green")
+        else:
+            click.secho("No stale tasks found.", fg="yellow")
+
+    except Exception as e:
+        click.secho(f"An error occurred while reaping stale tasks: {e}", fg="red")
+        raise click.Abort()
