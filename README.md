@@ -1,10 +1,20 @@
 # ✨ Public Detective ✨
 
-<img src="https://media.giphy.com/media/l3vR1tookIhM6nLd6/giphy.gif" alt="AI Detective" width="400"/>
+<div align="center">
+  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZDNzZ2ZleWluM2p2dWhqY3Z2ZDNpM212c3ZkZzJzZzZzZzZzZzZzZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3oKIPnAiaMCws8nOsE/giphy.gif" alt="AI Detective" width="400"/>
+</div>
+
+<div align="center">
 
 > An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement.
 
+</div>
+
+<div align="center">
+
 🚀 **[See the live platform!](https://detetive-publico.com)** 🚀
+
+</div>
 
 [![CI](https://github.com/hunsche/public-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
 ![Coverage](./.github/badges/coverage.svg)
@@ -151,9 +161,17 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
 
 ## 📬 Get In Touch
 
-<a href="https://github.com/hunsche"><img src="https://github.com/hunsche.png" width="100px;" alt="Matheus Hunsche"/></a>
-<br />
-<b>Matheus Hunsche</b>
-<br />
-<a href="https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
-<a href="mailto:mthunsche+public-detective@gmail.com"><img src="https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white" /></a>
+<table>
+  <tr>
+    <td valign="top">
+      <a href="https://github.com/hunsche"><img src="https://github.com/hunsche.png" width="100px;" alt="Matheus Hunsche" style="border-radius: 50%;"/></a>
+    </td>
+    <td valign="top">
+      <b>Matheus Hunsche</b>
+      <br />
+      <a href="https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/"><img src="https://img.shields.io/badge/LinkedIn-0077B5?style=for-the-badge&logo=linkedin&logoColor=white" /></a>
+      <br />
+      <a href="mailto:mthunsche+public-detective@gmail.com"><img src="https://img.shields.io/badge/Gmail-D14836?style=for-the-badge&logo=gmail&logoColor=white" /></a>
+    </td>
+  </tr>
+</table>
