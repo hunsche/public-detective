@@ -118,6 +118,6 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
 
 ## Contact
 
-Matheus Hunsche - [LinkedIn](https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/) - mthunsche@gmail.com
+Matheus Hunsche - [LinkedIn](https://www.linkedin.com/in/matheus-aoki-hunsche-085446107/) - mthunsche+public-detective@gmail.com
 
 Project Link: [https://detetive-publico.com](https://detetive-publico.com)
