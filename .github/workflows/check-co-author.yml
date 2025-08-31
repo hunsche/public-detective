@@ -36,14 +36,14 @@ jobs:
           merge_base=$(git merge-base origin/${PR_BASE_REF} HEAD)
           echo "Checking commits from ${merge_base} to HEAD"
 
-          jules_commits=$(git log --author="Jules" --pretty=format:"%H" $merge_base..HEAD)
+          jules_commits=$(git log --author="google-labs-jules[bot]" --pretty=format:"%H" $merge_base..HEAD)
 
           if [ -z "$jules_commits" ]; then
-            echo "No commits by Jules found in this PR. Check passes."
+            echo "No commits by google-labs-jules[bot] found in this PR. Check passes."
             exit 0
           fi
 
-          echo "Found commits by Jules: ${jules_commits}"
+          echo "Found commits by google-labs-jules[bot]: ${jules_commits}"
 
           for commit in $jules_commits; do
             echo "--- Checking commit ${commit} ---"
@@ -53,7 +53,7 @@ jobs:
             approvals=$(git show -s --format='%b' $commit | grep "Codeowner-approval:" || true)
 
             if [ -z "$approvals" ]; then
-              echo "::error::Commit ${commit} by Jules is missing a 'Codeowner-approval' trailer."
+              echo "::error::Commit ${commit} by google-labs-jules[bot] is missing a 'Codeowner-approval' trailer."
               exit 1
             fi
 
@@ -82,4 +82,4 @@ jobs:
             fi
           done
 
-          echo "All commits by Jules have a valid 'Codeowner-approval'. Check passes."
+          echo "All commits by google-labs-jules[bot] have a valid 'Codeowner-approval'. Check passes."
