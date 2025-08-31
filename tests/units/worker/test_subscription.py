@@ -125,9 +125,9 @@ def test_debug_pause(subscription):
 
 
 @patch("worker.subscription.AnalysisService")
-@patch("worker.subscription.FileRecordRepository")
+@patch("worker.subscription.FileRecordsRepository")
 @patch("worker.subscription.AnalysisRepository")
-@patch("worker.subscription.ProcurementRepository")
+@patch("worker.subscription.ProcurementsRepository")
 @patch("worker.subscription.AiProvider")
 @patch("worker.subscription.GcsProvider")
 @patch("worker.subscription.DatabaseManager")

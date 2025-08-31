@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-from models.file_record import NewFileRecord
-from repositories.file_record import FileRecordRepository
+from models.file_records import NewFileRecord
+from repositories.file_records import FileRecordsRepository
 
 
 @pytest.fixture
@@ -12,17 +12,17 @@ def mock_engine():
 
 
 @pytest.fixture
-def file_record_repository(mock_engine):
+def file_records_repository(mock_engine):
     """
-    Fixture to create a FileRecordRepository with a mocked database engine.
+    Fixture to create a FileRecordsRepository with a mocked database engine.
     """
-    return FileRecordRepository(engine=mock_engine)
+    return FileRecordsRepository(engine=mock_engine)
 
 
-def test_save_file_record(file_record_repository):
+def test_save_file_record(file_records_repository):
     # Arrange
     mock_conn = MagicMock()
-    file_record_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+    file_records_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     record = NewFileRecord(
         analysis_id=1,
@@ -37,7 +37,7 @@ def test_save_file_record(file_record_repository):
     )
 
     # Act
-    file_record_repository.save_file_record(record)
+    file_records_repository.save_file_record(record)
 
     # Assert
     mock_conn.execute.assert_called_once()

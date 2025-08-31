@@ -1,9 +1,9 @@
-from models.file_record import NewFileRecord
+from models.file_records import NewFileRecord
 from providers.logging import Logger, LoggingProvider
 from sqlalchemy import Engine, text
 
 
-class FileRecordRepository:
+class FileRecordsRepository:
     """
     Handles all database operations related to file records.
     """
@@ -26,7 +26,7 @@ class FileRecordRepository:
 
         sql = text(
             """
-            INSERT INTO file_record (
+            INSERT INTO file_records (
                 analysis_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
                 prioritization_logic

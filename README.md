@@ -33,7 +33,7 @@ This is a lightweight, zero-cost first pass that prepares procurements for the f
 
 - **Fetch & Version:** It fetches new and updated procurement data from the PNCP. For each new version of a procurement, it calculates a unique hash of its contents (metadata and all associated documents) to ensure idempotency.
 - **Cost Estimation:** Before committing to a full analysis, it calculates the number of tokens required and estimates the final cost based on the current price of the AI model.
-- **Persist:** It saves a new, versioned record for the procurement in the database, along with a corresponding `procurement_analysis` entry marked with a `PENDING_ANALYSIS` status and the estimated cost.
+- **Persist:** It saves a new, versioned record for the procurement in the database, along with a corresponding `procurement_analyses` entry marked with a `PENDING_ANALYSIS` status and the estimated cost.
 
 ### 2. Analysis (AI-Powered)
 

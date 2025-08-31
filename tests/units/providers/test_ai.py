@@ -1,7 +1,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from models.analysis import Analysis
+from models.analyses import Analysis
 from providers.ai import AiProvider
 from pydantic import BaseModel
 

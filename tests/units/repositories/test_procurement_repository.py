@@ -9,8 +9,8 @@ import pytest
 import rarfile
 import requests
 from google.api_core import exceptions
-from models.procurement import Procurement
-from repositories.procurement import ProcurementRepository
+from models.procurements import Procurement
+from repositories.procurements import ProcurementsRepository
 
 
 def _get_mock_procurement_data(control_number: str) -> dict:
@@ -57,11 +57,11 @@ def mock_pubsub_provider():
 
 @pytest.fixture
 def repo(mock_engine, mock_pubsub_provider):
-    """Provides a ProcurementRepository instance with mocked dependencies."""
+    """Provides a ProcurementsRepository instance with mocked dependencies."""
     with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        return ProcurementRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
+        return ProcurementsRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
 
 
 def test_extract_from_zip(repo):

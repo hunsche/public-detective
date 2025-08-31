@@ -1,15 +1,15 @@
 from datetime import date, datetime
 
 import click
-from models.analysis import Analysis
+from models.analyses import Analysis
 from providers.ai import AiProvider
 from providers.database import DatabaseManager
 from providers.date import DateProvider
 from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
-from repositories.analysis import AnalysisRepository
-from repositories.file_record import FileRecordRepository
-from repositories.procurement import ProcurementRepository
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
 from services.analysis import AnalysisService
 
 
@@ -28,8 +28,8 @@ def analyze(analysis_id: int):
         ai_provider = AiProvider(Analysis)
 
         analysis_repo = AnalysisRepository(engine=db_engine)
-        file_record_repo = FileRecordRepository(engine=db_engine)
-        procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        file_record_repo = FileRecordsRepository(engine=db_engine)
+        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
@@ -91,8 +91,8 @@ def pre_analyze(
         ai_provider = AiProvider(Analysis)
 
         analysis_repo = AnalysisRepository(engine=db_engine)
-        file_record_repo = FileRecordRepository(engine=db_engine)
-        procurement_repo = ProcurementRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        file_record_repo = FileRecordsRepository(engine=db_engine)
+        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,

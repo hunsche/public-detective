@@ -4,17 +4,17 @@ import os
 import time
 from datetime import date, datetime, timedelta, timezone
 
-from models.analysis import Analysis, AnalysisResult
-from models.file_record import NewFileRecord
-from models.procurement import Procurement
+from models.analyses import Analysis, AnalysisResult
+from models.file_records import NewFileRecord
+from models.procurements import Procurement
 from providers.ai import AiProvider
 from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
-from repositories.analysis import AnalysisRepository
-from repositories.file_record import FileRecordRepository
-from repositories.procurement import ProcurementRepository
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
 
 
 class AnalysisService:
@@ -27,9 +27,9 @@ class AnalysisService:
     database and Google Cloud Storage.
     """
 
-    procurement_repo: ProcurementRepository
+    procurement_repo: ProcurementsRepository
     analysis_repo: AnalysisRepository
-    file_record_repo: FileRecordRepository
+    file_record_repo: FileRecordsRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -52,9 +52,9 @@ class AnalysisService:
 
     def __init__(
         self,
-        procurement_repo: ProcurementRepository,
+        procurement_repo: ProcurementsRepository,
         analysis_repo: AnalysisRepository,
-        file_record_repo: FileRecordRepository,
+        file_record_repo: FileRecordsRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -101,8 +101,8 @@ class AnalysisService:
         3.  Calculates a hash of the selected files to check for idempotency.
         4.  If a previous analysis with the same hash exists, it aborts.
         5.  Invokes the AI provider to get a structured analysis of the files.
-        6.  Saves the analysis result to the `procurement_analysis` table.
-        7.  Saves a detailed record for each original file to the `file_record`
+        6.  Saves the analysis result to the `procurement_analyses` table.
+        7.  Saves a detailed record for each original file to the `file_records`
             table, including its GCS path and analysis inclusion status.
 
         Args:

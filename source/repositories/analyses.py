@@ -6,7 +6,7 @@ related to procurement analysis results.
 import json
 from typing import cast
 
-from models.analysis import Analysis, AnalysisResult
+from models.analyses import Analysis, AnalysisResult
 from providers.logging import Logger, LoggingProvider
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
@@ -71,7 +71,7 @@ class AnalysisRepository:
 
         sql = text(
             """
-            UPDATE procurement_analysis
+            UPDATE procurement_analyses
             SET
                 document_hash = :document_hash,
                 risk_score = :risk_score,
@@ -110,7 +110,7 @@ class AnalysisRepository:
         Retrieves an analysis result from the database by its document hash.
         """
         sql = text(
-            "SELECT * FROM procurement_analysis "
+            "SELECT * FROM procurement_analyses "
             "WHERE document_hash = :document_hash AND status = 'ANALYSIS_SUCCESSFUL' "
             "LIMIT 1;"
         )
@@ -133,7 +133,7 @@ class AnalysisRepository:
         self.logger.info(f"Saving pre-analysis for {procurement_control_number} version {version_number}.")
         sql = text(
             """
-            INSERT INTO procurement_analysis (
+            INSERT INTO procurement_analyses (
                 procurement_control_number, version_number, estimated_cost,
                 status, document_hash
             ) VALUES (
@@ -160,7 +160,7 @@ class AnalysisRepository:
         """
         Retrieves an analysis result from the database by its ID.
         """
-        sql = text("SELECT * FROM procurement_analysis WHERE analysis_id = :analysis_id LIMIT 1;")
+        sql = text("SELECT * FROM procurement_analyses WHERE analysis_id = :analysis_id LIMIT 1;")
 
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"analysis_id": analysis_id}).fetchone()
@@ -178,7 +178,7 @@ class AnalysisRepository:
         self.logger.info(f"Updating status for analysis {analysis_id} to {status}.")
         sql = text(
             """
-            UPDATE procurement_analysis
+            UPDATE procurement_analyses
             SET status = :status, updated_at = now()
             WHERE analysis_id = :analysis_id;
             """
