@@ -80,6 +80,7 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     mock_ai_analysis_details.risk_score = 5
     mock_ai_analysis_details.risk_score_rationale = "Reused rationale"
     mock_ai_analysis_details.red_flags = []
+    mock_ai_analysis_details.seo_keywords = []
 
     # Create the main mock for the analysis result
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
