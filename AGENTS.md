@@ -29,11 +29,10 @@ Key architectural features:
 
 - **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E2E tests.
 
-- **Idempotency (Single Hash Strategy):** To prevent duplicate processing and ensure consistency, the system uses a single, comprehensive "Super Hash".
-    - **Hash Calculation:** This hash is generated once during the `pre-analyze` phase. It's calculated from a combination of the procurement's raw metadata (JSON), the content of *all* associated files, and metadata about which of those files were selected for AI analysis.
-    - **Strict Idempotency:** If this exact hash is ever seen again, the `pre-analyze` step will skip it entirely, preventing duplicate analysis tasks from being created. This means any change to the procurement data, its documents, or the file selection logic will result in a new hash and a new analysis.
-    - **Worker Logic:** The worker also uses this hash to check for `COMPLETED` or `IN_PROGRESS` analyses to either reuse results or avoid race conditions.
+- **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
+- **Status Auditing:** Every change to an analysis's status is recorded in a dedicated `procurement_analysis_status_history` table, providing a full audit trail for debugging and observability.
+- **Orphan Task Handling:** A dedicated CLI command, `reap-stale-tasks`, is provided to find and reset tasks that have been stuck in the `IN_PROGRESS` state for too long.
 
 ### Architectural Principles
 

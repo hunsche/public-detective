@@ -17,6 +17,7 @@ from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
 
 
 class AnalysisService:
@@ -32,6 +33,7 @@ class AnalysisService:
     procurement_repo: ProcurementsRepository
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
+    status_history_repo: StatusHistoryRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -57,6 +59,7 @@ class AnalysisService:
         procurement_repo: ProcurementsRepository,
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
+        status_history_repo: StatusHistoryRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -65,11 +68,19 @@ class AnalysisService:
         self.procurement_repo = procurement_repo
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
+        self.status_history_repo = status_history_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
+
+    def _update_status_with_history(
+        self, analysis_id: int, status: ProcurementAnalysisStatus, details: str | None = None
+    ) -> None:
+        """Updates the analysis status and records the change in the history table."""
+        self.analysis_repo.update_analysis_status(analysis_id, status)
+        self.status_history_repo.create_record(analysis_id, status, details)
 
     def process_analysis_from_message(self, analysis_id: int):
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
@@ -77,27 +88,26 @@ class AnalysisService:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
             return
 
-        raw_procurement_data = self.procurement_repo.get_procurement_by_id_and_version(
+        procurement = self.procurement_repo.get_procurement_by_id_and_version(
             analysis.procurement_control_number, analysis.version_number
         )
-        if not raw_procurement_data:
+        if not procurement:
             self.logger.error(
                 f"Procurement {analysis.procurement_control_number} version {analysis.version_number} not found."
             )
             return
-        procurement = Procurement.model_validate(raw_procurement_data)
 
         try:
-            self.analyze_procurement(procurement, analysis.version_number, analysis_id, raw_procurement_data)
-            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL)
+            self.analyze_procurement(procurement, analysis.version_number, analysis_id)
+            self._update_status_with_history(
+                analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
+            )
         except Exception as e:
             self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
-            self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED)
+            self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
             raise
 
-    def analyze_procurement(
-        self, procurement: Procurement, version_number: int, analysis_id: int, raw_procurement_data: dict
-    ) -> None:
+    def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
@@ -128,47 +138,44 @@ class AnalysisService:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
             return
 
-        document_hash = self._calculate_super_hash(
-            raw_procurement_data, all_original_files, files_for_ai, excluded_files
-        )
+        document_hash = self._calculate_hash(files_for_ai)
         existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
 
-        if existing_analysis and existing_analysis.analysis_id != analysis_id:
-            status = ProcurementAnalysisStatus(existing_analysis.status)
-            if status == ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL:
-                self.logger.info(f"Found existing successful analysis with hash {document_hash}. Reusing results.")
-                timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-                gcs_base_path = f"{control_number}/{timestamp}"
-                if self.config.GCP_GCS_TEST_PREFIX:
-                    gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
+        if existing_analysis:
+            self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
+            # Create the GCS paths based on the new analysis timestamp
+            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+            gcs_base_path = f"{control_number}/{timestamp}"
+            if self.config.GCP_GCS_TEST_PREFIX:
+                gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
 
-                reused_result = AnalysisResult(
-                    procurement_control_number=control_number,
-                    version_number=version_number,
-                    ai_analysis=existing_analysis.ai_analysis,
-                    warnings=existing_analysis.warnings,
-                    document_hash=document_hash,
-                    original_documents_gcs_path=f"{gcs_base_path}/files/",
-                    processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
-                )
-                self.analysis_repo.save_analysis(analysis_id, reused_result)
-                self._process_and_save_file_records(
-                    analysis_id=analysis_id,
-                    gcs_base_path=gcs_base_path,
-                    all_files=all_original_files,
-                    included_files=files_for_ai,
-                    excluded_files=excluded_files,
-                )
-                self.logger.info(f"Successfully reused analysis for {control_number}.")
-                return
-            elif status == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS:
-                self.logger.warning(
-                    f"Analysis with hash {document_hash} is already in progress. "
-                    f"Skipping analysis for procurement {control_number} to avoid duplicate work."
-                )
-                return
+            # Copy results from the existing analysis
+            reused_result = AnalysisResult(
+                procurement_control_number=control_number,
+                version_number=version_number,
+                ai_analysis=Analysis(
+                    risk_score=existing_analysis.ai_analysis.risk_score,
+                    risk_score_rationale=existing_analysis.ai_analysis.risk_score_rationale,
+                    red_flags=existing_analysis.ai_analysis.red_flags,
+                ),
+                warnings=existing_analysis.warnings,
+                document_hash=document_hash,
+                original_documents_gcs_path=f"{gcs_base_path}/files/",
+                processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
+            )
+            self.analysis_repo.save_analysis(analysis_id, reused_result)
 
-        # If we are here, we are clear to proceed with the analysis.
+            # Even if we reuse the analysis, we must record the files for the *new* analysis run
+            self._process_and_save_file_records(
+                analysis_id=analysis_id,
+                gcs_base_path=gcs_base_path,
+                all_files=all_original_files,
+                included_files=files_for_ai,
+                excluded_files=excluded_files,
+            )
+            self.logger.info(f"Successfully reused analysis for {control_number}.")
+            return
+
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis = self.ai_provider.get_structured_analysis(
@@ -213,31 +220,6 @@ class AnalysisService:
         hasher = hashlib.sha256()
         for _, content in sorted(files, key=lambda x: x[0]):
             hasher.update(content)
-        return hasher.hexdigest()
-
-    def _calculate_super_hash(
-        self,
-        raw_data: dict,
-        all_files: list[tuple[str, bytes]],
-        files_for_ai: list[tuple[str, bytes]],
-        excluded_files: dict[str, str],
-    ) -> str:
-        hasher = hashlib.sha256()
-
-        # Add raw procurement data
-        hasher.update(json.dumps(raw_data, sort_keys=True).encode("utf-8"))
-
-        # Add info about all files
-        included_filenames = {f[0] for f in files_for_ai}
-        for file_path, file_content in sorted(all_files, key=lambda x: x[0]):
-            hasher.update(file_path.encode("utf-8"))
-            hasher.update(file_content)
-            is_included = file_path in included_filenames
-            hasher.update(str(is_included).encode("utf-8"))
-            if not is_included:
-                reason = excluded_files.get(file_path, "")
-                hasher.update(reason.encode("utf-8"))
-
         return hasher.hexdigest()
 
     def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
@@ -459,7 +441,9 @@ class AnalysisService:
             )
             return
 
-        self.analysis_repo.update_analysis_status(analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS)
+        self._update_status_with_history(
+            analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS, "Worker picked up the task."
+        )
 
         if not self.pubsub_provider:
             raise ValueError("PubSubProvider is not configured for AnalysisService")
@@ -518,45 +502,48 @@ class AnalysisService:
         self.logger.info("Pre-analysis job for the entire date range has been completed.")
 
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict):
-        # 1. Get documents and prepare for AI analysis
+        # 1. Get documents
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
-        # 2. Calculate the single comprehensive hash for the entire work unit
-        document_hash = self._calculate_super_hash(raw_data, all_original_files, files_for_ai, excluded_files)
+        # 2. Calculate hash for procurement (raw data + all files)
+        raw_data_str = json.dumps(raw_data, sort_keys=True)
+        all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
+        procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
-        # 3. Check for idempotency using the super hash.
-        # If this exact state has been processed before, skip.
-        if self.analysis_repo.get_analysis_by_hash(document_hash):
-            self.logger.info(
-                f"Skipping procurement {procurement.pncp_control_number} "
-                f"as an analysis with the exact same hash {document_hash} already exists."
-            )
+        # 3. Check for idempotency on procurement
+        if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
+            self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
 
-        # 4. Get new version number for the procurement
+        # 4. Calculate hash for analysis (files for AI)
+        analysis_document_hash = self._calculate_hash(files_for_ai)
+
+        # 5. Get new version number
         latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
         new_version = latest_version + 1
 
-        # 5. Save the new version of the procurement
+        # 6. Save new procurement version
         self.procurement_repo.save_procurement_version(
             procurement=procurement,
-            raw_data=json.dumps(raw_data, sort_keys=True),
+            raw_data=raw_data_str,
             version_number=new_version,
-            content_hash=document_hash,  # The super hash now also serves as the content hash
+            content_hash=procurement_content_hash,
         )
 
-        # 6. Prepare for analysis cost estimation
+        # 7. Count tokens
         prompt = self._build_analysis_prompt(procurement, warnings)
         token_count = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+
+        # 8. Calculate estimated cost
         estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
 
-        # 7. Save the pre-analysis record, which creates the analysis task
+        # 9. Save pre-analysis
         self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             estimated_cost=estimated_cost,
-            document_hash=document_hash,
+            document_hash=analysis_document_hash,
         )
 
     def run_analysis(self, start_date: date, end_date: date):
@@ -587,6 +574,19 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def reap_stale_analyses(self, timeout_minutes: int) -> int:
+        """
+        Resets the status of stale analyses to TIMEOUT and records the change.
+        """
+        stale_ids = self.analysis_repo.reset_stale_analyses(timeout_minutes)
+        for analysis_id in stale_ids:
+            self._update_status_with_history(
+                analysis_id,
+                ProcurementAnalysisStatus.TIMEOUT,
+                f"Analysis timed out after {timeout_minutes} minutes.",
+            )
+        return len(stale_ids)
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """

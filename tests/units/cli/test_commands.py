@@ -5,7 +5,44 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 
-from source.cli.commands import analyze, pre_analyze
+from source.cli.commands import analyze, pre_analyze, reap_stale_tasks
+
+
+class TestReapStaleTasksCommand(unittest.TestCase):
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_reap_stale_tasks_command_success(self, mock_db_manager, mock_analysis_service):
+        runner = CliRunner()
+        timeout = 30
+        reaped_count = 5
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.reap_stale_analyses.return_value = reaped_count
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(reap_stale_tasks, ["--timeout-minutes", str(timeout)])
+
+        mock_db_manager.get_engine.assert_called_once()
+        mock_analysis_service.assert_called_once()
+        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
+        self.assertIn(f"Successfully reset {reaped_count} stale tasks", result.output)
+        self.assertEqual(result.exit_code, 0)
+
+    @patch("source.cli.commands.AnalysisService")
+    @patch("source.cli.commands.DatabaseManager")
+    def test_reap_stale_tasks_command_no_tasks(self, mock_db_manager, mock_analysis_service):
+        runner = CliRunner()
+        timeout = 15  # default
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.reap_stale_analyses.return_value = 0
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(reap_stale_tasks)
+
+        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
+        self.assertIn("No stale tasks found", result.output)
+        self.assertEqual(result.exit_code, 0)
 
 
 class TestAnalysisCommand(unittest.TestCase):
