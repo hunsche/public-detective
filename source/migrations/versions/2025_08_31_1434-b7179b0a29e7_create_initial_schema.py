@@ -4,16 +4,17 @@ Revises:
 Create Date: 2025-08-31 14:34:00.000000
 
 """
-from typing import Sequence, Union
+
+from collections.abc import Sequence
 
 from alembic import op
+
 from source.migrations.helpers import get_qualified_name
 
-
-revision: str = 'b7179b0a29e7'
-down_revision: Union[str, None] = None
-branch_labels: Union[str, Sequence[str], None] = None
-depends_on: Union[str, Sequence[str], None] = None
+revision: str = "b7179b0a29e7"
+down_revision: str | None = None
+branch_labels: str | Sequence[str] | None = None
+depends_on: str | Sequence[str] | None = None
 
 
 def upgrade() -> None:
@@ -27,7 +28,8 @@ def upgrade() -> None:
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
 
-    op.execute(f'''
+    op.execute(
+        f"""
         CREATE TYPE {procurement_analysis_status_type} AS ENUM (
             'PENDING_ANALYSIS',
             'ANALYSIS_IN_PROGRESS',
@@ -77,7 +79,8 @@ def upgrade() -> None:
             original_documents_gcs_path VARCHAR,
             processed_documents_gcs_path VARCHAR,
             estimated_cost NUMERIC(12, 6),
-            FOREIGN KEY (procurement_control_number, version_number) REFERENCES {procurements_table}(pncp_control_number, version_number),
+            FOREIGN KEY (procurement_control_number, version_number)
+                REFERENCES {procurements_table}(pncp_control_number, version_number),
             UNIQUE (procurement_control_number, version_number)
         );
 
@@ -96,11 +99,16 @@ def upgrade() -> None:
             prioritization_logic VARCHAR
         );
 
-        CREATE INDEX idx_analysis_status ON {procurement_analyses_table} USING btree (status);
-        CREATE INDEX idx_procurement_pid_ver ON {procurements_table} USING btree (pncp_control_number, version_number DESC);
-        CREATE INDEX ix_document_hash ON {procurement_analyses_table} USING btree (document_hash);
-        CREATE INDEX ix_procurement_content_hash ON {procurements_table} USING btree (content_hash);
-    ''')
+        CREATE INDEX idx_analysis_status
+            ON {procurement_analyses_table} USING btree (status);
+        CREATE INDEX idx_procurement_pid_ver
+            ON {procurements_table} USING btree (pncp_control_number, version_number DESC);
+        CREATE INDEX ix_document_hash
+            ON {procurement_analyses_table} USING btree (document_hash);
+        CREATE INDEX ix_procurement_content_hash
+            ON {procurements_table} USING btree (content_hash);
+    """
+    )
 
 
 def downgrade() -> None:
