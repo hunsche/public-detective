@@ -23,14 +23,18 @@ def upgrade() -> None:
     file_records_table = get_qualified_name("file_records")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
+    votes_table = get_qualified_name("votes")
+    vote_type = get_qualified_name("vote_type")
 
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
+    op.execute(f"DROP TABLE IF EXISTS {votes_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
 
     op.execute(
         f"""
@@ -41,6 +45,8 @@ def upgrade() -> None:
             'ANALYSIS_FAILED',
             'TIMEOUT'
         );
+
+        CREATE TYPE {vote_type} AS ENUM ('UP', 'DOWN');
 
         CREATE TABLE {procurements_table} (
             procurement_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -62,6 +68,7 @@ def upgrade() -> None:
             version_number INTEGER NOT NULL,
             raw_data JSONB NOT NULL,
             content_hash VARCHAR(64),
+            votes_count INTEGER NOT NULL DEFAULT 0,
             UNIQUE (pncp_control_number, version_number)
         );
 
@@ -113,6 +120,18 @@ def upgrade() -> None:
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
+        CREATE TABLE {votes_table} (
+            vote_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            procurement_control_number VARCHAR NOT NULL,
+            version_number INTEGER NOT NULL,
+            user_id UUID NOT NULL,
+            vote_type {vote_type} NOT NULL,
+            FOREIGN KEY (procurement_control_number, version_number)
+                REFERENCES {procurements_table}(pncp_control_number, version_number),
+            UNIQUE (procurement_control_number, version_number, user_id)
+        );
+
         -- Indexes for procurements table
         CREATE INDEX idx_procurements_pncp_control_number_version_number
             ON {procurements_table} (pncp_control_number, version_number DESC);
@@ -153,6 +172,10 @@ def upgrade() -> None:
         -- Indexes for procurement_analysis_status_history table
         CREATE INDEX idx_procurement_analysis_status_history_analysis_id
             ON {history_table} (analysis_id);
+
+        -- Indexes for votes table
+        CREATE INDEX idx_votes_procurement
+            ON {votes_table} (procurement_control_number, version_number);
     """
     )
 
@@ -163,9 +186,14 @@ def downgrade() -> None:
     file_records_table = get_qualified_name("file_records")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
+    votes_table = get_qualified_name("votes")
+    vote_type = get_qualified_name("vote_type")
 
+    op.execute(f"DROP TABLE IF EXISTS {votes_table};")
+    op.execute(f"ALTER TABLE {procurements_table} DROP COLUMN IF EXISTS votes_count;")
     op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
