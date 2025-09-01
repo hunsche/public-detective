@@ -177,6 +177,27 @@ def test_parse_response_from_text(monkeypatch):
     assert result.summary == "text summary"
 
 
+def test_parse_response_with_seo_keywords(monkeypatch):
+    """Tests parsing a valid response that includes SEO keywords."""
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    provider = AiProvider(Analysis)
+    mock_response = MagicMock()
+    mock_response.candidates[0].content.parts[0].function_call = None
+    mock_response.text = '''{
+        "risk_score": 5,
+        "summary": "text summary",
+        "risk_score_rationale": "test rationale",
+        "red_flags": [],
+        "seo_keywords": ["licitação", "pilhas", "CETESB"]
+    }'''
+
+    result = provider._parse_and_validate_response(mock_response)
+
+    assert isinstance(result, Analysis)
+    assert result.risk_score == 5
+    assert result.seo_keywords == ["licitação", "pilhas", "CETESB"]
+
+
 def test_parse_response_parsing_error(monkeypatch):
     """Tests that a ValueError is raised if the response cannot be parsed."""
     monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")

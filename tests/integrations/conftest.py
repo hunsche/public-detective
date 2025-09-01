@@ -58,6 +58,7 @@ def db_session():
             connection.commit()
 
         alembic_cfg = Config("alembic.ini")
+        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
         command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:

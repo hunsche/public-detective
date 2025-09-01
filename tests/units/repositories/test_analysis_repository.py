@@ -20,6 +20,36 @@ def analysis_repository(mock_engine):
     return AnalysisRepository(engine=mock_engine)
 
 
+def test_parse_row_to_model_with_seo_keywords(analysis_repository):
+    """
+    Should correctly parse a row that includes seo_keywords.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "risk_score_rationale",
+        "red_flags",
+        "seo_keywords",
+    ]
+    red_flags_list = []
+    seo_keywords_list = ["keyword1", "keyword2"]
+    row_tuple = (
+        "12345",
+        8,
+        "High risk",
+        json.dumps(red_flags_list),
+        seo_keywords_list,
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.ai_analysis.seo_keywords == ["keyword1", "keyword2"]
+
+
 def test_parse_row_to_model_with_json_string(analysis_repository):
     """
     Should correctly parse a row where 'red_flags' is a JSON string.
@@ -132,6 +162,7 @@ def test_save_analysis_updates_record(analysis_repository):
             "risk_score": 8,
             "risk_score_rationale": "High risk",
             "red_flags": [],
+            "seo_keywords": ["keyword1", "keyword2"],
         },
         warnings=["Warning 1"],
         original_documents_gcs_path="gcs://bucket/orig",
@@ -147,7 +178,9 @@ def test_save_analysis_updates_record(analysis_repository):
     params = args[1]
     assert params["analysis_id"] == analysis_id
     assert params["risk_score"] == 8
+    assert params["seo_keywords"] == ["keyword1", "keyword2"]
     assert "UPDATE procurement_analyses" in str(args[0])
+    assert "seo_keywords = :seo_keywords" in str(args[0])
 
 
 def test_parse_row_to_model_empty_row(analysis_repository):

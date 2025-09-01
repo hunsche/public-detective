@@ -55,6 +55,7 @@ class AnalysisRepository:
                 "risk_score": row_dict.get("risk_score"),
                 "risk_score_rationale": row_dict.get("risk_score_rationale"),
                 "red_flags": red_flags,
+                "seo_keywords": row_dict.get("seo_keywords", []),
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
@@ -78,6 +79,7 @@ class AnalysisRepository:
                 risk_score = :risk_score,
                 risk_score_rationale = :risk_score_rationale,
                 red_flags = :red_flags,
+                seo_keywords = :seo_keywords,
                 warnings = :warnings,
                 original_documents_gcs_path = :original_documents_gcs_path,
                 processed_documents_gcs_path = :processed_documents_gcs_path,
@@ -95,6 +97,7 @@ class AnalysisRepository:
             "risk_score": result.ai_analysis.risk_score,
             "risk_score_rationale": result.ai_analysis.risk_score_rationale,
             "red_flags": red_flags_json,
+            "seo_keywords": result.ai_analysis.seo_keywords,
             "warnings": result.warnings,
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
@@ -122,6 +125,7 @@ class AnalysisRepository:
                 risk_score_rationale,
                 summary,
                 red_flags,
+                seo_keywords,
                 warnings,
                 document_hash,
                 original_documents_gcs_path,
@@ -198,6 +202,7 @@ class AnalysisRepository:
                 risk_score_rationale,
                 summary,
                 red_flags,
+                seo_keywords,
                 warnings,
                 document_hash,
                 original_documents_gcs_path,

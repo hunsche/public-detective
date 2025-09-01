@@ -152,6 +152,7 @@ class AiProvider(Generic[PydanticModel]):
 
             self.logger.warning("No direct function_call found, attempting to parse from text response.")
             text_content = response.text
+            self.logger.debug(f"Received text response from Gemini: {text_content}")
             if text_content.strip().startswith("```json"):
                 text_content = text_content.strip()[7:-3]
 
