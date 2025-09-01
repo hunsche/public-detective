@@ -84,7 +84,7 @@ class AnalysisService:
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
-    def process_analysis_from_message(self, analysis_id: UUID):
+    def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None):
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
         if not analysis:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
@@ -100,7 +100,7 @@ class AnalysisService:
             return
 
         try:
-            self.analyze_procurement(procurement, analysis.version_number, analysis_id)
+            self.analyze_procurement(procurement, analysis.version_number, analysis_id, max_output_tokens)
             self._update_status_with_history(
                 analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
             )
@@ -109,7 +109,9 @@ class AnalysisService:
             self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
             raise
 
-    def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: UUID) -> None:
+    def analyze_procurement(
+        self, procurement: Procurement, version_number: int, analysis_id: UUID, max_output_tokens: int | None = None
+    ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
