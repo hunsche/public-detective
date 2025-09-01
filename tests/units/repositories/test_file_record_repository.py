@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+from uuid import uuid4
 
 import pytest
 from models.file_records import NewFileRecord
@@ -25,7 +26,7 @@ def test_save_file_record(file_records_repository):
     file_records_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     record = NewFileRecord(
-        analysis_id=1,
+        analysis_id=uuid4(),
         file_name="test.pdf",
         gcs_path="test/gcs/path",
         extension=".pdf",

@@ -1,4 +1,5 @@
 from datetime import datetime
+from uuid import UUID
 
 from pydantic import BaseModel
 
@@ -30,10 +31,10 @@ class FileRecord(BaseModel):
             referencia').
     """
 
-    id: int
+    id: UUID
     created_at: datetime
     updated_at: datetime
-    analysis_id: int
+    analysis_id: UUID
     file_name: str
     gcs_path: str
     extension: str | None
@@ -50,7 +51,7 @@ class NewFileRecord(BaseModel):
     file's metadata.
     """
 
-    analysis_id: int
+    analysis_id: UUID
     file_name: str
     gcs_path: str
     extension: str | None

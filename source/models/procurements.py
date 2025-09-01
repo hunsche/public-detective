@@ -1,7 +1,7 @@
 # source/job/models/procurement_model.py
-
 from datetime import datetime
 from enum import IntEnum, StrEnum
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, HttpUrl
 
@@ -152,6 +152,7 @@ class Procurement(BaseModel):
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
+    procurement_id: UUID | None = None
     proposal_opening_date: datetime | None = Field(None, alias="dataAberturaProposta")
     proposal_closing_date: datetime | None = Field(None, alias="dataEncerramentoProposta")
     additional_information: str | None = Field(None, alias="informacaoComplementar")

@@ -6,6 +6,7 @@ import uuid
 from contextlib import redirect_stdout
 from datetime import date
 from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 import requests
@@ -274,7 +275,7 @@ def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F
     Tests that the reaper command correctly identifies and resets a stale task.
     """
     # 1. Manually insert a procurement and a stale analysis record
-    analysis_id = 555
+    analysis_id = uuid4()
     control_number = "stale_control"
     with db_session.connect() as connection:
         # Insert a dummy procurement to satisfy the foreign key constraint

@@ -24,7 +24,10 @@ def upgrade() -> None:
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
 
+    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
@@ -40,7 +43,7 @@ def upgrade() -> None:
         );
 
         CREATE TABLE {procurements_table} (
-            procurement_id SERIAL PRIMARY KEY,
+            procurement_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             pncp_control_number VARCHAR NOT NULL,
@@ -63,7 +66,7 @@ def upgrade() -> None:
         );
 
         CREATE TABLE {procurement_analyses_table} (
-            analysis_id SERIAL PRIMARY KEY,
+            analysis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             procurement_control_number VARCHAR(255) NOT NULL,
@@ -78,8 +81,6 @@ def upgrade() -> None:
             seo_keywords TEXT[],
             warnings TEXT[],
             document_hash VARCHAR(64),
-            original_documents_url VARCHAR(1024),
-            processed_documents_url VARCHAR(1024),
             original_documents_gcs_path VARCHAR,
             processed_documents_gcs_path VARCHAR,
             input_tokens_used INTEGER,
@@ -90,10 +91,10 @@ def upgrade() -> None:
         );
 
         CREATE TABLE {file_records_table} (
-            id SERIAL PRIMARY KEY,
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            analysis_id INTEGER NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
+            analysis_id UUID NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
             file_name VARCHAR NOT NULL,
             gcs_path VARCHAR NOT NULL,
             extension VARCHAR,
@@ -104,24 +105,54 @@ def upgrade() -> None:
             prioritization_logic VARCHAR
         );
 
-        CREATE INDEX idx_analysis_status
-            ON {procurement_analyses_table} USING btree (status);
-        CREATE INDEX idx_procurement_pid_ver
-            ON {procurements_table} USING btree (pncp_control_number, version_number DESC);
-        CREATE INDEX ix_document_hash
-            ON {procurement_analyses_table} USING btree (document_hash);
-        CREATE INDEX ix_procurement_content_hash
-            ON {procurements_table} USING btree (content_hash);
-
-        CREATE TABLE {get_qualified_name("procurement_analysis_status_history")} (
-            id SERIAL PRIMARY KEY,
-            analysis_id INTEGER NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
+        CREATE TABLE {history_table} (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            analysis_id UUID NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
             status {procurement_analysis_status_type} NOT NULL,
             details TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
 
-        CREATE INDEX idx_history_analysis_id ON {history_table} (analysis_id);
+        -- Indexes for procurements table
+        CREATE INDEX idx_procurements_pncp_control_number_version_number
+            ON {procurements_table} (pncp_control_number, version_number DESC);
+        CREATE INDEX idx_procurements_content_hash
+            ON {procurements_table} (content_hash);
+        CREATE INDEX idx_procurements_procurement_year
+            ON {procurements_table} (procurement_year);
+        CREATE INDEX idx_procurements_modality_id
+            ON {procurements_table} (modality_id);
+        CREATE INDEX idx_procurements_is_srp
+            ON {procurements_table} (is_srp);
+        CREATE INDEX idx_procurements_total_awarded_value
+            ON {procurements_table} (total_awarded_value);
+        CREATE INDEX idx_procurements_total_estimated_value
+            ON {procurements_table} (total_estimated_value);
+        CREATE INDEX idx_procurements_publication_date
+            ON {procurements_table} (pncp_publication_date);
+
+
+        -- Indexes for procurement_analyses table
+        CREATE INDEX idx_procurement_analyses_status
+            ON {procurement_analyses_table} (status);
+        CREATE INDEX idx_procurement_analyses_document_hash
+            ON {procurement_analyses_table} (document_hash);
+        CREATE INDEX idx_procurement_analyses_risk_score
+            ON {procurement_analyses_table} (risk_score);
+        CREATE INDEX idx_procurement_analyses_analysis_date
+            ON {procurement_analyses_table} (analysis_date);
+
+
+        -- Indexes for file_records table
+        CREATE INDEX idx_file_records_analysis_id
+            ON {file_records_table} (analysis_id);
+        CREATE INDEX idx_file_records_included_in_analysis
+            ON {file_records_table} (included_in_analysis);
+
+
+        -- Indexes for procurement_analysis_status_history table
+        CREATE INDEX idx_procurement_analysis_status_history_analysis_id
+            ON {history_table} (analysis_id);
     """
     )
 

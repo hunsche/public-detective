@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from uuid import UUID
 
 import click
 from models.analyses import Analysis
@@ -15,8 +16,8 @@ from services.analysis import AnalysisService
 
 
 @click.command("analyze")
-@click.option("--analysis-id", type=int, required=True, help="The ID of the analysis to run.")
-def analyze(analysis_id: int):
+@click.option("--analysis-id", type=UUID, required=True, help="The ID of the analysis to run.")
+def analyze(analysis_id: UUID):
     """
     Triggers a specific Public Detective analysis job by sending a message to a queue.
     """
