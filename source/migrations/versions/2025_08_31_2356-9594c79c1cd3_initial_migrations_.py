@@ -202,6 +202,16 @@ def upgrade() -> None:
             description TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
+
+        -- Indexes for donations table
+        CREATE INDEX idx_donations_donor_identifier ON {donations_table} (donor_identifier);
+        CREATE INDEX idx_donations_transaction_id ON {donations_table} (transaction_id);
+        CREATE INDEX idx_donations_created_at ON {donations_table} (created_at);
+
+        -- Indexes for budget_ledgers table
+        CREATE INDEX idx_budget_ledgers_related_analysis_id ON {budget_ledgers_table} (related_analysis_id);
+        CREATE INDEX idx_budget_ledgers_related_donation_id ON {budget_ledgers_table} (related_donation_id);
+        CREATE INDEX idx_budget_ledgers_created_at ON {budget_ledgers_table} (created_at);
     """
     )
 
@@ -218,6 +228,12 @@ def downgrade() -> None:
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
 
+    op.execute("DROP INDEX IF EXISTS idx_donations_donor_identifier;")
+    op.execute("DROP INDEX IF EXISTS idx_donations_transaction_id;")
+    op.execute("DROP INDEX IF EXISTS idx_donations_created_at;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_analysis_id;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_donation_id;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_created_at;")
     op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table};")
     op.execute(f"DROP TABLE IF EXISTS {donations_table};")
     op.execute(f"DROP TYPE IF EXISTS {transaction_type};")
