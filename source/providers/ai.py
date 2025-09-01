@@ -1,3 +1,11 @@
+"""This module provides a generic interface to interact with a Google's AI.
+
+It defines a generic `AiProvider` class that can be specialized with a
+Pydantic model to handle structured data output from the AI. The provider
+manages API configuration, file uploads, prompt execution, and robust parsing
+of the AI's response.
+"""
+
 import io
 import json
 import time

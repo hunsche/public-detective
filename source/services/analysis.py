@@ -85,6 +85,16 @@ class AnalysisService:
         self.status_history_repo.create_record(analysis_id, status, details)
 
     def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None):
+        """Processes a single analysis request received from a message queue.
+
+        This method is typically called by a worker that is consuming messages
+        from a Pub/Sub subscription. It retrieves the analysis and associated
+        procurement data, then orchestrates the full analysis pipeline.
+
+        Args:
+            analysis_id: The unique ID of the analysis to be processed.
+            max_output_tokens: An optional token limit for the AI analysis.
+        """
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
         if not analysis:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
@@ -458,8 +468,18 @@ class AnalysisService:
         """
 
     def run_specific_analysis(self, analysis_id: UUID):
-        """
-        Runs the analysis for a specific analysis ID.
+        """Triggers an analysis for a specific ID by publishing a message.
+
+        This method is intended to be called by a user-facing interface (like
+        a CLI). It finds a 'PENDING_ANALYSIS' record and publishes a message
+        to the procurement topic, which will be picked up by a worker to
+        execute the actual analysis.
+
+        Args:
+            analysis_id: The ID of the analysis to be triggered.
+
+        Raises:
+            ValueError: If the Pub/Sub provider has not been configured.
         """
         self.logger.info(f"Running specific analysis for analysis_id: {analysis_id}")
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
@@ -493,6 +513,21 @@ class AnalysisService:
     def run_pre_analysis(
         self, start_date: date, end_date: date, batch_size: int, sleep_seconds: int, max_messages: int | None = None
     ):
+        """Runs the pre-analysis job for a given date range.
+
+        This method scans for new procurements within the specified date
+        range, processes them in batches, and creates 'PENDING_ANALYSIS'
+        records for each new, unique procurement.
+
+        Args:
+            start_date: The start date of the range to scan.
+            end_date: The end date of the range to scan.
+            batch_size: The number of procurements to process in each batch.
+            sleep_seconds: The time to sleep between batches to avoid API
+                rate limiting.
+            max_messages: An optional limit on the number of pre-analysis
+                tasks to create.
+        """
         self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
         current_date = start_date
         messages_published_count = 0  # Initialize counter
@@ -534,28 +569,35 @@ class AnalysisService:
         self.logger.info("Pre-analysis job for the entire date range has been completed.")
 
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict):
-        # 1. Get documents
+        """Performs the pre-analysis for a single procurement.
+
+        This involves:
+        1.  Processing documents to get a list of files for AI analysis.
+        2.  Calculating a hash of the procurement's content to check for
+            idempotency against existing versions.
+        3.  If it's a new version, saving it to the database.
+        4.  Creating a new 'PENDING_ANALYSIS' record.
+
+        Args:
+            procurement: The procurement to be pre-analyzed.
+            raw_data: The raw JSON data of the procurement.
+        """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
         files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
-        # 2. Calculate hash for procurement (raw data + all files)
         raw_data_str = json.dumps(raw_data, sort_keys=True)
         all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
         procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
-        # 3. Check for idempotency on procurement
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
             self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
 
-        # 4. Calculate hash for analysis (files for AI)
         analysis_document_hash = self._calculate_hash(files_for_ai)
 
-        # 5. Get new version number
         latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
         new_version = latest_version + 1
 
-        # 6. Save new procurement version
         self.procurement_repo.save_procurement_version(
             procurement=procurement,
             raw_data=raw_data_str,
@@ -563,11 +605,9 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        # 7. Count tokens
         prompt = self._build_analysis_prompt(procurement, warnings)
         input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
 
-        # 8. Save pre-analysis
         analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
