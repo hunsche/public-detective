@@ -6,6 +6,7 @@ This ensures that all configuration parameters are validated and available
 in a structured way throughout the application. A `ConfigProvider` is also
 included to act as a factory for this configuration.
 """
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 

@@ -6,6 +6,7 @@ message lifecycle (ACK/NACK). The worker is designed to be robust,
 handling JSON validation, graceful shutdowns, and providing hooks for
 debugging.
 """
+
 import json
 import threading
 import uuid

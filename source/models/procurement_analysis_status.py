@@ -1,4 +1,5 @@
 """This module defines the enumeration for procurement analysis statuses."""
+
 from enum import StrEnum
 
 

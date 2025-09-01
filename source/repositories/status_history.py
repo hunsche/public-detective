@@ -1,4 +1,5 @@
 """This module defines the repository for managing analysis status history."""
+
 from uuid import UUID
 
 from models.procurement_analysis_status import ProcurementAnalysisStatus

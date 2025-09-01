@@ -4,6 +4,7 @@ It defines a `PubSubProvider` class that abstracts the interaction with
 Pub/Sub, including thread-safe, cached client management for both publishing
 and subscribing. It supports emulator usage for local development and testing.
 """
+
 import os
 import threading
 from collections.abc import Callable

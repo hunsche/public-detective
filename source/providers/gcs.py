@@ -5,6 +5,7 @@ including client initialization (with support for the GCS emulator) and
 file uploads. The client is managed as a singleton to ensure efficient
 resource use.
 """
+
 import os
 import threading
 from typing import cast

@@ -5,6 +5,7 @@ logger. A key feature is the `ContextualFilter`, which uses thread-local
 storage to inject a `correlation_id` into every log message, making it
 easier to trace requests or tasks as they flow through the application.
 """
+
 from __future__ import annotations
 
 import sys

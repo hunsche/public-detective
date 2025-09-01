@@ -38,10 +38,7 @@ class MockAiProvider(Generic[PydanticModel]):
             red_flags=[],
             seo_keywords=["mock", "test", "analysis"],
         )
-        # The type ignore is necessary because the generic PydanticModel
-        # cannot be guaranteed to be an Analysis model at type-checking time,
-        # but for the purpose of this mock, we know it will be compatible.
-        return mock_analysis, 1000, 200  # type: ignore
+        return mock_analysis, 1000, 200
 
     def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
         """Returns a fixed token count for any given input.

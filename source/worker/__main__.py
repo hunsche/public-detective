@@ -4,6 +4,7 @@ It sets up a command-line interface using Click to start the subscription
 listener. The worker's behavior, such as message limits and timeouts, can
 be configured via CLI options.
 """
+
 import click
 from providers.config import ConfigProvider
 from providers.logging import LoggingProvider

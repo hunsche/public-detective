@@ -6,6 +6,7 @@ enumerations for various coded values (e.g., document types, modalities)
 and comprehensive models for procurements, their associated documents, and
 other related entities.
 """
+
 from datetime import datetime
 from enum import IntEnum, StrEnum
 from uuid import UUID
