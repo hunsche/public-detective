@@ -52,9 +52,21 @@ class Analysis(BaseModel):
     risk_score_rationale: str | None = Field(
         description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
     )
+    procurement_summary: str | None = Field(
+        default_factory=lambda: None,
+        description="A concise summary (maximum of 3 sentences, in pt-br) of the procurement's scope.",
+    )
+    analysis_summary: str | None = Field(
+        default_factory=lambda: None,
+        description="A concise summary (maximum of 3 sentences, in pt-br) of the overall analysis.",
+    )
     red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
+    )
+    seo_keywords: list[str] | None = Field(
+        default_factory=list,
+        description="Strategic keywords for SEO (in pt-br) related to the procurement.",
     )
 
 

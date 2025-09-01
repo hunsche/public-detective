@@ -236,7 +236,8 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
                 status,
                 risk_score,
                 risk_score_rationale,
-                summary,
+                procurement_summary,
+                analysis_summary,
                 red_flags,
                 warnings,
                 original_documents_gcs_path,
@@ -253,6 +254,10 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
 
         print(f"Successfully completed analyses: {len(completed_analyses)}/{len(analysis_ids)}")
         assert len(completed_analyses) == len(analysis_ids), "Not all triggered analyses were successful."
+
+        for analysis in completed_analyses:
+            assert analysis["procurement_summary"] is not None
+            assert analysis["analysis_summary"] is not None
 
         # Generic data integrity assertions
         print("\n--- Running generic data integrity checks ---")

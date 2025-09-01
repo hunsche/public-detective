@@ -79,7 +79,10 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     mock_ai_analysis_details = MagicMock(spec=Analysis)
     mock_ai_analysis_details.risk_score = 5
     mock_ai_analysis_details.risk_score_rationale = "Reused rationale"
+    mock_ai_analysis_details.procurement_summary = "Reused procurement summary"
+    mock_ai_analysis_details.analysis_summary = "Reused analysis summary"
     mock_ai_analysis_details.red_flags = []
+    mock_ai_analysis_details.seo_keywords = []
 
     # Create the main mock for the analysis result
     mock_existing_analysis = MagicMock(spec=AnalysisResult)
@@ -102,6 +105,8 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
     saved_result = call_args[1]  # second argument is the AnalysisResult object
     assert saved_result.ai_analysis.risk_score_rationale == "Reused rationale"
+    assert saved_result.ai_analysis.procurement_summary == "Reused procurement summary"
+    assert saved_result.ai_analysis.analysis_summary == "Reused analysis summary"
     assert saved_result.warnings == ["Reused warning"]
 
 
@@ -118,6 +123,8 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
         Analysis(
             risk_score=1,
             risk_score_rationale="test",
+            procurement_summary="test",
+            analysis_summary="test",
             red_flags=[],
         ),
         100,
@@ -195,7 +202,11 @@ def test_analyze_procurement_main_success_path(mock_dependencies, mock_procureme
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
     service.analysis_repo.get_analysis_by_hash.return_value = None
     mock_ai_analysis = MagicMock(spec=Analysis)
-    mock_ai_analysis.model_dump.return_value = {"risk_score": 1, "summary": "test"}
+    mock_ai_analysis.model_dump.return_value = {
+        "risk_score": 1,
+        "procurement_summary": "test",
+        "analysis_summary": "test",
+    }
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
 
     service.analyze_procurement(mock_procurement, 1, 123)
