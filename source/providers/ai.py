@@ -82,6 +82,7 @@ class AiProvider(Generic[PydanticModel]):
                 generation_config=genai.types.GenerationConfig(
                     response_schema=self.output_schema,
                     response_mime_type="application/json",
+                    max_output_tokens=self.config.GCP_GEMINI_MAX_OUTPUT_TOKENS,
                 ),
             )
             self.logger.debug("Successfully received response from Gemini API.")
