@@ -122,16 +122,26 @@ class Subscription:
             data_str = message.data.decode()
             message_data = json.loads(data_str)
             analysis_id = message_data["analysis_id"]
-            correlation_id = f"{analysis_id}_{uuid.uuid4().hex[:8]}"
+
+            # Fetch analysis details to get the business identifier for logging
+            analysis = self.analysis_service.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis:
+                self.logger.error(f"Analysis with ID {analysis_id} not found in message {message_id}. Sending NACK.")
+                message.nack()
+                return
+
+            procurement_id = analysis.procurement_control_number
+            correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
 
             with LoggingProvider().set_correlation_id(correlation_id):
                 self.logger.info(
-                    f"Received message ID: {message_id} for analysis {analysis_id}. Attempting to process..."
+                    f"Received message ID: {message_id} for procurement {procurement_id} "
+                    f"(analysis_id: {analysis_id}). Attempting to process..."
                 )
 
                 self.analysis_service.process_analysis_from_message(analysis_id)
 
-                self.logger.info(f"Message {message_id} processed successfully. Sending ACK.")
+                self.logger.info(f"Message {message_id} for procurement {procurement_id} processed successfully. Sending ACK.")
                 message.ack()
 
         except (json.JSONDecodeError, ValidationError):
