@@ -26,7 +26,7 @@ def test_all_primary_keys_are_uuid(db_session):
             # Get the primary key column for the table
             # The following query is safe because the schema and table_name are
             # retrieved from the database metadata and not from user input.
-            pk_query = text(  # nosec B608
+            pk_query = text(
                 f"""
                 SELECT a.attname
                 FROM   pg_index i
@@ -34,7 +34,7 @@ def test_all_primary_keys_are_uuid(db_session):
                                    AND a.attnum = ANY(i.indkey)
                 WHERE  i.indrelid = '"{schema}"."{table_name}"'::regclass
                 AND    i.indisprimary;
-            """
+            """  # nosec B608
             )
             pk_result = connection.execute(pk_query).fetchone()
             if not pk_result:

@@ -68,7 +68,7 @@ repos:
         types: [python]
         args: ["-c", "pyproject.toml"]
         additional_dependencies: ["bandit[toml]"]
-        exclude: ^source/migrations/versions/|^tests/integrations/test_uuid_pk.py
+        exclude: ^source/migrations/versions/
 
     -   id: bandit
         name: "Bandit (Security Analysis - Migrations)"
