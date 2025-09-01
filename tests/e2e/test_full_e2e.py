@@ -53,7 +53,7 @@ def db_session():
             zf.writestr("dummy_document.pdf", b"dummy pdf content")
 
     # Use localhost for services, as docker-compose exposes the ports to the host
-    host = "localhost"
+    host = "127.0.0.1"
     os.environ["POSTGRES_HOST"] = host
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
