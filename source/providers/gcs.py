@@ -1,3 +1,11 @@
+"""This module provides a thread-safe provider for Google Cloud Storage (GCS).
+
+It defines a `GcsProvider` class that abstracts the interaction with GCS,
+including client initialization (with support for the GCS emulator) and
+file uploads. The client is managed as a singleton to ensure efficient
+resource use.
+"""
+
 import os
 import threading
 from typing import cast

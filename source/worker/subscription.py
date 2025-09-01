@@ -1,3 +1,12 @@
+"""This module defines the core Pub/Sub subscription worker.
+
+It contains the `Subscription` class, which encapsulates the logic for
+listening to a Pub/Sub topic, processing messages, and managing the
+message lifecycle (ACK/NACK). The worker is designed to be robust,
+handling JSON validation, graceful shutdowns, and providing hooks for
+debugging.
+"""
+
 import json
 import threading
 import uuid
@@ -123,7 +132,6 @@ class Subscription:
             message_data = json.loads(data_str)
             analysis_id = message_data["analysis_id"]
 
-            # Fetch analysis details to get the business identifier for logging
             analysis = self.analysis_service.analysis_repo.get_analysis_by_id(analysis_id)
             if not analysis:
                 self.logger.error(f"Analysis with ID {analysis_id} not found in message {message_id}. Sending NACK.")
@@ -217,15 +225,12 @@ class Subscription:
         except (GoogleAPICallError, KeyboardInterrupt) as e:
             self.logger.warning(f"Shutdown requested: {type(e).__name__}")
         except Exception as e:
-            # When max_messages is reached, a Cancelled exception is expected.
             if "cancelled" not in str(e).lower():
                 self.logger.critical(f"A critical error stopped the worker: {e}", exc_info=True)
         finally:
             self.logger.info("Stopping worker...")
             if self.streaming_pull_future and not self.streaming_pull_future.cancelled():
                 self.streaming_pull_future.cancel()
-                # Wait for the future to be cancelled. It's safe to ignore
-                # exceptions here as the worker is already shutting down.
                 try:
                     self.streaming_pull_future.result(timeout=10)
                 except Exception:  # nosec B110

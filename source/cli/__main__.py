@@ -5,7 +5,12 @@ from source.cli.commands import analyze, pre_analyze, reap_stale_tasks
 
 @click.group()
 def cli():
-    """Public Detective CLI."""
+    """A command-line interface for the Public Detective tool.
+
+    This CLI provides a collection of commands to interact with the Public
+    Detective system, allowing users to trigger analyses, manage tasks,
+    and perform other administrative functions.
+    """
     pass
 
 
