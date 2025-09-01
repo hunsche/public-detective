@@ -265,7 +265,7 @@ def test_process_analysis_from_message_analysis_not_found(mock_dependencies):
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_analysis_by_id.return_value = None
 
-    service.process_analysis_from_message(999, max_output_tokens=None)
+    service.process_analysis_from_message(999)
 
     service.procurement_repo.get_procurement_by_id_and_version.assert_not_called()
 
@@ -281,7 +281,7 @@ def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
     service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
     service.procurement_repo.get_procurement_by_id_and_version.return_value = None
 
-    service.process_analysis_from_message(123, max_output_tokens=None)
+    service.process_analysis_from_message(123)
 
     service.analysis_repo.update_analysis_status.assert_not_called()
 
@@ -324,7 +324,6 @@ def test_process_analysis_from_message_failure(mock_dependencies, mock_procureme
     service = AnalysisService(**mock_dependencies)
     analysis_id = 123
     error_message = "AI provider failed"
-    max_output_tokens = None
     mock_analysis_result = MagicMock(spec=AnalysisResult)
     mock_analysis_result.procurement_control_number = "PNCP-123"
     mock_analysis_result.version_number = 1
@@ -337,7 +336,7 @@ def test_process_analysis_from_message_failure(mock_dependencies, mock_procureme
     ):
         # Act & Assert
         with pytest.raises(Exception, match=error_message):
-            service.process_analysis_from_message(analysis_id, max_output_tokens=max_output_tokens)
+            service.process_analysis_from_message(analysis_id)
 
         mock_update_status.assert_called_once_with(
             analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, error_message

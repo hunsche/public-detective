@@ -1,4 +1,5 @@
 import click
+from providers.config import ConfigProvider
 from providers.logging import LoggingProvider
 from worker.subscription import Subscription
 
@@ -38,18 +39,19 @@ def main(max_messages: int | None, timeout: int | None, max_output_tokens: str |
         timeout = 10
 
     # Convert the string token value to an integer or None
-    token_limit: int | None = -1
-    if max_output_tokens is not None:
-        if max_output_tokens.strip().lower() == "none":
-            token_limit = None
-        else:
-            try:
-                token_limit = int(max_output_tokens)
-            except ValueError:
-                logger.error(
-                    f"Invalid value for --max-output-tokens: '{max_output_tokens}'. Must be an integer or 'None'."
-                )
-                return
+    token_limit: int | None
+    if max_output_tokens is None:
+        # If the CLI flag is not provided, use the default from config
+        token_limit = ConfigProvider.get_config().GCP_GEMINI_MAX_OUTPUT_TOKENS
+    elif max_output_tokens.strip().lower() == "none":
+        # If the flag is explicitly set to "None", use None (no limit)
+        token_limit = None
+    else:
+        try:
+            token_limit = int(max_output_tokens)
+        except ValueError:
+            logger.error(f"Invalid value for --max-output-tokens: '{max_output_tokens}'. Must be an integer or 'None'.")
+            return
 
     try:
         subscription = Subscription()
