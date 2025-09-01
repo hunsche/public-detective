@@ -6,11 +6,11 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
+from constants.analysis_feedback import ExclusionReason, Warnings
 from models.analyses import Analysis, AnalysisResult
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from services.analysis import AnalysisService
-from constants.analysis_feedback import ExclusionReason, Warnings
 
 
 @pytest.fixture

@@ -5,6 +5,7 @@ import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
 
+from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 from models.analyses import Analysis, AnalysisResult
 from models.file_records import NewFileRecord
 from models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -18,7 +19,6 @@ from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
-from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 
 
 class AnalysisService:
@@ -378,8 +378,10 @@ class AnalysisService:
         path_lower = file_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in path_lower:
-                return PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
-        return PrioritizationLogic.NO_PRIORITY
+                message: str = PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
+                return message
+        no_priority_message: str = PrioritizationLogic.NO_PRIORITY
+        return no_priority_message
 
     def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
         """Constructs the prompt for the AI, including contextual warnings."""
