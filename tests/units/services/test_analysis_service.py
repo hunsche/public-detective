@@ -293,6 +293,7 @@ def test_process_analysis_from_message_success(mock_dependencies, mock_procureme
     # Arrange
     service = AnalysisService(**mock_dependencies)
     analysis_id = 123
+    max_output_tokens = 1024
     mock_analysis_result = MagicMock(spec=AnalysisResult)
     mock_analysis_result.procurement_control_number = "PNCP-123"
     mock_analysis_result.version_number = 1
@@ -304,10 +305,10 @@ def test_process_analysis_from_message_success(mock_dependencies, mock_procureme
         patch.object(service, "analyze_procurement") as mock_analyze_procurement,
     ):
         # Act
-        service.process_analysis_from_message(analysis_id)
+        service.process_analysis_from_message(analysis_id, max_output_tokens=max_output_tokens)
 
         # Assert
-        mock_analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id)
+        mock_analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id, max_output_tokens)
         mock_update_status.assert_called_once_with(
             analysis_id,
             ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL,

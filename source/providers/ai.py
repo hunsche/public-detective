@@ -45,7 +45,9 @@ class AiProvider(Generic[PydanticModel]):
         self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
 
-    def get_structured_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[PydanticModel, int, int]:
+    def get_structured_analysis(
+        self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
+    ) -> tuple[PydanticModel, int, int]:
         """
         Uploads a file, sends it with a prompt for analysis, and parses the
         structured response into the Pydantic model instance defined for this provider.
@@ -59,6 +61,8 @@ class AiProvider(Generic[PydanticModel]):
             files: A list of tuples:
                 - A list of tuples with file paths and their byte content.
                 - A list of descriptive names for the uploaded files.
+            max_output_tokens: An optional integer to set the token limit.
+                If `None`, no limit is applied.
 
         Returns:
             A tuple containing:
@@ -80,14 +84,21 @@ class AiProvider(Generic[PydanticModel]):
 
         try:
             contents = [prompt, *uploaded_files]
-            response = self.model.generate_content(
-                contents,
-                generation_config=genai.types.GenerationConfig(
+            if max_output_tokens is not None:
+                self.logger.info(f"Using max_output_tokens: {max_output_tokens}")
+                generation_config = genai.types.GenerationConfig(
                     response_schema=self.output_schema,
                     response_mime_type="application/json",
-                    max_output_tokens=self.config.GCP_GEMINI_MAX_OUTPUT_TOKENS,
-                ),
-            )
+                    max_output_tokens=max_output_tokens,
+                )
+            else:
+                self.logger.info("max_output_tokens is None, so no limit will be applied.")
+                generation_config = genai.types.GenerationConfig(
+                    response_schema=self.output_schema,
+                    response_mime_type="application/json",
+                )
+
+            response = self.model.generate_content(contents, generation_config=generation_config)
             self.logger.debug("Successfully received response from Gemini API.")
 
             validated_response = self._parse_and_validate_response(response)
