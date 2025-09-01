@@ -5,6 +5,7 @@ related to procurement analysis results.
 
 import json
 from typing import Any, cast
+from uuid import UUID
 
 from models.analyses import Analysis, AnalysisResult
 from models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -68,7 +69,7 @@ class AnalysisRepository:
             return None
 
     def save_analysis(
-        self, analysis_id: int, result: AnalysisResult, input_tokens_used: int, output_tokens_used: int
+        self, analysis_id: UUID, result: AnalysisResult, input_tokens_used: int, output_tokens_used: int
     ) -> None:
         """
         Updates an existing analysis record with the results of a full analysis.
@@ -175,7 +176,7 @@ class AnalysisRepository:
         document_hash: str,
         input_tokens_used: int,
         output_tokens_used: int,
-    ) -> int:
+    ) -> UUID:
         """
         Saves a pre-analysis record to the database.
         """
@@ -202,12 +203,12 @@ class AnalysisRepository:
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
-            analysis_id = cast(int, result_proxy.scalar_one())
+            analysis_id = cast(UUID, result_proxy.scalar_one())
             conn.commit()
         self.logger.info(f"Pre-analysis saved successfully with ID: {analysis_id}.")
         return analysis_id
 
-    def get_analysis_by_id(self, analysis_id: int) -> AnalysisResult | None:
+    def get_analysis_by_id(self, analysis_id: UUID) -> AnalysisResult | None:
         """
         Retrieves an analysis result from the database by its ID.
         """
@@ -247,7 +248,7 @@ class AnalysisRepository:
 
         return self._parse_row_to_model(row, columns)
 
-    def update_analysis_status(self, analysis_id: int, status: ProcurementAnalysisStatus) -> None:
+    def update_analysis_status(self, analysis_id: UUID, status: ProcurementAnalysisStatus) -> None:
         """
         Updates the status of an analysis record.
         """
@@ -264,7 +265,7 @@ class AnalysisRepository:
             conn.commit()
         self.logger.info("Analysis status updated successfully.")
 
-    def reset_stale_analyses(self, timeout_minutes: int) -> list[int]:
+    def reset_stale_analyses(self, timeout_minutes: int) -> list[UUID]:
         """
         Finds analyses that are 'IN_PROGRESS' for longer than the timeout
         and resets their status to 'TIMEOUT'.

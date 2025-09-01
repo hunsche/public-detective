@@ -10,6 +10,7 @@ Key architectural features:
 - **Database Access:** All database access is managed through a singleton class, `DatabaseManager`, which provides a SQLAlchemy engine for connection pooling. It is mandatory to use this manager for all database interactions.
     - **Raw SQL and Parameter Binding:** Queries must be written as raw SQL strings and executed using SQLAlchemy's `text()` construct. To prevent SQL injection, all parameters must be passed as named bind parameters (e.g., `:param_name`), never with f-strings or `%s` formatting.
     - **No ORM:** This project uses SQLAlchemy Core for executing queries but does **not** use the high-level SQLAlchemy ORM for defining models or relationships.
+- **UUIDs for Primary Keys:** All primary keys in the database must be of type `UUID` and use `uuid_generate_v4()` as the default value. This ensures that primary keys are unique across the entire system, not just within a single table.
 
     - **Example of a repository query:**
       ```python

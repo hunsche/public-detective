@@ -4,6 +4,7 @@ import os
 import time
 from datetime import date, datetime, timedelta, timezone
 from typing import Any
+from uuid import UUID
 
 from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 from models.analyses import Analysis, AnalysisResult
@@ -77,13 +78,13 @@ class AnalysisService:
         self.config = ConfigProvider.get_config()
 
     def _update_status_with_history(
-        self, analysis_id: int, status: ProcurementAnalysisStatus, details: str | None = None
+        self, analysis_id: UUID, status: ProcurementAnalysisStatus, details: str | None = None
     ) -> None:
         """Updates the analysis status and records the change in the history table."""
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
-    def process_analysis_from_message(self, analysis_id: int, max_output_tokens: int | None = None):
+    def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None):
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
         if not analysis:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
@@ -109,7 +110,7 @@ class AnalysisService:
             raise
 
     def analyze_procurement(
-        self, procurement: Procurement, version_number: int, analysis_id: int, max_output_tokens: int | None = None
+        self, procurement: Procurement, version_number: int, analysis_id: UUID, max_output_tokens: int | None = None
     ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
@@ -247,7 +248,7 @@ class AnalysisService:
 
     def _process_and_save_file_records(
         self,
-        analysis_id: int,
+        analysis_id: UUID,
         gcs_base_path: str,
         all_files: list[tuple[str, bytes]],
         included_files: list[tuple[str, bytes]],
@@ -456,7 +457,7 @@ class AnalysisService:
         encontrabilidade desta análise.
         """
 
-    def run_specific_analysis(self, analysis_id: int):
+    def run_specific_analysis(self, analysis_id: UUID):
         """
         Runs the analysis for a specific analysis ID.
         """
@@ -482,7 +483,7 @@ class AnalysisService:
         message_data = {
             "procurement_control_number": analysis.procurement_control_number,
             "version_number": analysis.version_number,
-            "analysis_id": analysis_id,
+            "analysis_id": str(analysis_id),
         }
         message_json = json.dumps(message_data)
         message_bytes = message_json.encode()

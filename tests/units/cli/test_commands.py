@@ -1,6 +1,7 @@
 import unittest
 from datetime import date
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 from click.testing import CliRunner
 
@@ -103,7 +104,7 @@ class TestAnalysisCommand(unittest.TestCase):
         mock_db_manager,
     ):
         runner = CliRunner()
-        analysis_id = 123
+        analysis_id = uuid4()
 
         mock_service_instance = MagicMock()
         mock_analysis_service.return_value = mock_service_instance
@@ -144,7 +145,7 @@ class TestAnalysisCommand(unittest.TestCase):
         mock_db_manager,  # noqa: F841
     ):
         runner = CliRunner()
-        analysis_id = 456
+        analysis_id = uuid4()
 
         mock_service_instance = MagicMock()
         mock_service_instance.run_specific_analysis.side_effect = Exception("Test error")

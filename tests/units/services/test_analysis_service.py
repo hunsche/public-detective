@@ -4,6 +4,7 @@ Unit tests for the AnalysisService.
 
 from datetime import date
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from constants.analysis_feedback import ExclusionReason, Warnings
@@ -96,7 +97,7 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
 
     # Act
     service = AnalysisService(**mock_dependencies)
-    service.analyze_procurement(mock_procurement, 1, 123)
+    service.analyze_procurement(mock_procurement, 1, uuid4())
 
     # Assert: Check that the AI provider was not called
     mock_dependencies["ai_provider"].get_structured_analysis.assert_not_called()
@@ -134,7 +135,7 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
 
     # Act
     service = AnalysisService(**mock_dependencies)
-    service.analyze_procurement(mock_procurement, 1, 123)
+    service.analyze_procurement(mock_procurement, 1, uuid4())
 
     # Assert
     assert mock_dependencies["file_record_repo"].save_file_record.call_count == 2
@@ -215,7 +216,7 @@ def test_analyze_procurement_main_success_path(mock_dependencies, mock_procureme
     }
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
 
-    service.analyze_procurement(mock_procurement, 1, 123)
+    service.analyze_procurement(mock_procurement, 1, uuid4())
 
     service.analysis_repo.save_analysis.assert_called_once()
     service.gcs_provider.upload_file.assert_called()
