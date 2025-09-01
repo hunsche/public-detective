@@ -82,7 +82,8 @@ def upgrade() -> None:
             processed_documents_url VARCHAR(1024),
             original_documents_gcs_path VARCHAR,
             processed_documents_gcs_path VARCHAR,
-            estimated_cost NUMERIC(12, 6),
+            input_tokens_used INTEGER,
+            output_tokens_used INTEGER,
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number),
             UNIQUE (procurement_control_number, version_number)
