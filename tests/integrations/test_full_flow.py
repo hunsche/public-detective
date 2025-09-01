@@ -141,9 +141,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     )
 
     # 2. Run analyze command
-    with patch.object(
-        ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)
-    ) as mock_get_structured_analysis:
+    with patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)):
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
             runner = CliRunner()
             result = runner.invoke(cli_main, ["analyze", f"--analysis-id={analysis_id}"])
