@@ -156,6 +156,8 @@ class AnalysisService:
                 ai_analysis=Analysis(
                     risk_score=existing_analysis.ai_analysis.risk_score,
                     risk_score_rationale=existing_analysis.ai_analysis.risk_score_rationale,
+                    procurement_summary=existing_analysis.ai_analysis.procurement_summary,
+                    analysis_summary=existing_analysis.ai_analysis.analysis_summary,
                     red_flags=existing_analysis.ai_analysis.red_flags,
                 ),
                 warnings=existing_analysis.warnings,
@@ -420,9 +422,10 @@ class AnalysisService:
           forte suspeita de fraude.
 
         Sua resposta deve ser um objeto JSON que siga estritamente o esquema
-        fornecido, incluindo os campos `summary` e `risk_score_rationale`.
+        fornecido, incluindo os campos `procurement_summary`, `analysis_summary` e `risk_score_rationale`.
 
-        Forneça um resumo conciso (em pt-br) de uma frase sobre os principais pontos e riscos da licitação.
+        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação no campo `procurement_summary`.
+        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) da análise geral no campo `analysis_summary`.
         """
 
     def run_specific_analysis(self, analysis_id: int):

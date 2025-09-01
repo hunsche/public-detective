@@ -1,7 +1,7 @@
 """
-Revision ID: b7179b0a29e7
+Revision ID: 9594c79c1cd3
 Revises:
-Create Date: 2025-08-31 14:34:00.000000
+Create Date: 2025-08-31 23:56:00.000000
 
 """
 
@@ -11,7 +11,7 @@ from alembic import op
 
 from source.migrations.helpers import get_qualified_name
 
-revision: str = "b7179b0a29e7"
+revision: str = "9594c79c1cd3"
 down_revision: str | None = None
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
@@ -72,7 +72,8 @@ def upgrade() -> None:
             status {procurement_analysis_status_type} NOT NULL,
             risk_score SMALLINT,
             risk_score_rationale TEXT,
-            summary TEXT,
+            procurement_summary TEXT,
+            analysis_summary TEXT,
             red_flags JSONB,
             warnings TEXT[],
             document_hash VARCHAR(64),
