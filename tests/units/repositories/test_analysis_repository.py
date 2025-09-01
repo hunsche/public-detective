@@ -170,7 +170,7 @@ def test_save_analysis_updates_record(analysis_repository):
     )
 
     # Act
-    analysis_repository.save_analysis(analysis_id, analysis_result)
+    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50)
 
     # Assert
     mock_conn.execute.assert_called_once()
@@ -232,10 +232,11 @@ def test_save_pre_analysis_returns_id(analysis_repository):
 
     # Act
     returned_id = analysis_repository.save_pre_analysis(
-        "PNCP-456",
-        1,
-        1.23,
-        "pre-analysis-hash",
+        procurement_control_number="PNCP-456",
+        version_number=1,
+        document_hash="pre-analysis-hash",
+        input_tokens_used=200,
+        output_tokens_used=100,
     )
 
     # Assert
@@ -245,7 +246,8 @@ def test_save_pre_analysis_returns_id(analysis_repository):
     params = args[1]
     assert params["procurement_control_number"] == "PNCP-456"
     assert params["version_number"] == 1
-    assert params["estimated_cost"] == 1.23
+    assert params["input_tokens_used"] == 200
+    assert params["output_tokens_used"] == 100
     assert params["document_hash"] == "pre-analysis-hash"
 
 

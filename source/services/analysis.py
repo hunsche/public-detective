@@ -167,7 +167,12 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
             )
-            self.analysis_repo.save_analysis(analysis_id, reused_result)
+            self.analysis_repo.save_analysis(
+                analysis_id,
+                reused_result,
+                existing_analysis.input_tokens_used,
+                existing_analysis.output_tokens_used,
+            )
 
             # Even if we reuse the analysis, we must record the files for the *new* analysis run
             self._process_and_save_file_records(
@@ -182,7 +187,7 @@ class AnalysisService:
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
-            ai_analysis = self.ai_provider.get_structured_analysis(
+            ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
                 files=files_for_ai,
             )
@@ -203,7 +208,7 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            self.analysis_repo.save_analysis(analysis_id, final_result)
+            self.analysis_repo.save_analysis(analysis_id, final_result, input_tokens, output_tokens)
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
@@ -557,17 +562,15 @@ class AnalysisService:
 
         # 7. Count tokens
         prompt = self._build_analysis_prompt(procurement, warnings)
-        token_count = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
 
-        # 8. Calculate estimated cost
-        estimated_cost = (token_count / 1000) * self.config.GCP_GEMINI_PRICE_PER_1K_TOKENS
-
-        # 9. Save pre-analysis
+        # 8. Save pre-analysis
         analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
-            estimated_cost=estimated_cost,
             document_hash=analysis_document_hash,
+            input_tokens_used=input_tokens,
+            output_tokens_used=output_tokens,
         )
         self.status_history_repo.create_record(
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."

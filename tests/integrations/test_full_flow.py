@@ -132,15 +132,16 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     analysis_id = analysis_repo.save_pre_analysis(
         procurement_control_number=procurement_to_analyze.pncp_control_number,
         version_number=1,
-        estimated_cost=0.0,
         document_hash="pre-analysis-hash-1",
+        input_tokens_used=0,
+        output_tokens_used=0,
     )
     status_history_repo.create_record(
         analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Initial pre-analysis record."
     )
 
     # 2. Run analyze command
-    with patch.object(ai_provider, "get_structured_analysis", return_value=gemini_response_fixture):
+    with patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)):
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
             runner = CliRunner()
             result = runner.invoke(cli_main, ["analyze", f"--analysis-id={analysis_id}"])
@@ -232,7 +233,7 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
 
     with (
         patch("source.repositories.procurements.requests.get", side_effect=mock_requests_get),
-        patch.object(ai_provider, "count_tokens_for_analysis", return_value=1000),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)),
     ):
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
@@ -255,15 +256,16 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         assert raw_data["anoCompra"] == target_procurement["anoCompra"]
 
         analysis_query = text(
-            "SELECT version_number, status, estimated_cost FROM procurement_analyses WHERE "
+            "SELECT version_number, status, input_tokens_used, output_tokens_used FROM procurement_analyses WHERE "
             "procurement_control_number = :pcn"
         )
         db_analysis = connection.execute(analysis_query, {"pcn": pcn}).fetchone()
         assert db_analysis is not None, f"No analysis found in the database for {pcn}"
-        version, status, estimated_cost = db_analysis
+        version, status, input_tokens_used, output_tokens_used = db_analysis
         assert version == 1
         assert status == "PENDING_ANALYSIS"
-        assert float(estimated_cost) == 0.002
+        assert input_tokens_used == 1000
+        assert output_tokens_used == 0
 
 
 @pytest.mark.timeout(180)

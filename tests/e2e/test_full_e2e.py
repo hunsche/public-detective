@@ -242,7 +242,8 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
                 warnings,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
-                estimated_cost,
+                input_tokens_used,
+                output_tokens_used,
                 created_at,
                 updated_at
             FROM procurement_analyses
