@@ -1,3 +1,11 @@
+"""This module defines the application's configuration management.
+
+It uses Pydantic's `BaseSettings` to create a strongly-typed `Config`
+class that loads settings from environment variables and/or a .env file.
+This ensures that all configuration parameters are validated and available
+in a structured way throughout the application. A `ConfigProvider` is also
+included to act as a factory for this configuration.
+"""
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -29,13 +37,6 @@ class Config(BaseSettings):
     LOG_LEVEL: str = "INFO"
     TARGET_IBGE_CODES: list[int] = [
         3550308,  # São Paulo
-        # 3304557,  # Rio de Janeiro
-        # 3106200,  # Belo Horizonte
-        # 3518800,  # Campinas
-        # 4205407,  # Florianópolis
-        # 4314902,  # Porto Alegre
-        # 5208707,  # Goiânia
-        # 2927408,  # Salvador
     ]
 
     GCP_PROJECT: str = "public-detective"

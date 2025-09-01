@@ -1,3 +1,9 @@
+"""This module serves as the main entry point for the Pub/Sub worker.
+
+It sets up a command-line interface using Click to start the subscription
+listener. The worker's behavior, such as message limits and timeouts, can
+be configured via CLI options.
+"""
 import click
 from providers.config import ConfigProvider
 from providers.logging import LoggingProvider
@@ -34,17 +40,13 @@ def main(max_messages: int | None, timeout: int | None, max_output_tokens: str |
     period of inactivity (--timeout). If --max-messages is used without a
     --timeout, a default timeout of 10 seconds is applied.
     """
-    # Apply default timeout only when a message limit is set
     if max_messages is not None and timeout is None:
         timeout = 10
 
-    # Convert the string token value to an integer or None
     token_limit: int | None
     if max_output_tokens is None:
-        # If the CLI flag is not provided, use the default from config
         token_limit = ConfigProvider.get_config().GCP_GEMINI_MAX_OUTPUT_TOKENS
     elif max_output_tokens.strip().lower() == "none":
-        # If the flag is explicitly set to "None", use None (no limit)
         token_limit = None
     else:
         try:

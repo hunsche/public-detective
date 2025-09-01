@@ -1,4 +1,11 @@
-# source/job/models/procurement_model.py
+"""This module defines the Pydantic models for representing procurement data.
+
+These models are designed to align with the data structures returned by the
+PNCP (Plataforma Nacional de Contratações Públicas) API. They include
+enumerations for various coded values (e.g., document types, modalities)
+and comprehensive models for procurements, their associated documents, and
+other related entities.
+"""
 from datetime import datetime
 from enum import IntEnum, StrEnum
 from uuid import UUID
@@ -57,7 +64,7 @@ class ProcurementDocument(BaseModel):
 
 
 class ProcurementModality(IntEnum):
-    """Enum for procurement modalities (modalidades de contratação)."""
+    """Enumeration for procurement modalities (modalidades de contratação)."""
 
     ELECTRONIC_AUCTION = 1
     COMPETITIVE_DIALOGUE = 2
@@ -75,7 +82,7 @@ class ProcurementModality(IntEnum):
 
 
 class DisputeMethod(IntEnum):
-    """Enum for dispute methods (modos de disputa)."""
+    """Enumeration for dispute methods (modos de disputa)."""
 
     OPEN = 1
     CLOSED = 2
@@ -86,7 +93,7 @@ class DisputeMethod(IntEnum):
 
 
 class ProcurementStatus(IntEnum):
-    """Enum for procurement status (situação da compra)."""
+    """Enumeration for the status of a procurement (situação da compra)."""
 
     PUBLISHED = 1
     REVOKED = 2
@@ -95,7 +102,7 @@ class ProcurementStatus(IntEnum):
 
 
 class Power(StrEnum):
-    """Enum for government powers (poderes)."""
+    """Enumeration for government powers (poderes)."""
 
     EXECUTIVE = "E"
     LEGISLATIVE = "L"
@@ -104,7 +111,7 @@ class Power(StrEnum):
 
 
 class Sphere(StrEnum):
-    """Enum for government spheres (esferas)."""
+    """Enumeration for government spheres (esferas)."""
 
     FEDERAL = "F"
     STATE = "E"
@@ -114,7 +121,13 @@ class Sphere(StrEnum):
 
 
 class LegalSupport(BaseModel):
-    """Represents the legal support for the procurement."""
+    """Details the legal basis for the procurement process.
+
+    Attributes:
+        code: The numeric code for the legal provision.
+        name: The name of the legal provision (e.g., 'Lei nº 14.133/2021').
+        description: A description of the legal provision.
+    """
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
@@ -124,7 +137,14 @@ class LegalSupport(BaseModel):
 
 
 class GovernmentEntity(BaseModel):
-    """Represents a government entity (órgão)."""
+    """Represents a government entity (órgão) responsible for the procurement.
+
+    Attributes:
+        cnpj: The CNPJ (taxpayer ID) of the entity.
+        name: The official name of the government entity.
+        power: The branch of government (Executive, Legislative, etc.).
+        sphere: The level of government (Federal, State, Municipal).
+    """
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
@@ -135,7 +155,17 @@ class GovernmentEntity(BaseModel):
 
 
 class EntityUnit(BaseModel):
-    """Represents the administrative unit of an entity."""
+    """Represents the specific administrative unit within a government entity.
+
+    Attributes:
+        state_name: The name of the state.
+        unit_code: The specific code of the administrative unit.
+        unit_name: The name of the administrative unit.
+        state_acronym: The acronym of the state (e.g., 'SP', 'RJ').
+        municipality_name: The name of the municipality.
+        ibge_code: The IBGE (Brazilian Institute of Geography and Statistics)
+            code for the municipality.
+    """
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
@@ -148,7 +178,46 @@ class EntityUnit(BaseModel):
 
 
 class Procurement(BaseModel):
-    """Represents a single procurement from the API response."""
+    """Represents a single, detailed procurement record from the PNCP API.
+
+    This model captures all the core information about a public procurement
+    process, including dates, values, responsible parties, and legal details.
+
+    Attributes:
+        procurement_id: The internal unique identifier for the procurement
+            record in the local database.
+        proposal_opening_date: The date and time when proposals are opened.
+        proposal_closing_date: The deadline for submitting proposals.
+        additional_information: Any supplementary information provided.
+        process_number: The official number of the administrative process.
+        object_description: A description of what is being procured.
+        source_system_link: A URL to the procurement in the source system.
+        legal_support: The legal basis for the procurement.
+        total_awarded_value: The final value at which the contract was
+            awarded.
+        is_srp: A boolean indicating if it is a Price Registration System
+            (Sistema de Registro de Preços).
+        government_entity: The government entity conducting the procurement.
+        procurement_year: The year the procurement was initiated.
+        procurement_sequence: The sequential number of the procurement within
+            the year for that entity.
+        pncp_publication_date: The date the procurement was published on PNCP.
+        last_update_date: The date the procurement was last updated on PNCP.
+        procurement_number: The full formatted number of the procurement.
+        entity_unit: The specific administrative unit managing the procurement.
+        modality: The procurement modality (e.g., Auction, Competition).
+        pncp_control_number: The unique control number assigned by PNCP.
+        global_update_date: The timestamp of the last global update for this
+            record.
+        dispute_method: The method used for dispute resolution.
+        total_estimated_value: The estimated total value of the procurement.
+        procurement_status: The current status (e.g., Published, Revoked).
+        user_name: The name of the user who registered the procurement.
+        electronic_process_link: A URL to the electronic process system.
+        in_person_justification: Justification if the process is not
+            electronic.
+        budgetary_sources: A list of budgetary sources for the procurement.
+    """
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
@@ -182,7 +251,18 @@ class Procurement(BaseModel):
 
 
 class ProcurementListResponse(BaseModel):
-    """Represents the top-level structure of the procurement list API response."""
+    """Represents the paginated response from the procurement list endpoint.
+
+    This model captures the top-level structure of the API response,
+    including the list of procurement records for the current page and
+    pagination metadata.
+
+    Attributes:
+        data: A list of `Procurement` objects for the current page.
+        total_records: The total number of records available across all pages.
+        total_pages: The total number of pages available.
+        page_number: The number of the current page.
+    """
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 

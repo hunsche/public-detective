@@ -18,8 +18,16 @@ from services.analysis import AnalysisService
 @click.command("analyze")
 @click.option("--analysis-id", type=UUID, required=True, help="The ID of the analysis to run.")
 def analyze(analysis_id: UUID):
-    """
-    Triggers a specific Public Detective analysis job by sending a message to a queue.
+    """Triggers a specific procurement analysis.
+
+    This command initiates the analysis for a single procurement
+    by its unique analysis ID. It locates the corresponding record in the
+    database, ensures it is in a 'PENDING_ANALYSIS' state, and then
+    publishes a message to the Pub/Sub topic. A worker will then
+    pick up this message to execute the full, in-depth analysis pipeline.
+
+    Args:
+        analysis_id: The unique identifier for the analysis to be processed.
     """
     click.echo(f"Triggering analysis for analysis_id: {analysis_id}")
 
@@ -76,10 +84,35 @@ def analyze(analysis_id: UUID):
 def pre_analyze(
     start_date: datetime, end_date: datetime, batch_size: int, sleep_seconds: int, max_messages: int | None
 ):
-    """
-    Command-line interface to run the Public Detective pre-analysis job.
-    """
+    """Scans for new procurements and prepares them for analysis.
 
+    This command searches for procurements within a given date range that
+    have not yet been analyzed. For each new procurement, it performs the
+    following "pre-analysis" steps:
+    1.  Calculates a hash of the procurement's documents to check for
+        idempotency.
+    2.  If the procurement is new, it saves a new version record to the
+        database.
+    3.  Creates a new record in the `procurement_analyses` table with a
+        'PENDING_ANALYSIS' status.
+    4.  Estimates the token count for the AI analysis.
+
+    This prepares a batch of procurements for the main analysis phase, which
+    can be triggered separately by the 'analyze' command or a worker.
+
+    Args:
+        start_date: The beginning of the date range to scan for new
+            procurements (inclusive). Format: YYYY-MM-DD.
+        end_date: The end of the date range to scan (inclusive).
+            Format: YYYY-MM-DD.
+        batch_size: The number of procurements to process in a single batch
+            before sleeping.
+        sleep_seconds: The duration in seconds to pause between batches to
+            avoid overwhelming external APIs.
+        max_messages: An optional limit on the total number of new analysis
+            tasks to create. The process will stop once this limit is
+            reached.
+    """
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
@@ -126,9 +159,20 @@ def pre_analyze(
     show_default=True,
 )
 def reap_stale_tasks(timeout_minutes: int):
-    """
-    Finds tasks that have been in the 'IN_PROGRESS' state for too long and
-    resets them to 'TIMEOUT' status so they can be re-processed.
+    """Finds and resets long-running analysis tasks.
+
+    This command identifies analysis tasks that have been in the
+    'ANALYSIS_IN_PROGRESS' state for longer than a specified timeout
+    period. It then updates their status to 'TIMEOUT'.
+
+    This is a maintenance command designed to handle cases where a worker
+    might have failed unexpectedly without updating the task's final status,
+    leaving it stuck. Resetting the status allows these tasks to be
+    identified and potentially re-queued for analysis.
+
+    Args:
+        timeout_minutes: The number of minutes after which a task in the
+            'IN_PROGRESS' state is considered stale.
     """
     click.echo(f"Searching for stale tasks with a timeout of {timeout_minutes} minutes...")
 
