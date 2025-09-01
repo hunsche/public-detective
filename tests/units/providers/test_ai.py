@@ -183,13 +183,13 @@ def test_parse_response_with_seo_keywords(monkeypatch):
     provider = AiProvider(Analysis)
     mock_response = MagicMock()
     mock_response.candidates[0].content.parts[0].function_call = None
-    mock_response.text = '''{
+    mock_response.text = """{
         "risk_score": 5,
         "summary": "text summary",
         "risk_score_rationale": "test rationale",
         "red_flags": [],
         "seo_keywords": ["licitação", "pilhas", "CETESB"]
-    }'''
+    }"""
 
     result = provider._parse_and_validate_response(mock_response)
 
