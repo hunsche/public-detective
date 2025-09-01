@@ -74,6 +74,7 @@ def upgrade() -> None:
             risk_score_rationale TEXT,
             summary TEXT,
             red_flags JSONB,
+            seo_keywords TEXT[],
             warnings TEXT[],
             document_hash VARCHAR(64),
             original_documents_url VARCHAR(1024),
