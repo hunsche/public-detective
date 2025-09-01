@@ -218,7 +218,12 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
         run_command(analyze_command)
 
     # 4. Run the worker to process messages from the queue
-    worker_command = f"poetry run python -m source.worker " f"--max-messages {len(analysis_ids)} " f"--timeout 5"
+    worker_command = (
+        f"poetry run python -m source.worker "
+        f"--max-messages {len(analysis_ids)} "
+        f"--timeout 5 "
+        f"--max-output-tokens None"
+    )
     run_command(worker_command)
 
     # 5. Validate data in the database

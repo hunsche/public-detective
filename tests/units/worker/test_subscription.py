@@ -33,9 +33,9 @@ def subscription(mock_analysis_service):
 def test_process_message_success(subscription, mock_message):
     """Tests the successful processing of a valid message."""
     subscription.config.IS_DEBUG_MODE = False
-    subscription._process_message(mock_message)
+    subscription._process_message(mock_message, max_output_tokens=None)
 
-    subscription.analysis_service.process_analysis_from_message.assert_called_once_with(123)
+    subscription.analysis_service.process_analysis_from_message.assert_called_once_with(123, max_output_tokens=None)
     mock_message.ack.assert_called_once()
     mock_message.nack.assert_not_called()
 
@@ -46,7 +46,7 @@ def test_process_message_validation_error(subscription):
     invalid_message.data = b"invalid json"
     invalid_message.message_id = "invalid-message"
 
-    subscription._process_message(invalid_message)
+    subscription._process_message(invalid_message, max_output_tokens=None)
 
     invalid_message.nack.assert_called_once()
     invalid_message.ack.assert_not_called()
@@ -57,7 +57,7 @@ def test_process_message_unexpected_error(subscription, mock_message):
     subscription.analysis_service.process_analysis_from_message.side_effect = Exception("Boom!")
     subscription.config.IS_DEBUG_MODE = False
 
-    subscription._process_message(mock_message)
+    subscription._process_message(mock_message, max_output_tokens=None)
 
     mock_message.nack.assert_called_once()
     mock_message.ack.assert_not_called()
@@ -68,7 +68,7 @@ def test_message_callback_stops_at_max_messages(subscription, mock_message):
     subscription.streaming_pull_future = MagicMock()
     subscription._process_message = MagicMock()
 
-    subscription._message_callback(mock_message, max_messages=1)
+    subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
 
     assert subscription.processed_messages_count == 1
     assert subscription._stop_event.is_set()
@@ -190,6 +190,6 @@ def test_message_callback_stop_event_set(subscription, mock_message):
     subscription._stop_event.set()
     subscription._process_message = MagicMock()
 
-    subscription._message_callback(mock_message, max_messages=1)
+    subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
 
     subscription._process_message.assert_not_called()

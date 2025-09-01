@@ -83,7 +83,7 @@ class AnalysisService:
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
-    def process_analysis_from_message(self, analysis_id: int):
+    def process_analysis_from_message(self, analysis_id: int, max_output_tokens: int | None = -1):
         analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
         if not analysis:
             self.logger.error(f"Analysis with ID {analysis_id} not found.")
@@ -99,7 +99,7 @@ class AnalysisService:
             return
 
         try:
-            self.analyze_procurement(procurement, analysis.version_number, analysis_id)
+            self.analyze_procurement(procurement, analysis.version_number, analysis_id, max_output_tokens)
             self._update_status_with_history(
                 analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
             )
@@ -108,7 +108,9 @@ class AnalysisService:
             self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
             raise
 
-    def analyze_procurement(self, procurement: Procurement, version_number: int, analysis_id: int) -> None:
+    def analyze_procurement(
+        self, procurement: Procurement, version_number: int, analysis_id: int, max_output_tokens: int | None = -1
+    ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
         This method performs the following steps:
@@ -188,8 +190,7 @@ class AnalysisService:
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt,
-                files=files_for_ai,
+                prompt=prompt, files=files_for_ai, max_output_tokens=max_output_tokens
             )
 
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")

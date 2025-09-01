@@ -115,7 +115,7 @@ class Subscription:
         except EOFError:
             self.logger.debug("No TTY available; skipping pause.")
 
-    def _process_message(self, message: Message):
+    def _process_message(self, message: Message, max_output_tokens: int | None):
         """Decodes, validates, analyzes the message, and manages ACK/NACK."""
         message_id = message.message_id
         try:
@@ -139,7 +139,7 @@ class Subscription:
                     f"(analysis_id: {analysis_id}). Attempting to process..."
                 )
 
-                self.analysis_service.process_analysis_from_message(analysis_id)
+                self.analysis_service.process_analysis_from_message(analysis_id, max_output_tokens=max_output_tokens)
 
                 self.logger.info(
                     f"Message {message_id} for procurement {procurement_id} processed successfully. Sending ACK."
@@ -159,7 +159,7 @@ class Subscription:
             )
             message.nack()
 
-    def _message_callback(self, message: Message, max_messages: int | None):
+    def _message_callback(self, message: Message, max_messages: int | None, max_output_tokens: int | None):
         """Entry-point callback invoked by Pub/Sub upon message delivery.
 
         Applies a debug-only context (single-flight + extended deadline) and
@@ -168,12 +168,13 @@ class Subscription:
         Args:
             message: The Pub/Sub message received from the subscription.
             max_messages: The maximum number of messages to process.
+            max_output_tokens: The token limit to apply to the analysis.
         """
         with self._lock:
             if self._stop_event.is_set():
                 return
 
-            self._process_message(message)
+            self._process_message(message, max_output_tokens)
 
             self.processed_messages_count += 1
             if max_messages and self.processed_messages_count >= max_messages:
@@ -182,7 +183,7 @@ class Subscription:
                 if self.streaming_pull_future:
                     self.streaming_pull_future.cancel()
 
-    def run(self, max_messages: int | None = None, timeout: int | None = None):
+    def run(self, max_messages: int | None = None, timeout: int | None = None, max_output_tokens: int | None = -1):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
@@ -192,6 +193,7 @@ class Subscription:
         Args:
             max_messages: The maximum number of messages to process before stopping.
             timeout: The maximum time in seconds to wait for messages.
+            max_output_tokens: The token limit to apply to the analysis.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
@@ -199,7 +201,7 @@ class Subscription:
             return
 
         def callback(message: Message):
-            self._message_callback(message, max_messages)
+            self._message_callback(message, max_messages, max_output_tokens)
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
         self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
