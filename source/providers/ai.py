@@ -45,7 +45,7 @@ class AiProvider(Generic[PydanticModel]):
         self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
 
-    def get_structured_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> PydanticModel:
+    def get_structured_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[PydanticModel, int, int]:
         """
         Uploads a file, sends it with a prompt for analysis, and parses the
         structured response into the Pydantic model instance defined for this provider.
@@ -61,8 +61,11 @@ class AiProvider(Generic[PydanticModel]):
                 - A list of descriptive names for the uploaded files.
 
         Returns:
-            An instance of the Pydantic model associated with this provider,
-            populated with the AI's response.
+            A tuple containing:
+            - An instance of the Pydantic model associated with this provider,
+              populated with the AI's response.
+            - The number of input tokens used.
+            - The number of output tokens used.
 
         Raises:
             ValueError: If the AI model returns a blocked, empty, or
@@ -86,14 +89,18 @@ class AiProvider(Generic[PydanticModel]):
             )
             self.logger.debug("Successfully received response from Gemini API.")
 
-            return self._parse_and_validate_response(response)
+            validated_response = self._parse_and_validate_response(response)
+            input_tokens = response.usage_metadata.prompt_token_count
+            output_tokens = response.usage_metadata.candidates_token_count
+
+            return validated_response, input_tokens, output_tokens
 
         finally:
             for uploaded_file in uploaded_files:
                 self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
                 genai.delete_file(uploaded_file.name)
 
-    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> int:
+    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
         """
         Calculates the number of tokens for a given prompt and list of files
         without making a call to generate content.
@@ -105,7 +112,7 @@ class AiProvider(Generic[PydanticModel]):
                 - The byte content of the file.
 
         Returns:
-            The total number of tokens for the given prompt and files.
+            A tuple containing the total number of input tokens and 0 for output tokens.
         """
         self.logger.info("Counting tokens for analysis...")
         parts: list[str | dict] = [prompt]
@@ -118,7 +125,7 @@ class AiProvider(Generic[PydanticModel]):
         response = self.model.count_tokens(parts)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
-        return token_count
+        return token_count, 0
 
     def _parse_and_validate_response(self, response: genai.types.GenerateContentResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.

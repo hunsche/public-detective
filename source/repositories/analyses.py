@@ -64,7 +64,9 @@ class AnalysisRepository:
             self.logger.error(f"Failed to parse analysis result from DB due to validation error: {e}")
             return None
 
-    def save_analysis(self, analysis_id: int, result: AnalysisResult) -> None:
+    def save_analysis(
+        self, analysis_id: int, result: AnalysisResult, input_tokens_used: int, output_tokens_used: int
+    ) -> None:
         """
         Updates an existing analysis record with the results of a full analysis.
         """
@@ -82,6 +84,8 @@ class AnalysisRepository:
                 original_documents_gcs_path = :original_documents_gcs_path,
                 processed_documents_gcs_path = :processed_documents_gcs_path,
                 status = :status,
+                input_tokens_used = :input_tokens_used,
+                output_tokens_used = :output_tokens_used,
                 updated_at = now()
             WHERE analysis_id = :analysis_id;
         """
@@ -99,6 +103,8 @@ class AnalysisRepository:
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
             "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
+            "input_tokens_used": input_tokens_used,
+            "output_tokens_used": output_tokens_used,
         }
 
         with self.engine.connect() as conn:
@@ -126,7 +132,8 @@ class AnalysisRepository:
                 document_hash,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
-                estimated_cost,
+                input_tokens_used,
+                output_tokens_used,
                 created_at,
                 updated_at
             FROM procurement_analyses
@@ -151,7 +158,12 @@ class AnalysisRepository:
         return self._parse_row_to_model(row, columns)
 
     def save_pre_analysis(
-        self, procurement_control_number: str, version_number: int, estimated_cost: float, document_hash: str
+        self,
+        procurement_control_number: str,
+        version_number: int,
+        document_hash: str,
+        input_tokens_used: int,
+        output_tokens_used: int,
     ) -> int:
         """
         Saves a pre-analysis record to the database.
@@ -160,11 +172,11 @@ class AnalysisRepository:
         sql = text(
             """
             INSERT INTO procurement_analyses (
-                procurement_control_number, version_number, estimated_cost,
-                status, document_hash
+                procurement_control_number, version_number, status, document_hash,
+                input_tokens_used, output_tokens_used
             ) VALUES (
-                :procurement_control_number, :version_number, :estimated_cost,
-                :status, :document_hash
+                :procurement_control_number, :version_number, :status, :document_hash,
+                :input_tokens_used, :output_tokens_used
             )
             RETURNING analysis_id;
             """
@@ -172,9 +184,10 @@ class AnalysisRepository:
         params = {
             "procurement_control_number": procurement_control_number,
             "version_number": version_number,
-            "estimated_cost": estimated_cost,
             "document_hash": document_hash,
             "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
+            "input_tokens_used": input_tokens_used,
+            "output_tokens_used": output_tokens_used,
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
@@ -202,7 +215,8 @@ class AnalysisRepository:
                 document_hash,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
-                estimated_cost,
+                input_tokens_used,
+                output_tokens_used,
                 created_at,
                 updated_at
             FROM procurement_analyses

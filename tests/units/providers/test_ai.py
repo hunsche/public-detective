@@ -237,7 +237,7 @@ def test_count_tokens_for_analysis(mock_gemini_client, monkeypatch):
     token_count = provider.count_tokens_for_analysis(prompt, files)
 
     # Assert
-    assert token_count == 123
+    assert token_count == (123, 0)
     mock_model_instance.count_tokens.assert_called_once()
     args, _ = mock_model_instance.count_tokens.call_args
     contents = args[0]
