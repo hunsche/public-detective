@@ -25,9 +25,14 @@ def upgrade() -> None:
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
     votes_table = get_qualified_name("votes")
     vote_type = get_qualified_name("vote_type")
+    donations_table = get_qualified_name("donations")
+    budget_ledgers_table = get_qualified_name("budget_ledgers")
+    transaction_type = get_qualified_name("transaction_type")
 
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
+    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {donations_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {votes_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
     op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
@@ -35,6 +40,7 @@ def upgrade() -> None:
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {transaction_type} CASCADE;")
 
     op.execute(
         f"""
@@ -47,6 +53,8 @@ def upgrade() -> None:
         );
 
         CREATE TYPE {vote_type} AS ENUM ('UP', 'DOWN');
+
+        CREATE TYPE {transaction_type} AS ENUM ('DONATION', 'EXPENSE');
 
         CREATE TABLE {procurements_table} (
             procurement_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -176,6 +184,24 @@ def upgrade() -> None:
         -- Indexes for votes table
         CREATE INDEX idx_votes_procurement
             ON {votes_table} (procurement_control_number, version_number);
+
+        CREATE TABLE {donations_table} (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            donor_identifier VARCHAR NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            transaction_id VARCHAR,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE {budget_ledgers_table} (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            transaction_type {transaction_type} NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
+            related_analysis_id UUID REFERENCES {procurement_analyses_table}(analysis_id),
+            related_donation_id UUID REFERENCES {donations_table}(id),
+            description TEXT,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
     """
     )
 
@@ -188,7 +214,13 @@ def downgrade() -> None:
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
     votes_table = get_qualified_name("votes")
     vote_type = get_qualified_name("vote_type")
+    donations_table = get_qualified_name("donations")
+    budget_ledgers_table = get_qualified_name("budget_ledgers")
+    transaction_type = get_qualified_name("transaction_type")
 
+    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table};")
+    op.execute(f"DROP TABLE IF EXISTS {donations_table};")
+    op.execute(f"DROP TYPE IF EXISTS {transaction_type};")
     op.execute(f"DROP TABLE IF EXISTS {votes_table};")
     op.execute(f"ALTER TABLE {procurements_table} DROP COLUMN IF EXISTS votes_count;")
     op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
