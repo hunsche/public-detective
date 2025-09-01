@@ -10,6 +10,7 @@ from models.analyses import Analysis, AnalysisResult
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from services.analysis import AnalysisService
+from constants.analysis_feedback import ExclusionReason, Warnings
 
 
 @pytest.fixture
@@ -131,8 +132,11 @@ def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
     """Tests all filtering scenarios in _select_and_prepare_files_for_ai."""
     # Arrange
     service = AnalysisService(**mock_dependencies)
-    service._MAX_FILES_FOR_AI = 3
-    service._MAX_SIZE_BYTES_FOR_AI = 50
+    max_files = 3
+    max_size_bytes = 50
+    max_size_mb = max_size_bytes / 1024 / 1024
+    service._MAX_FILES_FOR_AI = max_files
+    service._MAX_SIZE_BYTES_FOR_AI = max_size_bytes
 
     all_files = [
         ("edital.pdf", b"edital content"),  # Priority 0
@@ -152,16 +156,18 @@ def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
     assert files_for_ai[1][0] == "planilha.xls"
 
     assert len(excluded) == 4
-    assert excluded["unsupported.txt"] == "Unsupported file extension."
-    assert excluded["limit_exceeded.pdf"] == "File limit exceeded."
-    # This is also excluded by file limit because it has lower priority than the others
-    assert excluded["another.pdf"] == "File limit exceeded."
-    assert excluded["oversized.pdf"] == "Total size limit exceeded."
+    assert excluded["unsupported.txt"] == ExclusionReason.UNSUPPORTED_EXTENSION
+    assert excluded["limit_exceeded.pdf"] == ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=max_files)
+    assert excluded["another.pdf"] == ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=max_files)
+    assert excluded["oversized.pdf"] == ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
 
     assert len(warnings) == 2
-    assert "Limite de arquivos excedido" in warnings[0]
-    # The warning message for size limit is dynamic based on what's left
-    assert "excedido" in warnings[1]
+    assert warnings[0] == Warnings.FILE_LIMIT_EXCEEDED.format(
+        max_files=max_files, ignored_files="another.pdf, limit_exceeded.pdf"
+    )
+    assert warnings[1] == Warnings.TOTAL_SIZE_LIMIT_EXCEEDED.format(
+        max_size_mb=max_size_mb, ignored_files="oversized.pdf"
+    )
 
 
 def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement):

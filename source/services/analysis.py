@@ -18,6 +18,7 @@ from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
+from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 
 
 class AnalysisService:
@@ -316,18 +317,22 @@ class AnalysisService:
             else:
                 unsupported_files.append(path)
         for path in unsupported_files:
-            excluded_files[path] = "Unsupported file extension."
+            excluded_files[path] = ExclusionReason.UNSUPPORTED_EXTENSION
 
         # Sort by priority
         supported_files.sort(key=lambda item: self._get_priority(item[0]))
 
         # Filter by max number of files
         if len(supported_files) > self._MAX_FILES_FOR_AI:
-            for path, _ in supported_files[self._MAX_FILES_FOR_AI :]:
-                excluded_files[path] = "File limit exceeded."
+            files_to_exclude = supported_files[self._MAX_FILES_FOR_AI :]
+            for path, _ in files_to_exclude:
+                excluded_files[path] = ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=self._MAX_FILES_FOR_AI)
+
             warnings.append(
-                "Limite de arquivos excedido. Ignorados: "
-                f"{', '.join(p for p, _ in supported_files[self._MAX_FILES_FOR_AI:])}"
+                Warnings.FILE_LIMIT_EXCEEDED.format(
+                    max_files=self._MAX_FILES_FOR_AI,
+                    ignored_files=", ".join(p for p, _ in files_to_exclude),
+                )
             )
             selected_files = supported_files[: self._MAX_FILES_FOR_AI]
         else:
@@ -336,18 +341,23 @@ class AnalysisService:
         # Filter by size
         final_files = []
         current_size = 0
+        files_excluded_by_size = []
+        max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
+
         for path, content in selected_files:
             if current_size + len(content) > self._MAX_SIZE_BYTES_FOR_AI:
-                excluded_files[path] = "Total size limit exceeded."
+                excluded_files[path] = ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
+                files_excluded_by_size.append(path)
             else:
                 final_files.append((path, content))
                 current_size += len(content)
 
-        if len(final_files) < len(selected_files):
-            max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
+        if files_excluded_by_size:
             warnings.append(
-                f"Limite de {max_size_mb:.1f}MB excedido. "
-                f"Ignorados: {', '.join(p for p, _ in selected_files[len(final_files):])}"
+                Warnings.TOTAL_SIZE_LIMIT_EXCEEDED.format(
+                    max_size_mb=max_size_mb,
+                    ignored_files=", ".join(files_excluded_by_size),
+                )
             )
 
         for warning_msg in warnings:
@@ -368,8 +378,8 @@ class AnalysisService:
         path_lower = file_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in path_lower:
-                return keyword
-        return "no_priority"
+                return PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
+        return PrioritizationLogic.NO_PRIORITY
 
     def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
         """Constructs the prompt for the AI, including contextual warnings."""
