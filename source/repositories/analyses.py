@@ -57,6 +57,7 @@ class AnalysisRepository:
                 "procurement_summary": row_dict.get("procurement_summary"),
                 "analysis_summary": row_dict.get("analysis_summary"),
                 "red_flags": red_flags,
+                "seo_keywords": row_dict.get("seo_keywords", []),
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
@@ -82,6 +83,7 @@ class AnalysisRepository:
                 procurement_summary = :procurement_summary,
                 analysis_summary = :analysis_summary,
                 red_flags = :red_flags,
+                seo_keywords = :seo_keywords,
                 warnings = :warnings,
                 original_documents_gcs_path = :original_documents_gcs_path,
                 processed_documents_gcs_path = :processed_documents_gcs_path,
@@ -101,6 +103,7 @@ class AnalysisRepository:
             "procurement_summary": result.ai_analysis.procurement_summary,
             "analysis_summary": result.ai_analysis.analysis_summary,
             "red_flags": red_flags_json,
+            "seo_keywords": result.ai_analysis.seo_keywords,
             "warnings": result.warnings,
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
@@ -129,6 +132,7 @@ class AnalysisRepository:
                 procurement_summary,
                 analysis_summary,
                 red_flags,
+                seo_keywords,
                 warnings,
                 document_hash,
                 original_documents_gcs_path,
@@ -206,6 +210,7 @@ class AnalysisRepository:
                 procurement_summary,
                 analysis_summary,
                 red_flags,
+                seo_keywords,
                 warnings,
                 document_hash,
                 original_documents_gcs_path,

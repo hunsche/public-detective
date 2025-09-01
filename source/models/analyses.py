@@ -64,6 +64,10 @@ class Analysis(BaseModel):
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
     )
+    seo_keywords: list[str] | None = Field(
+        default_factory=list,
+        description="Strategic keywords for SEO (in pt-br) related to the procurement.",
+    )
 
 
 class AnalysisResult(BaseModel):
