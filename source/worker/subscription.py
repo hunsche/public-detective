@@ -141,7 +141,9 @@ class Subscription:
 
                 self.analysis_service.process_analysis_from_message(analysis_id)
 
-                self.logger.info(f"Message {message_id} for procurement {procurement_id} processed successfully. Sending ACK.")
+                self.logger.info(
+                    f"Message {message_id} for procurement {procurement_id} processed successfully. Sending ACK."
+                )
                 message.ack()
 
         except (json.JSONDecodeError, ValidationError):
