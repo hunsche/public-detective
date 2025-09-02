@@ -38,6 +38,7 @@ def test_get_structured_analysis_with_max_tokens(mock_configure, mock_gen_model,
     ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
 
     # Assert
+    mock_configure.assert_called_once_with(api_key="fake-api-key")
     mock_model_instance.generate_content.assert_called_once()
     _, kwargs = mock_model_instance.generate_content.call_args
     generation_config = kwargs.get("generation_config")
