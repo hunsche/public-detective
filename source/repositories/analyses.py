@@ -415,7 +415,7 @@ class AnalysisRepository:
                 updated_at
             FROM procurement_analyses
             WHERE status = :status
-            ORDER BY votes_count DESC, input_tokens_used ASC;
+            ORDER BY votes_count DESC, input_tokens_used ASC, COALESCE(cardinality(warnings), 0) ASC;
             """
         )
 
