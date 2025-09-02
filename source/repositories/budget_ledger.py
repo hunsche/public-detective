@@ -3,6 +3,7 @@ This module defines the repository for handling database operations
 related to the budget ledger.
 """
 
+from datetime import date
 from decimal import Decimal
 from uuid import UUID
 
@@ -50,3 +51,20 @@ class BudgetLedgerRepository:
             conn.execute(sql, params)
             conn.commit()
         self.logger.info(f"Expense for analysis {analysis_id} saved successfully.")
+
+    def get_total_donations(self) -> Decimal:
+        """Calculates the sum of all donation amounts."""
+        sql = text("SELECT COALESCE(SUM(amount), 0) FROM donations")
+        with self.engine.connect() as conn:
+            result = conn.execute(sql).scalar_one_or_none()
+        return result or Decimal("0")
+
+    def get_total_expenses_for_period(self, start_date: date) -> Decimal:
+        """Calculates the sum of all expenses from a given start date."""
+        sql = text(
+            "SELECT COALESCE(SUM(amount), 0) FROM budget_ledgers "
+            "WHERE transaction_type = 'EXPENSE' AND created_at >= :start_date"
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"start_date": start_date}).scalar_one_or_none()
+        return result or Decimal("0")

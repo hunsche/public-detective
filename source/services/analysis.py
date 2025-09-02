@@ -659,7 +659,12 @@ class AnalysisService:
         self.logger.info("Analysis job for the entire date range has been completed.")
 
     def run_ranked_analysis(
-        self, budget: Decimal, zero_vote_budget_percent: int, max_messages: int | None = None
+        self,
+        use_auto_budget: bool,
+        budget_period: str | None,
+        zero_vote_budget_percent: int,
+        budget: Decimal | None = None,
+        max_messages: int | None = None,
     ) -> None:
         """Runs the ranked analysis job.
 
@@ -668,17 +673,25 @@ class AnalysisService:
         provided budget is exhausted or the message limit is reached.
 
         Args:
-            budget: The total budget available for this analysis run.
-            zero_vote_budget_percent: The percentage of the budget to be used
-                for procurements with zero votes.
+            use_auto_budget: Flag to determine if automatic budget calculation should be used.
+            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
+            zero_vote_budget_percent: The percentage of the budget to be used for procurements with zero votes.
+            budget: The manual budget for the analysis run.
             max_messages: An optional limit on the number of analyses to trigger.
         """
-        self.logger.info(f"Starting ranked analysis job with a budget of {budget:.2f} BRL.")
+        if use_auto_budget:
+            execution_budget = self._calculate_auto_budget(budget_period)
+        elif budget is not None:
+            execution_budget = budget
+        else:
+            raise ValueError("Either a manual budget must be provided or auto-budget must be enabled.")
+
+        self.logger.info(f"Starting ranked analysis job with a budget of {execution_budget:.2f} BRL.")
         if max_messages is not None:
             self.logger.info(f"Analysis run is limited to a maximum of {max_messages} message(s).")
 
-        remaining_budget = budget
-        zero_vote_budget = budget * (Decimal(zero_vote_budget_percent) / 100)
+        remaining_budget = execution_budget
+        zero_vote_budget = execution_budget * (Decimal(zero_vote_budget_percent) / 100)
         self.logger.info(f"Zero-vote budget is {zero_vote_budget:.2f} BRL.")
 
         pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
@@ -779,3 +792,37 @@ class AnalysisService:
             self.logger.warning(f"No overall status found for procurement {procurement_control_number}.")
             return None
         return status_info  # type: ignore
+
+    def _calculate_auto_budget(self, budget_period: str) -> Decimal:
+        """Calculates the budget for the current run based on donation history and spending pace."""
+        today = datetime.now(timezone.utc).date()
+        if budget_period == "daily":
+            start_of_period = today
+            days_in_period = 1
+            day_of_period = 1
+        elif budget_period == "weekly":
+            start_of_period = today - timedelta(days=today.weekday())
+            days_in_period = 7
+            day_of_period = today.weekday() + 1
+        elif budget_period == "monthly":
+            start_of_period = today.replace(day=1)
+            next_month = start_of_period.replace(day=28) + timedelta(days=4)
+            days_in_period = (next_month - timedelta(days=next_month.day)).day
+            day_of_period = today.day
+        else:
+            raise ValueError(f"Invalid budget period: {budget_period}")
+
+        current_balance = self.budget_ledger_repo.get_total_donations()
+        expenses_in_period = self.budget_ledger_repo.get_total_expenses_for_period(start_of_period)
+        period_capital = current_balance + expenses_in_period
+        daily_target = period_capital / days_in_period
+        cumulative_target_today = daily_target * day_of_period
+        budget_for_this_run = cumulative_target_today - expenses_in_period
+
+        self.logger.debug(
+            f"Auto-budget calculation: Balance={current_balance:.2f}, "
+            f"Expenses={expenses_in_period:.2f}, Capital={period_capital:.2f}, "
+            f"DailyTarget={daily_target:.2f}, CumulativeTarget={cumulative_target_today:.2f}"
+        )
+
+        return max(Decimal("0"), budget_for_this_run)

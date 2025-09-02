@@ -173,17 +173,14 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     Tests the full E2E flow for ranked analysis against live dependencies:
     1. Pre-analyzes procurements, creating analysis records in the DB.
     2. Injects a donation to establish a budget.
-    3. Triggers the ranked analysis with budget and message constraints.
-    4. Runs the worker to consume the single expected message.
-    5. Validates that only one analysis was processed and that the budget
-       ledger was correctly updated.
+    3. Triggers the ranked analysis with auto-budget.
+    4. Runs the worker to consume messages.
+    5. Validates that analyses were processed and the budget ledger was updated.
     """
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
     ibge_code = "3550308"
-    # We will create 2 pending analyses, but only process 1
-    max_items_to_pre_analyze = 2
-    max_items_to_process = 1
+    max_items_to_process = 2
 
     # Set environment variables for the run
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
@@ -200,7 +197,7 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     pre_analyze_command = (
         f"poetry run python -m source.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
-        f"--max-messages {max_items_to_pre_analyze}"
+        f"--max-messages {max_items_to_process}"
     )
     run_command(pre_analyze_command)
 
@@ -219,15 +216,14 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
         connection.commit()
         print("--- Inserted mock donation ---")
 
-    # 3. Trigger ranked analysis with a budget and max_messages
-    budget = "10.0"  # A large enough budget to not be a constraint
+    # 3. Trigger ranked analysis with auto-budget
     ranked_analysis_command = (
-        f"poetry run python -m source.cli trigger-ranked-analysis "
-        f"--budget {budget} --max-messages {max_items_to_process}"
+        "poetry run python -m source.cli trigger-ranked-analysis "
+        "--use-auto-budget --budget-period daily"
     )
     run_command(ranked_analysis_command)
 
-    # 4. Run the worker to process the single message expected in the queue
+    # 4. Run the worker to process messages
     worker_command = (
         f"poetry run python -m source.worker "
         f"--max-messages {max_items_to_process} "
@@ -241,14 +237,14 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
 
-        # Check that only the expected number of analyses were successful
+        # Check that the expected number of analyses were successful
         completed_analyses = connection.execute(text("SELECT * FROM procurement_analyses WHERE status = 'ANALYSIS_SUCCESSFUL'")).mappings().all()
         print(f"Successfully completed analyses: {len(completed_analyses)}/{max_items_to_process}")
-        assert len(completed_analyses) == max_items_to_process, "Expected exactly one analysis to be successful."
+        assert len(completed_analyses) == max_items_to_process, f"Expected {max_items_to_process} successful analyses."
 
         # Check that the budget_ledgers table has the correct number of entries
         ledger_entries = connection.execute(text("SELECT * FROM budget_ledgers")).mappings().all()
-        assert len(ledger_entries) == max_items_to_process, f"Expected {max_items_to_process} entry in budget_ledgers"
+        assert len(ledger_entries) == max_items_to_process, f"Expected {max_items_to_process} entries in budget_ledgers"
         print(f"--- budget_ledgers table check passed with {len(ledger_entries)} entries ---")
 
     print("\n--- E2E test flow completed successfully ---")

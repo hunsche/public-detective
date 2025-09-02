@@ -18,7 +18,13 @@ from services.analysis import AnalysisService
 
 
 @click.command("trigger-ranked-analysis")
-@click.option("--budget", type=Decimal, required=True, help="The budget for the analysis run.")
+@click.option("--budget", type=Decimal, help="The manual budget for the analysis run.")
+@click.option("--use-auto-budget", is_flag=True, help="Use automatic budget calculation based on donations.")
+@click.option(
+    "--budget-period",
+    type=click.Choice(["daily", "weekly", "monthly"]),
+    help="The period for auto-budget calculation.",
+)
 @click.option(
     "--zero-vote-budget-percent",
     type=click.IntRange(0, 100),
@@ -32,9 +38,23 @@ from services.analysis import AnalysisService
     default=None,
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
-def trigger_ranked_analysis(budget: Decimal, zero_vote_budget_percent: int, max_messages: int | None):
+def trigger_ranked_analysis(
+    budget: Decimal | None,
+    use_auto_budget: bool,
+    budget_period: str | None,
+    zero_vote_budget_percent: int,
+    max_messages: int | None,
+):
     """Triggers a ranked analysis of pending procurements."""
-    click.echo(f"Triggering ranked analysis with a budget of {budget:.2f} BRL.")
+    if not use_auto_budget and budget is None:
+        raise click.UsageError("Either --budget or --use-auto-budget must be provided.")
+    if use_auto_budget and not budget_period:
+        raise click.UsageError("--budget-period is required when --use-auto-budget is set.")
+
+    if use_auto_budget:
+        click.echo("Triggering ranked analysis with auto-budget.")
+    else:
+        click.echo(f"Triggering ranked analysis with a manual budget of {budget:.2f} BRL.")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -59,7 +79,14 @@ def trigger_ranked_analysis(budget: Decimal, zero_vote_budget_percent: int, max_
             pubsub_provider=pubsub_provider,
         )
 
-        service.run_ranked_analysis(budget, zero_vote_budget_percent, max_messages)
+        # The service will handle the logic of whether to use the manual or auto budget
+        service.run_ranked_analysis(
+            budget=budget,
+            use_auto_budget=use_auto_budget,
+            budget_period=budget_period,
+            zero_vote_budget_percent=zero_vote_budget_percent,
+            max_messages=max_messages,
+        )
 
         click.secho("Ranked analysis completed successfully!", fg="green")
     except Exception as e:
