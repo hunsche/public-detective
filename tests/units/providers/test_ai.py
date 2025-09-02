@@ -14,6 +14,40 @@ class MockOutputSchema(BaseModel):
 
 @patch("google.generativeai.GenerativeModel")
 @patch("google.generativeai.configure")
+def test_get_structured_analysis_with_max_tokens(mock_configure, mock_gen_model, monkeypatch):
+    """
+    Should include max_output_tokens in the generation_config when provided.
+    """
+    # Arrange
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "fake-api-key")
+    monkeypatch.setenv("GCP_GEMINI_MODEL", "gemini-test")
+
+    mock_model_instance = MagicMock()
+    mock_response = MagicMock()
+    mock_function_call = MagicMock()
+    mock_function_call.args = {"risk_score": 8, "summary": "Test summary"}
+    mock_response.candidates = [MagicMock()]
+    mock_response.candidates[0].content.parts = [MagicMock()]
+    mock_response.candidates[0].content.parts[0].function_call = mock_function_call
+    mock_model_instance.generate_content.return_value = mock_response
+    mock_gen_model.return_value = mock_model_instance
+
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+
+    # Act
+    ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
+
+    # Assert
+    mock_configure.assert_called_once_with(api_key="fake-api-key")
+    mock_model_instance.generate_content.assert_called_once()
+    _, kwargs = mock_model_instance.generate_content.call_args
+    generation_config = kwargs.get("generation_config")
+    assert generation_config is not None
+    assert generation_config.max_output_tokens == 500
+
+
+@patch("google.generativeai.GenerativeModel")
+@patch("google.generativeai.configure")
 def test_get_structured_analysis_uses_valid_schema(mock_configure, mock_gen_model, monkeypatch):  # noqa: F841
     """
     Should generate content with a response schema compatible with the Gemini API,
@@ -269,3 +303,30 @@ def test_count_tokens_for_analysis(mock_gemini_client, monkeypatch):
     assert contents[1]["data"] == b"content1"
     assert contents[2]["mime_type"] == "text/plain"
     assert contents[2]["data"] == b"content2"
+
+
+def test_count_tokens_for_analysis_unknown_mime_type(mock_gemini_client, monkeypatch):
+    """
+    Tests that count_tokens_for_analysis uses a default mime type if one
+    cannot be guessed.
+    """
+    # Arrange
+    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    mock_model_instance = MagicMock()
+    mock_response = MagicMock()
+    mock_response.total_tokens = 123
+    mock_model_instance.count_tokens.return_value = mock_response
+    mock_gemini_client.return_value = mock_model_instance
+
+    provider = AiProvider(MockOutputSchema)
+    prompt = "test prompt"
+    files = [("file_without_extension", b"content")]
+
+    # Act
+    provider.count_tokens_for_analysis(prompt, files)
+
+    # Assert
+    mock_model_instance.count_tokens.assert_called_once()
+    args, _ = mock_model_instance.count_tokens.call_args
+    contents = args[0]
+    assert contents[1]["mime_type"] == "application/octet-stream"
