@@ -10,9 +10,48 @@ from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
+from decimal import Decimal
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
+
+
+@click.command("trigger-ranked-analysis")
+@click.option("--budget", type=Decimal, required=True, help="The budget for the analysis run.")
+def trigger_ranked_analysis(budget: Decimal):
+    """Triggers a ranked analysis of pending procurements."""
+    click.echo(f"Triggering ranked analysis with a budget of {budget:.2f} BRL.")
+
+    try:
+        db_engine = DatabaseManager.get_engine()
+        pubsub_provider = PubSubProvider()
+        gcs_provider = GcsProvider()
+        ai_provider = AiProvider(Analysis)
+
+        analysis_repo = AnalysisRepository(engine=db_engine)
+        file_record_repo = FileRecordsRepository(engine=db_engine)
+        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
+
+        service = AnalysisService(
+            procurement_repo=procurement_repo,
+            analysis_repo=analysis_repo,
+            file_record_repo=file_record_repo,
+            status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
+            ai_provider=ai_provider,
+            gcs_provider=gcs_provider,
+            pubsub_provider=pubsub_provider,
+        )
+
+        service.run_ranked_analysis(budget)
+
+        click.secho("Ranked analysis completed successfully!", fg="green")
+    except Exception as e:
+        click.secho(f"An error occurred: {e}", fg="red")
+        raise click.Abort()
 
 
 @click.command("analyze")
@@ -41,12 +80,14 @@ def analyze(analysis_id: UUID):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -131,12 +172,14 @@ def pre_analyze(
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -186,12 +229,14 @@ def reap_stale_tasks(timeout_minutes: int):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,

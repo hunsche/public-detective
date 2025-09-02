@@ -380,6 +380,57 @@ class AnalysisRepository:
 
         return stale_ids
 
+    def get_pending_analyses_ranked(self) -> list[AnalysisResult]:
+        """Retrieves all pending analyses, ranked by votes and cost.
+
+        This method fetches all analyses with the 'PENDING_ANALYSIS' status,
+        ordering them first by the number of votes in descending order, and
+        then by the estimated input tokens (as a proxy for cost) in
+        ascending order.
+
+        Returns:
+            A list of `AnalysisResult` objects for the pending analyses.
+        """
+        sql = text(
+            """
+            SELECT
+                analysis_id,
+                procurement_control_number,
+                version_number,
+                status,
+                risk_score,
+                risk_score_rationale,
+                procurement_summary,
+                analysis_summary,
+                red_flags,
+                seo_keywords,
+                warnings,
+                document_hash,
+                original_documents_gcs_path,
+                processed_documents_gcs_path,
+                input_tokens_used,
+                output_tokens_used,
+                votes_count,
+                created_at,
+                updated_at
+            FROM procurement_analyses
+            WHERE status = :status
+            ORDER BY votes_count DESC, input_tokens_used ASC;
+            """
+        )
+
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql,
+                {"status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value},
+            ).fetchall()
+
+        if not result:
+            return []
+
+        columns = list(result[0]._fields)
+        return [self._parse_row_to_model(row, columns) for row in result if row is not None]
+
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """
         Retrieves the overall status of a procurement based on its analysis history.

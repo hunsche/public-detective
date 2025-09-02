@@ -22,6 +22,7 @@ def mock_dependencies():
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
         "status_history_repo": MagicMock(),
+        "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),

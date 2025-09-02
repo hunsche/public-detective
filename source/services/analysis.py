@@ -16,7 +16,10 @@ from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
+from decimal import Decimal
+
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -36,6 +39,7 @@ class AnalysisService:
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
     status_history_repo: StatusHistoryRepository
+    budget_ledger_repo: BudgetLedgerRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -55,6 +59,8 @@ class AnalysisService:
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
+    _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("1.25")
+    _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("10.00")
 
     def __init__(
         self,
@@ -62,6 +68,7 @@ class AnalysisService:
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
         status_history_repo: StatusHistoryRepository,
+        budget_ledger_repo: BudgetLedgerRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -71,6 +78,7 @@ class AnalysisService:
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
         self.status_history_repo = status_history_repo
+        self.budget_ledger_repo = budget_ledger_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
@@ -550,6 +558,7 @@ class AnalysisService:
 
                 for procurement, raw_data in batch:
                     try:
+                        self.logger.info(f"Processing procurement {procurement.pncp_control_number}")
                         self._pre_analyze_procurement(procurement, raw_data)
                         messages_published_count += 1  # Increment count on successful pre-analysis
                         if max_messages is not None and messages_published_count >= max_messages:
@@ -589,6 +598,8 @@ class AnalysisService:
         all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
         procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
+        self.logger.info(f"Calculated procurement hash: {procurement_content_hash}")
+        self.logger.info(f"Calculated procurement hash: {procurement_content_hash}")
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
             self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
@@ -647,6 +658,72 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def run_ranked_analysis(self, budget: Decimal) -> None:
+        """Runs the ranked analysis job.
+
+        This method fetches all pending analyses, orders them by votes and
+        estimated cost, and then processes them one by one until the
+        provided budget is exhausted.
+
+        Args:
+            budget: The total budget available for this analysis run.
+        """
+        self.logger.info(f"Starting ranked analysis job with a budget of {budget:.2f} BRL.")
+        remaining_budget = budget
+
+        pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
+        if not pending_analyses:
+            self.logger.info("No pending analyses found.")
+            return
+
+        self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
+
+        for analysis in pending_analyses:
+            if not analysis.input_tokens_used or not analysis.analysis_id:
+                self.logger.warning(
+                    f"Skipping analysis {analysis.analysis_id} due to missing token count."
+                )
+                continue
+
+            estimated_cost = self._calculate_estimated_cost(
+                analysis.input_tokens_used, analysis.output_tokens_used or 0
+            )
+
+            if estimated_cost > remaining_budget:
+                self.logger.info(
+                    f"Stopping ranked analysis. "
+                    f"Next analysis cost ({estimated_cost:.2f} BRL) exceeds "
+                    f"remaining budget ({remaining_budget:.2f} BRL)."
+                )
+                break
+
+            self.logger.info(
+                f"Processing analysis {analysis.analysis_id} with "
+                f"estimated cost of {estimated_cost:.2f} BRL."
+            )
+            try:
+                self.run_specific_analysis(analysis.analysis_id)
+                remaining_budget -= estimated_cost
+                self.budget_ledger_repo.save_expense(
+                    analysis.analysis_id,
+                    float(estimated_cost),
+                    f"Analysis for procurement {analysis.procurement_control_number}",
+                )
+                self.logger.info(f"Analysis {analysis.analysis_id} triggered. " f"Remaining budget: {remaining_budget:.2f} BRL.")
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to trigger analysis {analysis.analysis_id}: {e}",
+                    exc_info=True,
+                )
+
+        self.logger.info("Ranked analysis job completed.")
+
+    def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
+        """Calculates the estimated cost of an analysis based on token counts."""
+        input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
+        output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
+        return input_cost + output_cost
 
     def reap_stale_analyses(self, timeout_minutes: int) -> int:
         """

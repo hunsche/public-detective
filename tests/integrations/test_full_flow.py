@@ -5,7 +5,7 @@ import threading
 import uuid
 from contextlib import redirect_stdout
 from datetime import date
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -22,6 +22,7 @@ from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -112,11 +113,13 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -222,26 +225,33 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
     )
 
-    with (
-        patch("source.repositories.procurements.requests.get", side_effect=mock_requests_get),
-        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)),
-    ):
+    procurement_repo.get_updated_procurements_with_raw_data = MagicMock(
+        return_value=[
+            (Procurement.model_validate(procurement_list_fixture[0]), procurement_list_fixture[0]),
+            (Procurement.model_validate(procurement_list_fixture[1]), procurement_list_fixture[1]),
+        ]
+    )
+    with patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)):
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
     with db_engine.connect() as connection:
         # Check total count
-        total_query = text("SELECT COUNT(*) FROM procurements")
-        procurement_count = connection.execute(total_query).scalar_one()
+        total_query = text("SELECT pncp_control_number FROM procurements")
+        procurements = connection.execute(total_query).fetchall()
+        print("Procurements in DB:", [p[0] for p in procurements])
+        procurement_count = len(procurements)
         assert procurement_count == len(
             procurement_list_fixture
         ), f"Expected {len(procurement_list_fixture)} procurements, but found {procurement_count} in the database."
