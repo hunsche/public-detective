@@ -22,7 +22,7 @@ def test_trigger_ranked_analysis_success(mocker):
     assert "Ranked analysis completed successfully!" in result.output
 
     mock_service_class.assert_called_once()
-    mock_service_instance.run_ranked_analysis.assert_called_once_with(Decimal("123.45"))
+    mock_service_instance.run_ranked_analysis.assert_called_once_with(Decimal("123.45"), 100)
 
 
 def test_trigger_ranked_analysis_failure(mocker):

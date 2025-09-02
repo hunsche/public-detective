@@ -658,7 +658,7 @@ class AnalysisService:
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
 
-    def run_ranked_analysis(self, budget: Decimal) -> None:
+    def run_ranked_analysis(self, budget: Decimal, zero_vote_budget_percent: int) -> None:
         """Runs the ranked analysis job.
 
         This method fetches all pending analyses, orders them by votes and
@@ -667,9 +667,13 @@ class AnalysisService:
 
         Args:
             budget: The total budget available for this analysis run.
+            zero_vote_budget_percent: The percentage of the budget to be used
+                for procurements with zero votes.
         """
         self.logger.info(f"Starting ranked analysis job with a budget of {budget:.2f} BRL.")
         remaining_budget = budget
+        zero_vote_budget = budget * (Decimal(zero_vote_budget_percent) / 100)
+        self.logger.info(f"Zero-vote budget is {zero_vote_budget:.2f} BRL.")
 
         pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
         if not pending_analyses:
@@ -695,19 +699,31 @@ class AnalysisService:
                 )
                 break
 
+            if analysis.votes_count == 0 and estimated_cost > zero_vote_budget:
+                self.logger.info(
+                    f"Skipping zero-vote analysis {analysis.analysis_id}. "
+                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
+                    f"zero-vote budget ({zero_vote_budget:.2f} BRL)."
+                )
+                continue
+
             self.logger.info(
                 f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
             )
             try:
                 self.run_specific_analysis(analysis.analysis_id)
                 remaining_budget -= estimated_cost
+                if analysis.votes_count == 0:
+                    zero_vote_budget -= estimated_cost
                 self.budget_ledger_repo.save_expense(
                     analysis.analysis_id,
                     float(estimated_cost),
                     f"Analysis for procurement {analysis.procurement_control_number}",
                 )
                 self.logger.info(
-                    f"Analysis {analysis.analysis_id} triggered. " f"Remaining budget: {remaining_budget:.2f} BRL."
+                    f"Analysis {analysis.analysis_id} triggered. "
+                    f"Remaining budget: {remaining_budget:.2f} BRL. "
+                    f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
                 )
             except Exception as e:
                 self.logger.error(

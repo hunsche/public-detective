@@ -424,6 +424,7 @@ def test_run_ranked_analysis_success(mock_dependencies):
         input_tokens_used=1000,
         output_tokens_used=200,
         procurement_control_number="1",
+        votes_count=1,
     )
     analysis2 = MagicMock(
         spec=AnalysisResult,
@@ -431,13 +432,14 @@ def test_run_ranked_analysis_success(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("2.0"))
+    service.run_ranked_analysis(budget=Decimal("2.0"), zero_vote_budget_percent=100)
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
@@ -458,6 +460,7 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
         input_tokens_used=1000,
         output_tokens_used=200,
         procurement_control_number="1",
+        votes_count=0,
     )
     analysis2 = MagicMock(
         spec=AnalysisResult,
@@ -465,18 +468,55 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("1.2"))
+    service.run_ranked_analysis(budget=Decimal("1.2"), zero_vote_budget_percent=100)
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
     assert service._calculate_estimated_cost.call_count == 2
     service.run_specific_analysis.assert_called_once()
+    service.budget_ledger_repo.save_expense.assert_called_once()
+
+
+def test_run_ranked_analysis_stops_when_zero_vote_budget_exceeded(mock_dependencies):
+    """
+    Tests that the job stops processing zero-vote items when their specific
+    budget is exceeded, even if the main budget has funds.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis1 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=1000,
+        output_tokens_used=200,
+        procurement_control_number="1",
+        votes_count=0,
+    )
+    analysis2 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=500,
+        output_tokens_used=100,
+        procurement_control_number="2",
+        votes_count=0,
+    )
+    service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
+    service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
+    service.run_specific_analysis = MagicMock()
+
+    # Act: Total budget is 10, but zero-vote budget is only 1.0 (10% of 10)
+    service.run_ranked_analysis(budget=Decimal("10.0"), zero_vote_budget_percent=10)
+
+    # Assert
+    assert service.run_specific_analysis.call_count == 1
+    service.run_specific_analysis.assert_called_once_with(analysis1.analysis_id)
     service.budget_ledger_repo.save_expense.assert_called_once()
 
 
@@ -489,12 +529,14 @@ def test_run_ranked_analysis_no_pending_analyses(mock_dependencies):
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = []
 
+    service.run_specific_analysis = MagicMock()
+
     # Act
-    service.run_ranked_analysis(budget=Decimal("100.0"))
+    service.run_ranked_analysis(budget=Decimal("100.0"), zero_vote_budget_percent=100)
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
-    assert service.analysis_repo.run_specific_analysis.call_count == 0
+    assert service.run_specific_analysis.call_count == 0
 
 
 def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
@@ -513,13 +555,14 @@ def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(return_value=Decimal("0.5"))
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("1.0"))
+    service.run_ranked_analysis(budget=Decimal("1.0"), zero_vote_budget_percent=100)
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
