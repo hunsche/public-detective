@@ -3,6 +3,7 @@ Unit tests for the AnalysisService.
 """
 
 from datetime import date
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -408,3 +409,87 @@ def test_reap_stale_analyses(mock_dependencies):
     service.status_history_repo.create_record.assert_any_call(
         3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
     )
+
+
+def test_run_ranked_analysis_success(mock_dependencies):
+    """
+    Tests that the ranked analysis job runs successfully and processes all
+    pending analyses.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=1000, output_tokens_used=200, procurement_control_number="1")
+    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
+    service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
+    service.run_specific_analysis = MagicMock()
+
+    # Act
+    service.run_ranked_analysis(budget=Decimal("2.0"))
+
+    # Assert
+    assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
+    assert service._calculate_estimated_cost.call_count == 2
+    assert service.run_specific_analysis.call_count == 2
+    assert service.budget_ledger_repo.save_expense.call_count == 2
+
+
+def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
+    """
+    Tests that the ranked analysis job stops when the budget is exceeded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=1000, output_tokens_used=200, procurement_control_number="1")
+    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
+    service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
+    service.run_specific_analysis = MagicMock()
+
+    # Act
+    service.run_ranked_analysis(budget=Decimal("1.2"))
+
+    # Assert
+    assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
+    assert service._calculate_estimated_cost.call_count == 2
+    service.run_specific_analysis.assert_called_once()
+    service.budget_ledger_repo.save_expense.assert_called_once()
+
+
+def test_run_ranked_analysis_no_pending_analyses(mock_dependencies):
+    """
+    Tests that the ranked analysis job handles the case where there are no
+    pending analyses.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.analysis_repo.get_pending_analyses_ranked.return_value = []
+
+    # Act
+    service.run_ranked_analysis(budget=Decimal("100.0"))
+
+    # Assert
+    assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
+    assert service.analysis_repo.run_specific_analysis.call_count == 0
+
+
+def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
+    """
+    Tests that the ranked analysis job correctly skips analyses with missing
+    token counts.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=None, procurement_control_number="1")
+    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
+    service._calculate_estimated_cost = MagicMock(return_value=Decimal("0.5"))
+    service.run_specific_analysis = MagicMock()
+
+    # Act
+    service.run_ranked_analysis(budget=Decimal("1.0"))
+
+    # Assert
+    assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
+    service.run_specific_analysis.assert_called_once_with(analysis2.analysis_id)
+    service.budget_ledger_repo.save_expense.assert_called_once()
