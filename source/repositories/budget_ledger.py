@@ -3,6 +3,7 @@ This module defines the repository for handling database operations
 related to the budget ledger.
 """
 
+from decimal import Decimal
 from uuid import UUID
 
 from models.budget_ledger import TransactionType
@@ -21,7 +22,7 @@ class BudgetLedgerRepository:
         self.logger = LoggingProvider().get_logger()
         self.engine = engine
 
-    def save_expense(self, analysis_id: UUID, cost: float, description: str) -> None:
+    def save_expense(self, analysis_id: UUID, cost: Decimal, description: str) -> None:
         """Saves a new expense record to the budget ledger.
 
         Args:

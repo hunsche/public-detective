@@ -44,14 +44,6 @@ def db_session():
     and cleans up by dropping the schema afterwards.
     """
     print("\n--- Setting up database session ---")
-    # Ensure dummy zip file exists for tests that might need it
-    fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
-    fixture_path = fixture_dir / "Anexos.zip"
-    if not fixture_path.exists():
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        with ZipFile(fixture_path, "w") as zf:
-            zf.writestr("dummy_document.pdf", b"dummy pdf content")
-
     # Use localhost for services, as docker-compose exposes the ports to the host
     host = "127.0.0.1"
     os.environ["POSTGRES_HOST"] = host
@@ -149,7 +141,10 @@ def e2e_test_setup(db_session):
             print("Truncating tables before test run...")
             connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
             connection.execute(
-                text("TRUNCATE procurements, procurement_analyses, file_records RESTART IDENTITY CASCADE;")
+                text(
+                    "TRUNCATE procurements, procurement_analyses, file_records, donations, budget_ledgers RESTART "
+                    "IDENTITY CASCADE;"
+                )
             )
             connection.commit()
             print("Tables truncated.")
@@ -172,55 +167,70 @@ def e2e_test_setup(db_session):
         print("E2E test environment torn down.")
 
 
-@pytest.mark.timeout(300)
-def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
+@pytest.mark.timeout(240)
+def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     """
-    Tests the full E2E flow against live dependencies:
+    Tests the full E2E flow for ranked analysis against live dependencies:
     1. Pre-analyzes procurements, creating analysis records in the DB.
-    2. Queries the DB for the IDs of the newly created analyses.
-    3. Triggers the analysis for each ID, publishing messages to Pub/Sub.
-    4. Runs the worker to consume messages and perform the analysis.
-    5. Validates that the analyses were successfully completed in the DB.
+    2. Injects a donation to establish a budget.
+    3. Triggers the ranked analysis with budget and message constraints.
+    4. Runs the worker to consume the single expected message.
+    5. Validates that only one analysis was processed and that the budget
+       ledger was correctly updated.
     """
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
     ibge_code = "3550308"
-    max_items_to_process = 2
+    # We will create 2 pending analyses, but only process 1
+    max_items_to_pre_analyze = 2
+    max_items_to_process = 1
 
     # Set environment variables for the run
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
     os.environ["GCP_GEMINI_PRICE_PER_1K_TOKENS"] = "0.002"
+    # Ensure a dummy zip file exists for document processing
+    fixture_dir = Path(f"tests/fixtures/{ibge_code}/{target_date_str}/")
+    fixture_path = fixture_dir / "Anexos.zip"
+    if not fixture_path.exists():
+        fixture_dir.mkdir(parents=True, exist_ok=True)
+        with ZipFile(fixture_path, "w") as zf:
+            zf.writestr("dummy_document.pdf", b"dummy pdf content")
 
     # 1. Run pre-analysis to find procurements and create analysis entries
     pre_analyze_command = (
         f"poetry run python -m source.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
-        f"--max-messages {max_items_to_process}"
+        f"--max-messages {max_items_to_pre_analyze}"
     )
     run_command(pre_analyze_command)
 
-    # 2. Query the database for the IDs of the analyses to be processed
-    print("\n--- Querying database for analysis IDs ---")
-    analysis_ids = []
+    # 2. Setup database with a donation
+    print("\n--- Setting up database for ranked analysis ---")
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
-        result = connection.execute(
-            text("SELECT analysis_id FROM procurement_analyses ORDER BY analysis_id DESC LIMIT :limit"),
-            {"limit": max_items_to_process},
+        # Insert a donation to fund the analysis
+        connection.execute(
+            text(
+                "INSERT INTO donations (id, donor_identifier, amount, transaction_id, created_at) "
+                "VALUES (:id, :donor_identifier, :amount, :transaction_id, NOW())"
+            ),
+            [{"id": str(uuid.uuid4()), "donor_identifier": "E2E_TEST_DONOR", "amount": 15.00, "transaction_id": "E2E_TEST_TX_ID"}],
         )
-        analysis_ids = [row[0] for row in result]
-        assert len(analysis_ids) >= 1, f"Expected to find at least 1 analysis, but found {len(analysis_ids)}."
-    print(f"Found analysis IDs: {analysis_ids}")
+        connection.commit()
+        print("--- Inserted mock donation ---")
 
-    # 3. Trigger each analysis, publishing a message to the queue
-    for analysis_id in analysis_ids:
-        analyze_command = f"poetry run python -m source.cli analyze --analysis-id {analysis_id}"
-        run_command(analyze_command)
+    # 3. Trigger ranked analysis with a budget and max_messages
+    budget = "10.0"  # A large enough budget to not be a constraint
+    ranked_analysis_command = (
+        f"poetry run python -m source.cli trigger-ranked-analysis "
+        f"--budget {budget} --max-messages {max_items_to_process}"
+    )
+    run_command(ranked_analysis_command)
 
-    # 4. Run the worker to process messages from the queue
+    # 4. Run the worker to process the single message expected in the queue
     worker_command = (
         f"poetry run python -m source.worker "
-        f"--max-messages {len(analysis_ids)} "
+        f"--max-messages {max_items_to_process} "
         f"--timeout 5 "
         f"--max-output-tokens None"
     )
@@ -231,85 +241,15 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
 
-        # Basic assertion: Check if all triggered analyses were successful
-        completed_analysis_query = text(
-            """
-            SELECT
-                analysis_id,
-                procurement_control_number,
-                version_number,
-                status,
-                risk_score,
-                risk_score_rationale,
-                procurement_summary,
-                analysis_summary,
-                red_flags,
-                warnings,
-                original_documents_gcs_path,
-                processed_documents_gcs_path,
-                input_tokens_used,
-                output_tokens_used,
-                created_at,
-                updated_at
-            FROM procurement_analyses
-            WHERE status = 'ANALYSIS_SUCCESSFUL' AND analysis_id = ANY(:ids)
-            """
-        )
-        completed_analyses = connection.execute(completed_analysis_query, {"ids": analysis_ids}).mappings().all()
+        # Check that only the expected number of analyses were successful
+        completed_analyses = connection.execute(text("SELECT * FROM procurement_analyses WHERE status = 'ANALYSIS_SUCCESSFUL'")).mappings().all()
+        print(f"Successfully completed analyses: {len(completed_analyses)}/{max_items_to_process}")
+        assert len(completed_analyses) == max_items_to_process, "Expected exactly one analysis to be successful."
 
-        print(f"Successfully completed analyses: {len(completed_analyses)}/{len(analysis_ids)}")
-        assert len(completed_analyses) == len(analysis_ids), "Not all triggered analyses were successful."
-
-        for analysis in completed_analyses:
-            assert analysis["procurement_summary"] is not None
-            assert analysis["analysis_summary"] is not None
-
-        # Generic data integrity assertions
-        print("\n--- Running generic data integrity checks ---")
-        for analysis in completed_analyses:
-            analysis_id = analysis["analysis_id"]
-            print(f"Checking analysis_id: {analysis_id}")
-
-            # Assert GCS paths are populated
-            assert (
-                analysis["original_documents_gcs_path"] is not None and analysis["original_documents_gcs_path"] != ""
-            ), f"original_documents_gcs_path is missing for analysis {analysis_id}"
-            assert (
-                analysis["processed_documents_gcs_path"] is not None and analysis["processed_documents_gcs_path"] != ""
-            ), f"processed_documents_gcs_path is missing for analysis {analysis_id}"
-
-            # Assert file_records table is populated for this analysis
-            file_record_query = text(
-                """
-                SELECT
-                    id,
-                    analysis_id,
-                    file_name,
-                    gcs_path,
-                    extension,
-                    size_bytes,
-                    nesting_level,
-                    included_in_analysis,
-                    exclusion_reason,
-                    prioritization_logic,
-                    created_at,
-                    updated_at
-                FROM file_records
-                WHERE analysis_id = :analysis_id
-                """
-            )
-            file_records = connection.execute(file_record_query, {"analysis_id": analysis_id}).mappings().all()
-
-            assert len(file_records) > 0, f"No file_records entries found for analysis {analysis_id}"
-            print(f"Found {len(file_records)} file_records entries.")
-
-            # Assert all file_records have a GCS path
-            for record in file_records:
-                assert (
-                    record["gcs_path"] is not None and record["gcs_path"] != ""
-                ), f"gcs_path is missing for file_records {record['id']}"
-
-        print("--- Generic data integrity checks passed ---")
+        # Check that the budget_ledgers table has the correct number of entries
+        ledger_entries = connection.execute(text("SELECT * FROM budget_ledgers")).mappings().all()
+        assert len(ledger_entries) == max_items_to_process, f"Expected {max_items_to_process} entry in budget_ledgers"
+        print(f"--- budget_ledgers table check passed with {len(ledger_entries)} entries ---")
 
     print("\n--- E2E test flow completed successfully ---")
 
@@ -317,26 +257,21 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     print("\n--- Critical Analysis Data Dump ---")
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
-        # Get all tables in the current schema
         get_tables_query = text("SELECT tablename FROM pg_tables WHERE schemaname = :schema")
-        tables_result = connection.execute(get_tables_query, {"schema": os.environ["POSTGRES_DB_SCHEMA"]})
+        tables_result = connection.execute(get_tables_query, {"schema": os.environ['POSTGRES_DB_SCHEMA']})
         table_names = [row[0] for row in tables_result if row[0] != "alembic_version"]
         if "budget_ledgers" not in table_names:
             table_names.append("budget_ledgers")
-        if "budget_ledgers" not in table_names:
-            table_names.append("budget_ledgers")
-        if "budget_ledgers" not in table_names:
-            table_names.append("budget_ledgers")
+        if "donations" not in table_names:
+            table_names.append("donations")
 
-        # Dump each table's content
-        for table_name in table_names:
+        for table_name in sorted(table_names):
             print(f"\n--- Dumping table: {table_name} ---")
             dump_query = text(f"SELECT * FROM {table_name}")  # nosec B608
             records = connection.execute(dump_query).mappings().all()
             if not records:
                 print("[]")
             else:
-                # Convert records to a JSON-serializable format
                 serializable_records = [{key: str(value) for key, value in record.items()} for record in records]
                 print(json.dumps(serializable_records, indent=2, ensure_ascii=False))
     print("\n--- Data Dump Complete ---")

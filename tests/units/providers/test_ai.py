@@ -86,11 +86,12 @@ def test_ai_provider_missing_api_key(monkeypatch):
         AiProvider(MockOutputSchema)
 
 
+@patch("time.sleep", return_value=None)
 @patch("google.generativeai.delete_file")
 @patch("google.generativeai.upload_file")
 @patch("google.generativeai.get_file")
 def test_get_structured_analysis_cleans_up_files(
-    mock_get_file, mock_upload_file, mock_delete_file, mock_gemini_client, monkeypatch
+    mock_get_file, mock_upload_file, mock_delete_file, mock_sleep, mock_gemini_client, monkeypatch
 ):
     """Tests that uploaded files are deleted even if analysis fails."""
     monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
@@ -110,8 +111,8 @@ def test_get_structured_analysis_cleans_up_files(
     with pytest.raises(Exception, match="API failure"):
         provider.get_structured_analysis(prompt="test", files=files_to_upload)
 
-    mock_upload_file.assert_called_once()
-    mock_delete_file.assert_called_once_with("uploaded-file-name")
+    assert mock_upload_file.call_count == 3
+    assert mock_delete_file.call_count == 3
 
 
 @patch("google.generativeai.upload_file")

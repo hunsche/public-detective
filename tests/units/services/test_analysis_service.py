@@ -424,6 +424,7 @@ def test_run_ranked_analysis_success(mock_dependencies):
         input_tokens_used=1000,
         output_tokens_used=200,
         procurement_control_number="1",
+        version_number=1,
         votes_count=1,
     )
     analysis2 = MagicMock(
@@ -432,6 +433,7 @@ def test_run_ranked_analysis_success(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        version_number=1,
         votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
@@ -460,6 +462,7 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
         input_tokens_used=1000,
         output_tokens_used=200,
         procurement_control_number="1",
+        version_number=1,
         votes_count=0,
     )
     analysis2 = MagicMock(
@@ -468,6 +471,7 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        version_number=1,
         votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
@@ -497,6 +501,7 @@ def test_run_ranked_analysis_stops_when_zero_vote_budget_exceeded(mock_dependenc
         input_tokens_used=1000,
         output_tokens_used=200,
         procurement_control_number="1",
+        version_number=1,
         votes_count=0,
     )
     analysis2 = MagicMock(
@@ -505,6 +510,7 @@ def test_run_ranked_analysis_stops_when_zero_vote_budget_exceeded(mock_dependenc
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        version_number=1,
         votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
@@ -555,6 +561,7 @@ def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
         input_tokens_used=500,
         output_tokens_used=100,
         procurement_control_number="2",
+        version_number=1,
         votes_count=0,
     )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]

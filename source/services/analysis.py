@@ -658,19 +658,25 @@ class AnalysisService:
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
 
-    def run_ranked_analysis(self, budget: Decimal, zero_vote_budget_percent: int) -> None:
+    def run_ranked_analysis(
+        self, budget: Decimal, zero_vote_budget_percent: int, max_messages: int | None = None
+    ) -> None:
         """Runs the ranked analysis job.
 
         This method fetches all pending analyses, orders them by votes and
         estimated cost, and then processes them one by one until the
-        provided budget is exhausted.
+        provided budget is exhausted or the message limit is reached.
 
         Args:
             budget: The total budget available for this analysis run.
             zero_vote_budget_percent: The percentage of the budget to be used
                 for procurements with zero votes.
+            max_messages: An optional limit on the number of analyses to trigger.
         """
         self.logger.info(f"Starting ranked analysis job with a budget of {budget:.2f} BRL.")
+        if max_messages is not None:
+            self.logger.info(f"Analysis run is limited to a maximum of {max_messages} message(s).")
+
         remaining_budget = budget
         zero_vote_budget = budget * (Decimal(zero_vote_budget_percent) / 100)
         self.logger.info(f"Zero-vote budget is {zero_vote_budget:.2f} BRL.")
@@ -681,8 +687,12 @@ class AnalysisService:
             return
 
         self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
-
+        triggered_count = 0
         for analysis in pending_analyses:
+            if max_messages is not None and triggered_count >= max_messages:
+                self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
+                break
+
             if not analysis.input_tokens_used or not analysis.analysis_id:
                 self.logger.warning(f"Skipping analysis {analysis.analysis_id} due to missing token count.")
                 continue
@@ -717,14 +727,15 @@ class AnalysisService:
                     zero_vote_budget -= estimated_cost
                 self.budget_ledger_repo.save_expense(
                     analysis.analysis_id,
-                    float(estimated_cost),
-                    f"Análise da licitação {analysis.procurement_control_number}",
+                    estimated_cost,
+                    f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
                 )
                 self.logger.info(
                     f"Analysis {analysis.analysis_id} triggered. "
                     f"Remaining budget: {remaining_budget:.2f} BRL. "
                     f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
                 )
+                triggered_count += 1
             except Exception as e:
                 self.logger.error(
                     f"Failed to trigger analysis {analysis.analysis_id}: {e}",

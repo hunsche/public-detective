@@ -57,24 +57,27 @@ graph TD
 - `--use-auto-budget`: (Optional) Activates the automatic budget mode. If used, the `--budget` parameter is ignored.
 - `--budget-period <daily|weekly|monthly>`: (Required if `--use-auto-budget` is used) Defines the period for the spending pace calculation.
 - `--zero-vote-budget-percent <0-100>`: (Optional, Default: 100) The percentage of the execution budget that can be spent on procurements with zero votes.
+- `--max-messages <number>`: (Optional) The maximum number of analysis tasks to trigger in a single run, regardless of the available budget.
 
 ## 5. Logging and Transparency
 
-To ensure maximum transparency, every important decision made by the system will generate a clear and friendly log message in **Portuguese**.
+To ensure maximum transparency, every important decision made by the system will generate a clear log message in English.
 
 **Log Examples:**
 
-- **Job Start (Manual Mode):**
-  > `INFO: Iniciando job de análise com orçamento manual de R$ 150,75.`
-- **Job Start (Automatic Mode):**
-  > `INFO: Iniciando job com orçamento automático. Período definido: 'monthly'.`
-  > `DEBUG: Saldo atual: R$ 3000,00. Despesas no período: R$ 250,00. Capital total do período: R$ 3250,00.`
-  > `DEBUG: Meta diária calculada: R$ 108,33.`
-  > `DEBUG: Meta acumulada para o dia 10: R$ 1083,30. Gasto real no período: R$ 250,00.`
-  > `INFO: Orçamento calculado para esta execução: R$ 833,30.`
-- **Skip Decision (Budget Exceeded):**
-  > `INFO: Análise 123 ignorada. Custo estimado (R$ 15,50) excede o orçamento restante (R$ 10,20).`
-- **Skip Decision (Zero-Vote Budget Exceeded):**
-  > `INFO: Análise 456 (0 votos) ignorada. Custo estimado (R$ 5,00) excede o orçamento restante para itens sem votos (R$ 3,50).`
-- **Processing Success:**
-  > `INFO: Análise 789 processada com sucesso. Custo: R$ 8,75. Orçamento restante: R$ 1,45.`
+- **Job Start:**
+  > `INFO: Starting ranked analysis job with a budget of 10.00 BRL.`
+  > `INFO: Analysis run is limited to a maximum of 1 message(s).`
+  > `INFO: Zero-vote budget is 10.00 BRL.`
+- **Processing and Budgeting:**
+  > `INFO: Found 2 pending analyses.`
+  > `INFO: Processing analysis bb5346ea-31c6-450a-b6b2-025196ade101 with estimated cost of 0.01 BRL.`
+  > `INFO: Running specific analysis for analysis_id: bb5346ea-31c6-450a-b6b2-025196ade101`
+  > `INFO: Analysis bb5346ea-31c6-450a-b6b2-025196ade101 triggered. Remaining budget: 9.99 BRL. Zero-vote budget: 9.99 BRL.`
+- **Job End (Max Messages Reached):**
+  > `INFO: Reached max_messages limit of 1. Stopping job.`
+  > `INFO: Ranked analysis job completed.`
+- **Job End (Budget Exceeded):**
+  > `INFO: Stopping ranked analysis. Next analysis cost (5.50 BRL) exceeds remaining budget (4.30 BRL).`
+- **Job End (Zero-Vote Budget Exceeded):**
+  > `INFO: Skipping zero-vote analysis abc-123. Cost (5.50 BRL) exceeds remaining zero-vote budget (4.30 BRL).`

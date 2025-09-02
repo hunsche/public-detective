@@ -26,7 +26,13 @@ from services.analysis import AnalysisService
     help="The percentage of the budget to be used for procurements with zero votes.",
     show_default=True,
 )
-def trigger_ranked_analysis(budget: Decimal, zero_vote_budget_percent: int):
+@click.option(
+    "--max-messages",
+    type=int,
+    default=None,
+    help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
+)
+def trigger_ranked_analysis(budget: Decimal, zero_vote_budget_percent: int, max_messages: int | None):
     """Triggers a ranked analysis of pending procurements."""
     click.echo(f"Triggering ranked analysis with a budget of {budget:.2f} BRL.")
 
@@ -53,7 +59,7 @@ def trigger_ranked_analysis(budget: Decimal, zero_vote_budget_percent: int):
             pubsub_provider=pubsub_provider,
         )
 
-        service.run_ranked_analysis(budget, zero_vote_budget_percent)
+        service.run_ranked_analysis(budget, zero_vote_budget_percent, max_messages)
 
         click.secho("Ranked analysis completed successfully!", fg="green")
     except Exception as e:

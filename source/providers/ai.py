@@ -16,6 +16,7 @@ import google.generativeai as genai
 from google.generativeai.types import File
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
+from providers.retry import retry_with_backoff
 from pydantic import BaseModel, ValidationError
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
@@ -53,6 +54,7 @@ class AiProvider(Generic[PydanticModel]):
         self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
 
+    @retry_with_backoff()
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
     ) -> tuple[PydanticModel, int, int]:

@@ -190,7 +190,7 @@ def upgrade() -> None:
         CREATE TABLE {donations_table} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             donor_identifier VARCHAR NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
+            amount DECIMAL(18, 10) NOT NULL,
             transaction_id VARCHAR,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -198,7 +198,7 @@ def upgrade() -> None:
         CREATE TABLE {budget_ledgers_table} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             transaction_type {transaction_type} NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
+            amount DECIMAL(18, 10) NOT NULL,
             related_analysis_id UUID REFERENCES {procurement_analyses_table}(analysis_id),
             related_donation_id UUID REFERENCES {donations_table}(id),
             description TEXT,
