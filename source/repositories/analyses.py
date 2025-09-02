@@ -429,7 +429,7 @@ class AnalysisRepository:
             return []
 
         columns = list(result[0]._fields)
-        return [self._parse_row_to_model(row, columns) for row in result if row is not None]
+        return [self._parse_row_to_model(tuple(row), columns) for row in result if row is not None]
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """

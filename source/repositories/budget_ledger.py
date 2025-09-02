@@ -2,9 +2,10 @@
 This module defines the repository for handling database operations
 related to the budget ledger.
 """
+
 from uuid import UUID
 
-from models.budget_ledger import BudgetLedger, TransactionType
+from models.budget_ledger import TransactionType
 from providers.logging import Logger, LoggingProvider
 from sqlalchemy import Engine, text
 

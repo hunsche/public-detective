@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 import click
@@ -9,9 +10,8 @@ from providers.date import DateProvider
 from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
-from repositories.file_records import FileRecordsRepository
-from decimal import Decimal
 from repositories.budget_ledger import BudgetLedgerRepository
+from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService

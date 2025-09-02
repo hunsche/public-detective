@@ -3,6 +3,7 @@ import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -16,8 +17,6 @@ from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
-from decimal import Decimal
-
 from repositories.analyses import AnalysisRepository
 from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
@@ -681,9 +680,7 @@ class AnalysisService:
 
         for analysis in pending_analyses:
             if not analysis.input_tokens_used or not analysis.analysis_id:
-                self.logger.warning(
-                    f"Skipping analysis {analysis.analysis_id} due to missing token count."
-                )
+                self.logger.warning(f"Skipping analysis {analysis.analysis_id} due to missing token count.")
                 continue
 
             estimated_cost = self._calculate_estimated_cost(
@@ -699,8 +696,7 @@ class AnalysisService:
                 break
 
             self.logger.info(
-                f"Processing analysis {analysis.analysis_id} with "
-                f"estimated cost of {estimated_cost:.2f} BRL."
+                f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
             )
             try:
                 self.run_specific_analysis(analysis.analysis_id)
@@ -710,7 +706,9 @@ class AnalysisService:
                     float(estimated_cost),
                     f"Analysis for procurement {analysis.procurement_control_number}",
                 )
-                self.logger.info(f"Analysis {analysis.analysis_id} triggered. " f"Remaining budget: {remaining_budget:.2f} BRL.")
+                self.logger.info(
+                    f"Analysis {analysis.analysis_id} triggered. " f"Remaining budget: {remaining_budget:.2f} BRL."
+                )
             except Exception as e:
                 self.logger.error(
                     f"Failed to trigger analysis {analysis.analysis_id}: {e}",

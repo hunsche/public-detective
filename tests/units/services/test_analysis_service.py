@@ -418,8 +418,20 @@ def test_run_ranked_analysis_success(mock_dependencies):
     """
     # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=1000, output_tokens_used=200, procurement_control_number="1")
-    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    analysis1 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=1000,
+        output_tokens_used=200,
+        procurement_control_number="1",
+    )
+    analysis2 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=500,
+        output_tokens_used=100,
+        procurement_control_number="2",
+    )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
     service.run_specific_analysis = MagicMock()
@@ -440,8 +452,20 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
     """
     # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=1000, output_tokens_used=200, procurement_control_number="1")
-    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    analysis1 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=1000,
+        output_tokens_used=200,
+        procurement_control_number="1",
+    )
+    analysis2 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=500,
+        output_tokens_used=100,
+        procurement_control_number="2",
+    )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(side_effect=[Decimal("1.0"), Decimal("0.5")])
     service.run_specific_analysis = MagicMock()
@@ -480,8 +504,16 @@ def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
     """
     # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis1 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=None, procurement_control_number="1")
-    analysis2 = MagicMock(spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=500, output_tokens_used=100, procurement_control_number="2")
+    analysis1 = MagicMock(
+        spec=AnalysisResult, analysis_id=uuid4(), input_tokens_used=None, procurement_control_number="1"
+    )
+    analysis2 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=500,
+        output_tokens_used=100,
+        procurement_control_number="2",
+    )
     service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
     service._calculate_estimated_cost = MagicMock(return_value=Decimal("0.5"))
     service.run_specific_analysis = MagicMock()

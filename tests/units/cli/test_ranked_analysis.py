@@ -2,6 +2,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock
 
 from click.testing import CliRunner
+
 from source.cli.__main__ import cli
 
 
@@ -11,9 +12,7 @@ def test_trigger_ranked_analysis_success(mocker):
     AnalysisService with the correct budget.
     """
     mock_service_instance = MagicMock()
-    mock_service_class = mocker.patch(
-        "source.cli.commands.AnalysisService", return_value=mock_service_instance
-    )
+    mock_service_class = mocker.patch("source.cli.commands.AnalysisService", return_value=mock_service_instance)
 
     runner = CliRunner()
     result = runner.invoke(cli, ["trigger-ranked-analysis", "--budget", "123.45"])
