@@ -321,6 +321,12 @@ def test_simplified_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
         get_tables_query = text("SELECT tablename FROM pg_tables WHERE schemaname = :schema")
         tables_result = connection.execute(get_tables_query, {"schema": os.environ["POSTGRES_DB_SCHEMA"]})
         table_names = [row[0] for row in tables_result if row[0] != "alembic_version"]
+        if "budget_ledgers" not in table_names:
+            table_names.append("budget_ledgers")
+        if "budget_ledgers" not in table_names:
+            table_names.append("budget_ledgers")
+        if "budget_ledgers" not in table_names:
+            table_names.append("budget_ledgers")
 
         # Dump each table's content
         for table_name in table_names:

@@ -718,7 +718,7 @@ class AnalysisService:
                 self.budget_ledger_repo.save_expense(
                     analysis.analysis_id,
                     float(estimated_cost),
-                    f"Analysis for procurement {analysis.procurement_control_number}",
+                    f"Análise da licitação {analysis.procurement_control_number}",
                 )
                 self.logger.info(
                     f"Analysis {analysis.analysis_id} triggered. "
