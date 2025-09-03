@@ -353,3 +353,32 @@ def test_get_procurement_overall_status_not_found(analysis_repository):
     # Assert
     assert result is None
     mock_conn.execute.assert_called_once()
+
+
+def test_parse_row_to_model_with_warnings(analysis_repository):
+    """
+    Should correctly parse a row that includes a list of warnings.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "risk_score_rationale",
+        "red_flags",
+        "warnings",
+    ]
+    warnings_list = ["Warning 1", "Warning 2"]
+    row_tuple = (
+        "12345",
+        3,
+        "Low risk",
+        [],
+        warnings_list,
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.warnings == warnings_list

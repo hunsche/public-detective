@@ -234,31 +234,6 @@ def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurem
         service.analyze_procurement(mock_procurement, 1, 123)
 
 
-def test_run_analysis_no_procurements(mock_dependencies):
-    """Tests that the loop continues if no procurements are found for a date."""
-    service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.get_updated_procurements.return_value = []
-    start_date = date(2025, 1, 1)
-    end_date = date(2025, 1, 1)
-
-    service.run_analysis(start_date, end_date)
-
-    service.procurement_repo.publish_procurement_to_pubsub.assert_not_called()
-
-
-def test_run_analysis_publish_failure(mock_dependencies, mock_procurement):
-    """Tests that the loop continues even if publishing to Pub/Sub fails."""
-    service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.get_updated_procurements.return_value = [mock_procurement]
-    service.procurement_repo.publish_procurement_to_pubsub.return_value = False
-    start_date = date(2025, 1, 1)
-    end_date = date(2025, 1, 1)
-
-    service.run_analysis(start_date, end_date)
-
-    service.procurement_repo.publish_procurement_to_pubsub.assert_called_once_with(mock_procurement)
-
-
 def test_process_analysis_from_message_analysis_not_found(mock_dependencies):
     """
     Tests that the function returns early if the analysis_id is not found.
@@ -407,3 +382,79 @@ def test_reap_stale_analyses(mock_dependencies):
     service.status_history_repo.create_record.assert_any_call(
         3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
     )
+
+
+def test_select_and_prepare_files_for_ai_under_limits(mock_dependencies):
+    """Tests filtering when file count and size are under the limits."""
+    service = AnalysisService(**mock_dependencies)
+    service._MAX_FILES_FOR_AI = 10
+    service._MAX_SIZE_BYTES_FOR_AI = 1000
+
+    all_files = [
+        ("file1.pdf", b"content1"),
+        ("file2.pdf", b"content2"),
+    ]
+
+    files_for_ai, excluded, warnings = service._select_and_prepare_files_for_ai(all_files)
+
+    assert len(files_for_ai) == 2
+    assert len(excluded) == 0
+    assert len(warnings) == 0
+
+
+@patch("source.services.analysis.time.sleep")
+def test_run_pre_analysis_with_multiple_batches(mock_sleep, mock_dependencies, mock_procurement):
+    """Tests that the pre-analysis job sleeps between batches."""
+    service = AnalysisService(**mock_dependencies)
+    # Simulate 3 procurements, with a batch size of 2
+    procurements = [(mock_procurement, {}), (mock_procurement, {}), (mock_procurement, {})]
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
+
+    service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), batch_size=2, sleep_seconds=10)
+
+    # Sleep should be called once between the two batches
+    mock_sleep.assert_called_once_with(10)
+
+
+def test_run_pre_analysis_with_max_messages(mock_dependencies, mock_procurement):
+    """Tests that the pre-analysis job stops when max_messages is reached."""
+    service = AnalysisService(**mock_dependencies)
+    procurements = [(mock_procurement, {}), (mock_procurement, {}), (mock_procurement, {})]
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
+    # Mock pre_analyze_procurement to not do anything
+    service._pre_analyze_procurement = MagicMock()
+
+    service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), batch_size=1, sleep_seconds=0, max_messages=2)
+
+    # Should have processed only 2 procurements
+    assert service._pre_analyze_procurement.call_count == 2
+
+
+def test_reuse_analysis_with_gcs_test_prefix(mock_dependencies, mock_procurement):
+    """Tests reusing an analysis when GCP_GCS_TEST_PREFIX is set."""
+    service = AnalysisService(**mock_dependencies)
+    service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
+
+    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
+
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.risk_score = 5
+    mock_ai_analysis.risk_score_rationale = "Reused"
+    mock_ai_analysis.procurement_summary = "Reused"
+    mock_ai_analysis.analysis_summary = "Reused"
+    mock_ai_analysis.red_flags = []
+    mock_ai_analysis.seo_keywords = []
+
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    mock_existing_analysis.ai_analysis = mock_ai_analysis
+    mock_existing_analysis.warnings = []
+    mock_existing_analysis.input_tokens_used = 0
+    mock_existing_analysis.output_tokens_used = 0
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
+
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Assert that the GCS path includes the prefix
+    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
+    saved_result = call_args[1]
+    assert "test-prefix" in saved_result.original_documents_gcs_path

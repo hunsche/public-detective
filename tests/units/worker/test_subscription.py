@@ -2,6 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from google.api_core.exceptions import GoogleAPICallError
 from worker.subscription import Subscription
 
 
@@ -19,6 +20,7 @@ def mock_analysis_service():
     """Fixture for a mocked AnalysisService."""
     service = MagicMock()
     service.procurement_repo = MagicMock()
+    service.analysis_repo = MagicMock()
     return service
 
 
@@ -84,8 +86,8 @@ def test_run_worker(subscription):
     future.result.assert_called_once()
 
 
-def test_run_worker_handles_shutdown_exception(subscription):
-    """Tests graceful shutdown on common exceptions."""
+def test_run_worker_handles_timeout(subscription):
+    """Tests graceful shutdown on TimeoutError."""
     future = MagicMock()
     future.result.side_effect = [TimeoutError("Test timeout"), None]
     future.cancelled.return_value = False
@@ -176,7 +178,7 @@ def test_debug_pause_eof_error(subscription):
 def test_run_worker_critical_error(subscription):
     """Tests that a critical, non-shutdown error is logged."""
     future = MagicMock()
-    future.result.side_effect = Exception("Critical error")
+    future.result.side_effect = [Exception("Critical error"), None]
     subscription.pubsub_provider.subscribe.return_value = future
     subscription.logger = MagicMock()
 
@@ -193,3 +195,50 @@ def test_message_callback_stop_event_set(subscription, mock_message):
     subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
 
     subscription._process_message.assert_not_called()
+
+
+def test_process_message_analysis_not_found(subscription, mock_message):
+    """Tests that a message is NACKed if the analysis is not found."""
+    subscription.analysis_service.analysis_repo.get_analysis_by_id.return_value = None
+
+    subscription._process_message(mock_message, max_output_tokens=None)
+
+    mock_message.nack.assert_called_once()
+    mock_message.ack.assert_not_called()
+
+
+def test_message_callback_no_future(subscription, mock_message):
+    """Tests that the callback works even if streaming_pull_future is not set."""
+    subscription.streaming_pull_future = None
+    subscription._process_message = MagicMock()
+
+    subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
+
+    assert subscription._stop_event.is_set()
+
+
+@pytest.mark.parametrize("exception", [GoogleAPICallError("gRPC error"), KeyboardInterrupt()])
+def test_run_worker_handles_shutdown_exceptions(subscription, exception):
+    """Tests graceful shutdown on GoogleAPICallError and KeyboardInterrupt."""
+    future = MagicMock()
+    future.result.side_effect = [exception, None]
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    subscription.run()
+
+    assert future.result.call_count >= 1
+
+
+def test_run_worker_finally_exception(subscription):
+    """Tests that an exception in future.result() inside finally is handled."""
+    future = MagicMock()
+    future.result.side_effect = [TimeoutError("Test timeout"), Exception("Final result error")]
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    # The exception inside finally should be caught and ignored.
+    subscription.run()
+
+    future.cancel.assert_called_once()
+    assert future.result.call_count == 2

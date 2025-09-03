@@ -619,35 +619,6 @@ class AnalysisService:
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
 
-    def run_analysis(self, start_date: date, end_date: date):
-        """
-        Runs the Public Detective analysis job for the specified date range.
-        """
-        self.logger.info(f"Starting analysis job for date range: {start_date} to {end_date}")
-        current_date = start_date
-        while current_date <= end_date:
-            self.logger.info(f"Processing date: {current_date}")
-            updated_procurements = self.procurement_repo.get_updated_procurements(target_date=current_date)
-
-            if not updated_procurements:
-                self.logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
-                current_date += timedelta(days=1)
-                continue
-
-            self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
-            success_count, failure_count = 0, 0
-            for procurement in updated_procurements:
-                published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
-                if published:
-                    success_count += 1
-                else:
-                    failure_count += 1
-            self.logger.info(
-                f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
-            )
-            current_date += timedelta(days=1)
-        self.logger.info("Analysis job for the entire date range has been completed.")
-
     def reap_stale_analyses(self, timeout_minutes: int) -> int:
         """
         Resets the status of stale analyses to TIMEOUT and records the change.
