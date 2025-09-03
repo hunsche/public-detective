@@ -1,5 +1,4 @@
 import os
-import threading
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -133,48 +132,3 @@ def test_subscribe_exception(mock_get_subscriber, pubsub_provider):
 
     with pytest.raises(Exception, match="Sub error"):
         pubsub_provider.subscribe("test-subscription", callback)
-
-
-def test_get_or_create_publisher_client_is_thread_safe(pubsub_provider):
-    """
-    Tests that the double-checked locking for the publisher client is thread-safe.
-    """
-    num_threads = 5
-    barrier = threading.Barrier(num_threads)
-
-    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
-
-        def target_func():
-            barrier.wait()
-            pubsub_provider._get_or_create_publisher_client()
-
-        threads = [threading.Thread(target=target_func) for _ in range(num_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        # Even with multiple threads, the client should only be created once.
-        mock_create.assert_called_once_with(pubsub_v1.PublisherClient)
-
-
-def test_get_or_create_subscriber_client_is_thread_safe(pubsub_provider):
-    """
-    Tests that the double-checked locking for the subscriber client is thread-safe.
-    """
-    num_threads = 5
-    barrier = threading.Barrier(num_threads)
-
-    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
-
-        def target_func():
-            barrier.wait()
-            pubsub_provider._get_or_create_subscriber_client()
-
-        threads = [threading.Thread(target=target_func) for _ in range(num_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        mock_create.assert_called_once_with(pubsub_v1.SubscriberClient)

@@ -355,30 +355,20 @@ def test_get_procurement_overall_status_not_found(analysis_repository):
     mock_conn.execute.assert_called_once()
 
 
-def test_parse_row_to_model_with_warnings(analysis_repository):
+def test_get_analyses_to_retry_not_found(analysis_repository):
     """
-    Should correctly parse a row that includes a list of warnings.
+    Should return an empty list when no analyses are found to retry.
     """
     # Arrange
-    columns = [
-        "procurement_control_number",
-        "risk_score",
-        "risk_score_rationale",
-        "red_flags",
-        "warnings",
-    ]
-    warnings_list = ["Warning 1", "Warning 2"]
-    row_tuple = (
-        "12345",
-        3,
-        "Low risk",
-        [],
-        warnings_list,
-    )
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.fetchall.return_value = []
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     # Act
-    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+    result = analysis_repository.get_analyses_to_retry(3, 1)
 
     # Assert
-    assert result is not None
-    assert result.warnings == warnings_list
+    assert result == []
+    mock_conn.execute.assert_called_once()

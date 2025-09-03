@@ -31,33 +31,6 @@ class DatabaseManager:
         return cls.instance
 
     @classmethod
-    def _create_engine(cls, config: Config) -> Engine:
-        """Creates a new SQLAlchemy engine based on the provided configuration."""
-        logger: Logger = LoggingProvider().get_logger()
-        logger.info("Creating new SQLAlchemy engine...")
-
-        url = (
-            f"{config.POSTGRES_DRIVER}://"
-            f"{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
-            f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/"
-            f"{config.POSTGRES_DB}"
-        )
-
-        connect_args = {}
-        if config.POSTGRES_DB_SCHEMA:
-            logger.info(f"Using isolated schema: {config.POSTGRES_DB_SCHEMA}")
-            connect_args["options"] = f"-csearch_path={config.POSTGRES_DB_SCHEMA}"
-
-        engine = create_engine(
-            url,
-            pool_size=10,
-            max_overflow=20,
-            connect_args=connect_args,
-        )
-        logger.info("SQLAlchemy engine created successfully.")
-        return engine
-
-    @classmethod
     def get_engine(cls) -> Engine:
         """
         Retrieves a singleton instance of the SQLAlchemy engine.
@@ -68,7 +41,26 @@ class DatabaseManager:
                     logger: Logger = LoggingProvider().get_logger()
                     logger.info("Database engine not found, creating new instance...")
                     config: Config = ConfigProvider.get_config()
-                    cls._engine = cls._create_engine(config)
+
+                    url = (
+                        f"{config.POSTGRES_DRIVER}://"
+                        f"{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
+                        f"{config.POSTGRES_HOST}:{config.POSTGRES_PORT}/"
+                        f"{config.POSTGRES_DB}"
+                    )
+
+                    connect_args = {}
+                    if config.POSTGRES_DB_SCHEMA:
+                        logger.info(f"Using isolated schema: {config.POSTGRES_DB_SCHEMA}")
+                        connect_args["options"] = f"-csearch_path={config.POSTGRES_DB_SCHEMA}"
+
+                    cls._engine = create_engine(
+                        url,
+                        pool_size=10,
+                        max_overflow=20,
+                        connect_args=connect_args,
+                    )
+                    logger.info("SQLAlchemy engine created successfully.")
         return cls._engine
 
     @classmethod

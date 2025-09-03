@@ -150,31 +150,45 @@ def pre_analyze(
         raise click.Abort()
 
 
-@click.command("reap-stale-tasks")
+@click.command("retry")
 @click.option(
-    "--timeout-minutes",
+    "--initial-backoff-hours",
     type=int,
-    default=15,
-    help="The timeout in minutes to consider a task stale.",
+    default=6,
+    help="The initial backoff period in hours for the first retry.",
     show_default=True,
 )
-def reap_stale_tasks(timeout_minutes: int):
-    """Finds and resets long-running analysis tasks.
+@click.option(
+    "--max-retries",
+    type=int,
+    default=3,
+    help="The maximum number of retries for a failed analysis.",
+    show_default=True,
+)
+@click.option(
+    "--timeout-hours",
+    type=int,
+    default=1,
+    help="The timeout in hours to consider a task stale and eligible for retry.",
+    show_default=True,
+)
+def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int):
+    """Retries failed or stale procurement analyses.
 
-    This command identifies analysis tasks that have been in the
-    'ANALYSIS_IN_PROGRESS' state for longer than a specified timeout
-    period. It then updates their status to 'TIMEOUT'.
-
-    This is a maintenance command designed to handle cases where a worker
-    might have failed unexpectedly without updating the task's final status,
-    leaving it stuck. Resetting the status allows these tasks to be
-    identified and potentially re-queued for analysis.
+    This command identifies analyses that are in an 'ANALYSIS_FAILED' state
+    or have been in the 'ANALYSIS_IN_PROGRESS' state for longer than the
+    specified timeout. It then triggers a new analysis for them, respecting
+    an exponential backoff strategy.
 
     Args:
-        timeout_minutes: The number of minutes after which a task in the
-            'IN_PROGRESS' state is considered stale.
+        initial_backoff_hours: The base duration to wait before the first
+            retry.
+        max_retries: The maximum number of times an analysis will be
+            retried.
+        timeout_hours: The number of hours after which an 'IN_PROGRESS'
+            task is considered stale.
     """
-    click.echo(f"Searching for stale tasks with a timeout of {timeout_minutes} minutes...")
+    click.echo("Searching for analyses to retry...")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -197,13 +211,13 @@ def reap_stale_tasks(timeout_minutes: int):
             pubsub_provider=pubsub_provider,
         )
 
-        reaped_count = service.reap_stale_analyses(timeout_minutes)
+        retried_count = service.retry_analyses(initial_backoff_hours, max_retries, timeout_hours)
 
-        if reaped_count > 0:
-            click.secho(f"Successfully reset {reaped_count} stale tasks to TIMEOUT status.", fg="green")
+        if retried_count > 0:
+            click.secho(f"Successfully triggered {retried_count} analyses for retry.", fg="green")
         else:
-            click.secho("No stale tasks found.", fg="yellow")
+            click.secho("No analyses found to retry.", fg="yellow")
 
     except Exception as e:
-        click.secho(f"An error occurred while reaping stale tasks: {e}", fg="red")
+        click.secho(f"An error occurred while retrying analyses: {e}", fg="red")
         raise click.Abort()

@@ -2,6 +2,7 @@
 This module defines the Pydantic models for the analysis data structures.
 """
 
+from datetime import datetime
 from enum import StrEnum
 from uuid import UUID
 
@@ -106,6 +107,8 @@ class AnalysisResult(BaseModel):
     procurement_control_number: str
     version_number: int | None = None
     status: str | None = None
+    retry_count: int | None = 0
+    updated_at: datetime | None = None
     ai_analysis: Analysis
     warnings: list[str] | None = []
     document_hash: str | None = None

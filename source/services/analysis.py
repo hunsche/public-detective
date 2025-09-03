@@ -619,18 +619,59 @@ class AnalysisService:
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
 
-    def reap_stale_analyses(self, timeout_minutes: int) -> int:
+    def run_analysis(self, start_date: date, end_date: date):
         """
-        Resets the status of stale analyses to TIMEOUT and records the change.
+        Runs the Public Detective analysis job for the specified date range.
         """
-        stale_ids = self.analysis_repo.reset_stale_analyses(timeout_minutes)
-        for analysis_id in stale_ids:
-            self._update_status_with_history(
-                analysis_id,
-                ProcurementAnalysisStatus.TIMEOUT,
-                f"Analysis timed out after {timeout_minutes} minutes.",
+        self.logger.info(f"Starting analysis job for date range: {start_date} to {end_date}")
+        current_date = start_date
+        while current_date <= end_date:
+            self.logger.info(f"Processing date: {current_date}")
+            updated_procurements = self.procurement_repo.get_updated_procurements(target_date=current_date)
+
+            if not updated_procurements:
+                self.logger.info(f"No procurements were updated on {current_date}. " "Moving to next day.")
+                current_date += timedelta(days=1)
+                continue
+
+            self.logger.info(f"Found {len(updated_procurements)} updated procurements. " "Publishing to message queue.")
+            success_count, failure_count = 0, 0
+            for procurement in updated_procurements:
+                published = self.procurement_repo.publish_procurement_to_pubsub(procurement)
+                if published:
+                    success_count += 1
+                else:
+                    failure_count += 1
+            self.logger.info(
+                f"Finished processing for {current_date}. Success: " f"{success_count}, Failures: {failure_count}"
             )
-        return len(stale_ids)
+            current_date += timedelta(days=1)
+        self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
+        analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
+        retried_count = 0
+
+        for analysis in analyses_to_retry:
+            now = datetime.now(timezone.utc)
+            last_updated = analysis.updated_at.replace(tzinfo=timezone.utc)
+            backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
+            next_retry_time = last_updated + timedelta(hours=backoff_hours)
+
+            if now >= next_retry_time:
+                self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                new_analysis_id = self.analysis_repo.save_retry_analysis(
+                    procurement_control_number=analysis.procurement_control_number,
+                    version_number=analysis.version_number,
+                    document_hash=analysis.document_hash,
+                    input_tokens_used=analysis.input_tokens_used,
+                    output_tokens_used=analysis.output_tokens_used,
+                    retry_count=analysis.retry_count + 1,
+                )
+                self.run_specific_analysis(new_analysis_id)
+                retried_count += 1
+
+        return retried_count
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """

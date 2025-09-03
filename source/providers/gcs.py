@@ -34,23 +34,6 @@ class GcsProvider:
         self.config = ConfigProvider.get_config()
         self._client_creation_lock = threading.Lock()
 
-    def _create_client(self, config: Config) -> storage.Client:
-        """Creates a new GCS client based on the provided configuration."""
-        self.logger.info("Creating new GCS client...")
-        emulator_host = config.GCP_GCS_HOST
-        if emulator_host:
-            from google.auth.credentials import AnonymousCredentials
-
-            os.environ["STORAGE_EMULATOR_HOST"] = emulator_host
-            self.logger.info(f"GCS client configured for emulator at {emulator_host}")
-            client = storage.Client(credentials=AnonymousCredentials(), project=config.GCP_PROJECT)
-        else:
-            self.logger.info("GCS client configured for Google Cloud production.")
-            client = storage.Client(project=config.GCP_PROJECT)
-
-        self.logger.info("GCS client created successfully.")
-        return client
-
     def _get_or_create_client(self) -> storage.Client:
         """Retrieves a singleton instance of the GCS Client.
 
@@ -65,7 +48,21 @@ class GcsProvider:
             with self._client_creation_lock:
                 if self._client is None:
                     self.logger.info("GCS client not found in cache, creating new instance...")
-                    self._client = self._create_client(self.config)
+
+                    emulator_host = self.config.GCP_GCS_HOST
+                    if emulator_host:
+                        from google.auth.credentials import AnonymousCredentials
+
+                        os.environ["STORAGE_EMULATOR_HOST"] = emulator_host
+                        self.logger.info(f"GCS client configured for emulator at {emulator_host}")
+                        self._client = storage.Client(
+                            credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT
+                        )
+                    else:
+                        self.logger.info("GCS client configured for Google Cloud production.")
+                        self._client = storage.Client(project=self.config.GCP_PROJECT)
+
+                    self.logger.info("GCS client created successfully.")
         return cast(storage.Client, self._client)
 
     def upload_file(self, bucket_name: str, destination_blob_name: str, content: bytes, content_type: str) -> str:
