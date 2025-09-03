@@ -648,18 +648,30 @@ class AnalysisService:
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
 
-    def reap_stale_analyses(self, timeout_minutes: int) -> int:
-        """
-        Resets the status of stale analyses to TIMEOUT and records the change.
-        """
-        stale_ids = self.analysis_repo.reset_stale_analyses(timeout_minutes)
-        for analysis_id in stale_ids:
-            self._update_status_with_history(
-                analysis_id,
-                ProcurementAnalysisStatus.TIMEOUT,
-                f"Analysis timed out after {timeout_minutes} minutes.",
-            )
-        return len(stale_ids)
+    def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
+        analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
+        retried_count = 0
+
+        for analysis in analyses_to_retry:
+            now = datetime.now(timezone.utc)
+            last_updated = analysis.updated_at.replace(tzinfo=timezone.utc)
+            backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
+            next_retry_time = last_updated + timedelta(hours=backoff_hours)
+
+            if now >= next_retry_time:
+                self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                new_analysis_id = self.analysis_repo.save_retry_analysis(
+                    procurement_control_number=analysis.procurement_control_number,
+                    version_number=analysis.version_number,
+                    document_hash=analysis.document_hash,
+                    input_tokens_used=analysis.input_tokens_used,
+                    output_tokens_used=analysis.output_tokens_used,
+                    retry_count=analysis.retry_count + 1,
+                )
+                self.run_specific_analysis(new_analysis_id)
+                retried_count += 1
+
+        return retried_count
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """

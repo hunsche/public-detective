@@ -381,29 +381,3 @@ def test_get_procurement_overall_status_handles_none(mock_dependencies):
     # Assert
     assert result is None
     service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
-
-
-def test_reap_stale_analyses(mock_dependencies):
-    """
-    Tests that the reap_stale_analyses method correctly calls the repository
-    and creates history records for each stale analysis.
-    """
-    # Arrange
-    service = AnalysisService(**mock_dependencies)
-    stale_ids = [1, 2, 3]
-    timeout = 15
-    service.analysis_repo.reset_stale_analyses.return_value = stale_ids
-
-    # Act
-    result_count = service.reap_stale_analyses(timeout)
-
-    # Assert
-    assert result_count == len(stale_ids)
-    service.analysis_repo.reset_stale_analyses.assert_called_once_with(timeout)
-    assert service.status_history_repo.create_record.call_count == len(stale_ids)
-    service.status_history_repo.create_record.assert_any_call(
-        1, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
-    )
-    service.status_history_repo.create_record.assert_any_call(
-        3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
-    )
