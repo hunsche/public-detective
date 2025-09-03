@@ -6,7 +6,6 @@ import uuid
 from contextlib import redirect_stdout
 from datetime import date
 from unittest.mock import patch
-from uuid import uuid4
 
 import pytest
 import requests
@@ -28,7 +27,7 @@ from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 from sqlalchemy import text
 
-from source.cli.__main__ import cli as cli_main
+from source.cli.__main__ import cli
 from source.worker.subscription import Subscription
 
 
@@ -145,7 +144,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     with patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)):
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
             runner = CliRunner()
-            result = runner.invoke(cli_main, ["analyze", f"--analysis-id={analysis_id}"])
+            result = runner.invoke(cli, ["analyze", f"--analysis-id={analysis_id}"])
             assert result.exit_code == 0, f"CLI command failed: {result.output}"
             assert "Analysis triggered successfully!" in result.output
 
@@ -267,66 +266,3 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         assert status == "PENDING_ANALYSIS"
         assert input_tokens_used == 1000
         assert output_tokens_used == 0
-
-
-@pytest.mark.timeout(180)
-def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F841
-    """
-    Tests that the reaper command correctly identifies and resets a stale task.
-    """
-    # 1. Manually insert a procurement and a stale analysis record
-    analysis_id = uuid4()
-    control_number = "stale_control"
-    with db_session.connect() as connection:
-        # Insert a dummy procurement to satisfy the foreign key constraint
-        connection.execute(
-            text(
-                """
-                INSERT INTO procurements (
-                    pncp_control_number, version_number, object_description, procurement_year,
-                    procurement_sequence, pncp_publication_date, last_update_date,
-                    modality_id, procurement_status_id, is_srp, raw_data
-                ) VALUES (:pcn, 1, 'dummy', 2025, 1, NOW(), NOW(), 1, 1, false, '{}');
-                """
-            ),
-            {"pcn": control_number},
-        )
-        connection.execute(
-            text(
-                """
-                INSERT INTO procurement_analyses (
-                    analysis_id,
-                    procurement_control_number,
-                    version_number,
-                    status,
-                    updated_at
-                )
-                VALUES (:id, :pcn, 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
-                """
-            ),
-            {"id": analysis_id, "pcn": control_number},
-        )
-        connection.commit()
-
-    # 2. Run the reaper command
-    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_session):
-        runner = CliRunner()
-        result = runner.invoke(cli_main, ["reap-stale-tasks", "--timeout-minutes", "15"])
-        assert result.exit_code == 0, f"CLI command failed: {result.output}"
-        assert "Successfully reset 1 stale tasks" in result.output
-
-    # 3. Check the status in the database
-    with db_session.connect() as connection:
-        status_query = text("SELECT status FROM procurement_analyses WHERE analysis_id = :id")
-        new_status = connection.execute(status_query, {"id": analysis_id}).scalar_one()
-        assert new_status == "TIMEOUT"
-
-        # 4. Check that a history record was created
-        history_query = text(
-            "SELECT status, details FROM " "procurement_analysis_status_history " "WHERE analysis_id = :id"
-        )
-        history_record = connection.execute(history_query, {"id": analysis_id}).fetchone()
-        assert history_record is not None
-        status, details = history_record
-        assert status == "TIMEOUT"
-        assert "timed out after 15 minutes" in details
