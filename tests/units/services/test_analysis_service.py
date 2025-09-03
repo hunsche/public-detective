@@ -381,3 +381,155 @@ def test_get_procurement_overall_status_handles_none(mock_dependencies):
     # Assert
     assert result is None
     service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_run_specific_analysis_not_found(mock_dependencies):
+    """Tests that run_specific_analysis handles the case where the analysis is not found."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = uuid4()
+    service.analysis_repo.get_analysis_by_id.return_value = None
+
+    # Act
+    service.run_specific_analysis(analysis_id)
+
+    # Assert
+    service.analysis_repo.get_analysis_by_id.assert_called_once_with(analysis_id)
+    service.pubsub_provider.publish.assert_not_called()
+
+
+def test_run_specific_analysis_wrong_status(mock_dependencies):
+    """Tests that run_specific_analysis skips if status is not PENDING_ANALYSIS."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = uuid4()
+    mock_analysis = MagicMock()
+    mock_analysis.status = ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+
+    # Act
+    service.run_specific_analysis(analysis_id)
+
+    # Assert
+    service.pubsub_provider.publish.assert_not_called()
+    # Also check that status was NOT updated
+    service.analysis_repo.update_analysis_status.assert_not_called()
+
+
+def test_run_specific_analysis_no_pubsub_provider(mock_dependencies):
+    """Tests that run_specific_analysis raises an error if pubsub_provider is not set."""
+    # Arrange
+    mock_dependencies["pubsub_provider"] = None
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = uuid4()
+    mock_analysis = MagicMock()
+    mock_analysis.status = ProcurementAnalysisStatus.PENDING_ANALYSIS.value
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="PubSubProvider is not configured"):
+        service.run_specific_analysis(analysis_id)
+
+
+def test_analyze_procurement_idempotency_with_test_prefix(mock_dependencies, mock_procurement):
+    """Tests that the GCS test prefix is used when configured."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    test_prefix = "test-run-xyz"
+    service.config.GCP_GCS_TEST_PREFIX = test_prefix
+
+    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    # Configure the nested ai_analysis mock with all required attributes
+    mock_ai_analysis_details = MagicMock(spec=Analysis)
+    mock_ai_analysis_details.risk_score = 5
+    mock_ai_analysis_details.risk_score_rationale = "Rationale"
+    mock_ai_analysis_details.procurement_summary = "Summary"
+    mock_ai_analysis_details.analysis_summary = "Summary"
+    mock_ai_analysis_details.red_flags = []
+    mock_ai_analysis_details.seo_keywords = []
+    mock_existing_analysis.ai_analysis = mock_ai_analysis_details
+    mock_existing_analysis.warnings = []
+    mock_existing_analysis.input_tokens_used = 0
+    mock_existing_analysis.output_tokens_used = 0
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
+
+    # Act
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Assert
+    mock_dependencies["analysis_repo"].save_analysis.assert_called_once()
+    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
+    saved_result = call_args[1]
+    assert saved_result.original_documents_gcs_path.startswith(test_prefix)
+    assert saved_result.processed_documents_gcs_path.startswith(test_prefix)
+
+
+def test_run_pre_analysis_no_procurements(mock_dependencies):
+    """Tests that run_pre_analysis handles dates with no procurements."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = []
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    # Act
+    service.run_pre_analysis(start_date, end_date, batch_size=10, sleep_seconds=1)
+
+    # Assert
+    service.procurement_repo.get_updated_procurements_with_raw_data.assert_called_once_with(target_date=start_date)
+    service.analysis_repo.save_pre_analysis.assert_not_called()
+
+
+def test_run_pre_analysis_sleeps_between_batches(mock_dependencies, mock_procurement):
+    """Tests that run_pre_analysis sleeps between processing batches."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    procurements_to_return = [(mock_procurement, {})] * 3  # 3 procurements
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements_to_return
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    # Act
+    with patch("time.sleep") as mock_sleep:
+        # Batch size of 2 means it will process 2 batches (2, then 1)
+        service.run_pre_analysis(start_date, end_date, batch_size=2, sleep_seconds=5)
+
+        # Assert
+        # It should sleep once between the two batches
+        mock_sleep.assert_called_once_with(5)
+
+
+@patch("services.analysis.AnalysisService._pre_analyze_procurement")
+def test_run_pre_analysis_stops_at_max_messages(mock_pre_analyze, mock_dependencies, mock_procurement):
+    """Tests that the pre-analysis job stops when max_messages is reached."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    procurements_to_return = [(mock_procurement, {})] * 5
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements_to_return
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    # Act
+    service.run_pre_analysis(start_date, end_date, batch_size=10, sleep_seconds=1, max_messages=3)
+
+    # Assert
+    # The inner loop should have been called only 3 times, not 5
+    assert mock_pre_analyze.call_count == 3
+
+
+def test_pre_analyze_procurement_hash_exists(mock_dependencies, mock_procurement):
+    """Tests that pre-analysis is skipped if the content hash already exists."""
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+    # Simulate that a procurement with the calculated hash already exists
+    service.procurement_repo.get_procurement_by_hash.return_value = MagicMock()
+
+    # Act
+    service._pre_analyze_procurement(mock_procurement, {})
+
+    # Assert
+    # If hash exists, we should not proceed to save a new version or analysis
+    service.procurement_repo.save_procurement_version.assert_not_called()
+    service.analysis_repo.save_pre_analysis.assert_not_called()

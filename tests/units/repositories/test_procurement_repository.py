@@ -596,3 +596,88 @@ def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
     result = repo.get_procurement_by_id_and_version("PNCP-999", 1)
 
     assert result is None
+
+
+def test_recursive_file_processing_7z(repo):
+    """Tests that 7z files are correctly processed recursively."""
+    file_collection = []
+    # Create a dummy 7z file in memory
+    s_buffer = io.BytesIO()
+    with py7zr.SevenZipFile(s_buffer, "w") as archive:
+        archive.writestr(b"nested content", "nested.txt")
+    s_content = s_buffer.getvalue()
+
+    repo._recursive_file_processing(s_content, "archive.7z", 0, file_collection)
+    assert file_collection == [("archive.7z/nested.txt", b"nested content")]
+
+
+def test_recursive_file_processing_tar(repo):
+    """Tests that tar files are correctly processed recursively."""
+    file_collection = []
+    # Create a dummy tar file in memory
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
+        info = tarfile.TarInfo(name="nested.txt")
+        info.size = len(b"nested content")
+        tar.addfile(info, io.BytesIO(b"nested content"))
+    tar_content = tar_buffer.getvalue()
+
+    repo._recursive_file_processing(tar_content, "archive.tar", 0, file_collection)
+    assert file_collection == [("archive.tar/nested.txt", b"nested content")]
+
+
+def test_extract_from_zip_with_dir(repo):
+    """Tests that directories are ignored when extracting from a ZIP."""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("dir/", "")  # Add a directory
+        zf.writestr("file1.txt", "content1")
+    zip_content = zip_buffer.getvalue()
+
+    extracted_files = repo._extract_from_zip(zip_content)
+    assert len(extracted_files) == 1
+    assert extracted_files[0] == ("file1.txt", b"content1")
+
+
+def test_extract_from_rar_with_dir(repo):
+    """Tests that directories are ignored when extracting from a RAR."""
+    mock_rar_info_file = MagicMock()
+    mock_rar_info_file.filename = "file1.txt"
+    mock_rar_info_file.isdir.return_value = False
+    mock_rar_info_dir = MagicMock()
+    mock_rar_info_dir.filename = "dir/"
+    mock_rar_info_dir.isdir.return_value = True
+
+    mock_rar_archive = MagicMock()
+    mock_rar_archive.infolist.return_value = [mock_rar_info_file, mock_rar_info_dir]
+    mock_rar_archive.read.return_value = b"content1"
+
+    with patch("rarfile.RarFile") as mock_rar_file_class:
+        mock_rar_file_class.return_value.__enter__.return_value = mock_rar_archive
+        extracted_files = repo._extract_from_rar(b"dummy rar content")
+
+    assert len(extracted_files) == 1
+    assert extracted_files[0] == ("file1.txt", b"content1")
+
+
+def test_extract_from_tar_with_dir_and_none_file(repo):
+    """Tests that directories and None file objects are handled in TAR extraction."""
+    mock_tar_info_file = MagicMock()
+    mock_tar_info_file.name = "file1.txt"
+    mock_tar_info_file.isfile.return_value = True
+
+    mock_tar_info_dir = MagicMock()
+    mock_tar_info_dir.name = "dir/"
+    mock_tar_info_dir.isfile.return_value = False
+
+    mock_tar_archive = MagicMock()
+    mock_tar_archive.getmembers.return_value = [mock_tar_info_file, mock_tar_info_dir]
+    # Return a valid file object for the first, and None for the second
+    mock_tar_archive.extractfile.side_effect = [io.BytesIO(b"content1"), None]
+
+    with patch("tarfile.open") as mock_tar_open:
+        mock_tar_open.return_value.__enter__.return_value = mock_tar_archive
+        extracted_files = repo._extract_from_tar(b"dummy tar content")
+
+    assert len(extracted_files) == 1
+    assert extracted_files[0] == ("file1.txt", b"content1")

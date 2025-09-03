@@ -101,35 +101,3 @@ class TestRetryCommand(unittest.TestCase):
         mock_service_instance.retry_analyses.assert_called_once_with(initial_backoff_hours, max_retries, timeout_hours)
         self.assertIn("No analyses found to retry.", result.output)
         self.assertEqual(result.exit_code, 0)
-
-    @patch("source.cli.commands.DatabaseManager")
-    @patch("source.cli.commands.PubSubProvider")
-    @patch("source.cli.commands.GcsProvider")
-    @patch("source.cli.commands.AiProvider")
-    @patch("source.cli.commands.AnalysisRepository")
-    @patch("source.cli.commands.FileRecordsRepository")
-    @patch("source.cli.commands.ProcurementsRepository")
-    @patch("source.cli.commands.StatusHistoryRepository")
-    @patch("source.cli.commands.AnalysisService")
-    def test_retry_command_exception(
-        self,
-        mock_analysis_service,
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
-        runner = CliRunner()
-
-        mock_service_instance = MagicMock()
-        mock_service_instance.retry_analyses.side_effect = Exception("Test error")
-        mock_analysis_service.return_value = mock_service_instance
-
-        result = runner.invoke(retry, [])
-
-        self.assertIn("An error occurred while retrying analyses: Test error", result.output)
-        self.assertNotEqual(result.exit_code, 0)

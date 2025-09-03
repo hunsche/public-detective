@@ -372,3 +372,84 @@ def test_get_analyses_to_retry_not_found(analysis_repository):
     # Assert
     assert result == []
     mock_conn.execute.assert_called_once()
+
+
+def test_save_retry_analysis_returns_id(analysis_repository):
+    """
+    Should execute an INSERT statement for a retry and return the new ID.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    new_uuid = 987
+    mock_result_proxy.scalar_one.return_value = new_uuid
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    returned_id = analysis_repository.save_retry_analysis(
+        procurement_control_number="PNCP-789",
+        version_number=2,
+        document_hash="retry-hash",
+        input_tokens_used=150,
+        output_tokens_used=75,
+        retry_count=2,
+    )
+
+    # Assert
+    assert returned_id == new_uuid
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["procurement_control_number"] == "PNCP-789"
+    assert params["retry_count"] == 2
+    assert "INSERT INTO procurement_analyses" in str(args[0])
+    assert "retry_count" in str(args[0])
+
+
+def test_parse_row_to_model_with_none_warnings(analysis_repository):
+    """
+    Should correctly parse a row where 'warnings' is None.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "warnings",
+    ]
+    row_tuple = (
+        "12345",
+        8,
+        None,
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.warnings == []
+
+
+def test_parse_row_to_model_with_list_warnings(analysis_repository):
+    """
+    Should correctly parse a row where 'warnings' is a list.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "warnings",
+    ]
+    row_tuple = (
+        "12345",
+        8,
+        ["Warning 1", "Warning 2"],
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.warnings == ["Warning 1", "Warning 2"]

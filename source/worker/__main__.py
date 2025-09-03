@@ -65,5 +65,4 @@ def main(max_messages: int | None, timeout: int | None, max_output_tokens: str |
         logger.critical(f"An unhandled exception occurred at the top level: {e}", exc_info=True)
 
 
-if __name__ == "__main__":
-    main()
+main()

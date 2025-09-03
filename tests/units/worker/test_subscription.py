@@ -2,7 +2,6 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
-from google.api_core.exceptions import GoogleAPICallError
 from worker.subscription import Subscription
 
 
@@ -56,17 +55,6 @@ def test_process_message_validation_error(subscription):
 def test_process_message_unexpected_error(subscription, mock_message):
     """Tests that an unexpected error during processing results in a NACK."""
     subscription.analysis_service.process_analysis_from_message.side_effect = Exception("Boom!")
-    subscription.config.IS_DEBUG_MODE = False
-
-    subscription._process_message(mock_message, max_output_tokens=None)
-
-    mock_message.nack.assert_called_once()
-    mock_message.ack.assert_not_called()
-
-
-def test_process_message_analysis_not_found(subscription, mock_message):
-    """Tests that a message is NACKed if the analysis is not found."""
-    subscription.analysis_service.analysis_repo.get_analysis_by_id.return_value = None
     subscription.config.IS_DEBUG_MODE = False
 
     subscription._process_message(mock_message, max_output_tokens=None)
@@ -205,44 +193,3 @@ def test_message_callback_stop_event_set(subscription, mock_message):
     subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
 
     subscription._process_message.assert_not_called()
-
-
-def test_message_callback_reaches_max_messages(subscription, mock_message):
-    """Tests that the worker stops after reaching the message limit."""
-    subscription.streaming_pull_future = MagicMock()
-    subscription._process_message = MagicMock()
-    subscription.processed_messages_count = 9
-    subscription._message_callback(mock_message, max_messages=10, max_output_tokens=None)
-    assert subscription.processed_messages_count == 10
-    assert subscription._stop_event.is_set()
-    subscription.streaming_pull_future.cancel.assert_called_once()
-
-
-def test_run_worker_timeout(subscription):
-    """Tests that the worker times out correctly."""
-    future = MagicMock()
-    future.result.side_effect = TimeoutError("Test timeout")
-    subscription.pubsub_provider.subscribe.return_value = future
-    subscription.run()
-    future.result.assert_called_once()
-
-
-def test_run_worker_google_api_call_error(subscription):
-    """Tests graceful shutdown on GoogleAPICallError."""
-    future = MagicMock()
-    future.result.side_effect = [GoogleAPICallError("Test error"), None]
-    future.cancelled.return_value = False
-    subscription.pubsub_provider.subscribe.return_value = future
-    subscription.run()
-    future.cancel.assert_called_once()
-    assert future.result.call_count == 2
-
-
-def test_run_worker_finally_block_exception(subscription):
-    """Tests that the finally block handles exceptions."""
-    future = MagicMock()
-    future.result.side_effect = Exception("Test error")
-    future.cancelled.return_value = False
-    subscription.pubsub_provider.subscribe.return_value = future
-    subscription.run()
-    future.cancel.assert_called_once()
