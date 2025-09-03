@@ -30,7 +30,8 @@ def clean_logger():
         logger.removeHandler(handler)
 
 
-def test_get_logger_returns_singleton_instance(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_get_logger_returns_singleton_instance():
     """
     Tests that get_logger returns the same logger instance on multiple calls.
     """
@@ -43,7 +44,8 @@ def test_get_logger_returns_singleton_instance(clean_logger):
     assert len(logger1.handlers) == 1
 
 
-def test_configure_logger_is_idempotent(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_configure_logger_is_idempotent():
     """
     Tests that calling _configure_logger multiple times covers the
     `if self._is_configured` branch and does not add more handlers.
@@ -61,7 +63,8 @@ def test_configure_logger_is_idempotent(clean_logger):
     assert handlers_count1 == 1
 
 
-def test_logger_does_not_add_handlers_if_already_present(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_logger_does_not_add_handlers_if_already_present():
     """
     Tests that the provider does not add a new handler if the
     logger already has one when configuration is called.
@@ -78,12 +81,11 @@ def test_logger_does_not_add_handlers_if_already_present(clean_logger):
     assert logger.handlers[0] is mock_handler
 
 
-def test_contextual_filter_adds_correlation_id(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_contextual_filter_adds_correlation_id():
     """Tests that the ContextualFilter adds the correlation_id to the log record."""
     log_filter = ContextualFilter()
-    record = logging.LogRecord(
-        name="test", level=logging.INFO, pathname="", lineno=0, msg="", args=(), exc_info=None
-    )
+    record = logging.LogRecord(name="test", level=logging.INFO, pathname="", lineno=0, msg="", args=(), exc_info=None)
 
     # When correlation_id is not set
     log_filter.filter(record)
@@ -96,7 +98,8 @@ def test_contextual_filter_adds_correlation_id(clean_logger):
     assert record.correlation_id == correlation_id
 
 
-def test_set_correlation_id_context_manager(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_set_correlation_id_context_manager():
     """
     Tests that the set_correlation_id context manager correctly sets and clears
     the correlation ID in the thread-local context.
@@ -112,7 +115,8 @@ def test_set_correlation_id_context_manager(clean_logger):
     assert _log_context.correlation_id is None
 
 
-def test_set_correlation_id_clears_on_exception(clean_logger):
+@pytest.mark.usefixtures("clean_logger")
+def test_set_correlation_id_clears_on_exception():
     """
     Tests that the correlation ID is cleared even if an exception occurs
     within the context manager.
@@ -128,8 +132,9 @@ def test_set_correlation_id_clears_on_exception(clean_logger):
     assert _log_context.correlation_id is None
 
 
+@pytest.mark.usefixtures("clean_logger")
 @patch("providers.logging.ConfigProvider")
-def test_logger_configuration_respects_log_level(mock_config_provider, clean_logger):
+def test_logger_configuration_respects_log_level(mock_config_provider):
     """
     Tests that the logger is configured with the correct level from the config.
     """

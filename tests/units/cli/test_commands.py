@@ -5,7 +5,80 @@ from uuid import uuid4
 
 from click.testing import CliRunner
 
-from source.cli.commands import analyze, pre_analyze
+from source.cli.commands import analyze, pre_analyze, reap_stale_tasks
+
+
+class TestReapStaleTasksCommand(unittest.TestCase):
+    @patch("source.cli.commands.DatabaseManager")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
+    @patch("source.cli.commands.StatusHistoryRepository")
+    @patch("source.cli.commands.AnalysisService")
+    def test_reap_stale_tasks_command_success(
+        self,
+        mock_analysis_service,
+        mock_status_history_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_db_manager,
+    ):
+        runner = CliRunner()
+        timeout = 30
+        reaped_count = 5
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.reap_stale_analyses.return_value = reaped_count
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(reap_stale_tasks, ["--timeout-minutes", str(timeout)])
+
+        mock_db_manager.get_engine.assert_called_once()
+        mock_analysis_service.assert_called_once()
+        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
+        self.assertIn(f"Successfully reset {reaped_count} stale tasks to TIMEOUT status.", result.output)
+        self.assertEqual(result.exit_code, 0)
+
+    @patch("source.cli.commands.DatabaseManager")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
+    @patch("source.cli.commands.StatusHistoryRepository")
+    @patch("source.cli.commands.AnalysisService")
+    def test_reap_stale_tasks_command_no_tasks(
+        self,
+        mock_analysis_service,
+        mock_status_history_repo,  # noqa: F841
+        mock_procurement_repo,  # noqa: F841
+        mock_file_record_repo,  # noqa: F841
+        mock_analysis_repo,  # noqa: F841
+        mock_ai_provider,  # noqa: F841
+        mock_gcs_provider,  # noqa: F841
+        mock_pubsub_provider,  # noqa: F841
+        mock_db_manager,  # noqa: F841
+    ):
+        runner = CliRunner()
+        timeout = 15  # default
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.reap_stale_analyses.return_value = 0
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(reap_stale_tasks)
+
+        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
+        self.assertIn("No stale tasks found.", result.output)
+        self.assertEqual(result.exit_code, 0)
 
     @patch("source.cli.commands.DatabaseManager")
     @patch("source.cli.commands.PubSubProvider")

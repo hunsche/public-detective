@@ -48,7 +48,8 @@ def upgrade() -> None:
             'PENDING_ANALYSIS',
             'ANALYSIS_IN_PROGRESS',
             'ANALYSIS_SUCCESSFUL',
-            'ANALYSIS_FAILED'
+            'ANALYSIS_FAILED',
+            'TIMEOUT'
         );
 
         CREATE TYPE {vote_type} AS ENUM ('UP', 'DOWN');
@@ -87,7 +88,6 @@ def upgrade() -> None:
             version_number INTEGER NOT NULL,
             analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             status {procurement_analysis_status_type} NOT NULL,
-            retry_count SMALLINT NOT NULL DEFAULT 0,
             risk_score SMALLINT,
             risk_score_rationale TEXT,
             procurement_summary TEXT,
@@ -101,7 +101,8 @@ def upgrade() -> None:
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
             FOREIGN KEY (procurement_control_number, version_number)
-                REFERENCES {procurements_table}(pncp_control_number, version_number)
+                REFERENCES {procurements_table}(pncp_control_number, version_number),
+            UNIQUE (procurement_control_number, version_number)
         );
 
         CREATE TABLE {file_records_table} (
@@ -244,41 +245,3 @@ def downgrade() -> None:
     op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
-
-    # Recreate the types and tables as they were before this migration
-    op.execute(
-        f"""
-        CREATE TYPE {procurement_analysis_status_type} AS ENUM (
-            'PENDING_ANALYSIS',
-            'ANALYSIS_IN_PROGRESS',
-            'ANALYSIS_SUCCESSFUL',
-            'ANALYSIS_FAILED',
-            'TIMEOUT'
-        );
-
-        CREATE TABLE {procurement_analyses_table} (
-            analysis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            procurement_control_number VARCHAR(255) NOT NULL,
-            version_number INTEGER NOT NULL,
-            analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            status {procurement_analysis_status_type} NOT NULL,
-            risk_score SMALLINT,
-            risk_score_rationale TEXT,
-            procurement_summary TEXT,
-            analysis_summary TEXT,
-            red_flags JSONB,
-            seo_keywords TEXT[],
-            warnings TEXT[],
-            document_hash VARCHAR(64),
-            original_documents_gcs_path VARCHAR,
-            processed_documents_gcs_path VARCHAR,
-            input_tokens_used INTEGER,
-            output_tokens_used INTEGER,
-            FOREIGN KEY (procurement_control_number, version_number)
-                REFERENCES {procurements_table}(pncp_control_number, version_number),
-            UNIQUE (procurement_control_number, version_number)
-        );
-        """
-    )
