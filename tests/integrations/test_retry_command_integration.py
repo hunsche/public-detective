@@ -32,16 +32,20 @@ def setup_analysis(
     modality_id = faker.random_int()
     procurement_status_id = faker.random_int()
 
-
     with db_engine.connect() as conn:
         # Create the procurement record first
         conn.execute(
             text(
                 """
-                INSERT INTO procurements
-                (pncp_control_number, version_number, content_hash, raw_data, object_description, is_srp, procurement_year, procurement_sequence, pncp_publication_date, last_update_date, modality_id, procurement_status_id)
-                VALUES
-                (:procurement_id, :version_number, 'hash', '{}', :object_description, :is_srp, :procurement_year, :procurement_sequence, :pncp_publication_date, :last_update_date, :modality_id, :procurement_status_id)
+                INSERT INTO procurements (
+                    pncp_control_number, version_number, content_hash, raw_data,
+                    object_description, is_srp, procurement_year, procurement_sequence,
+                    pncp_publication_date, last_update_date, modality_id, procurement_status_id
+                ) VALUES (
+                    :procurement_id, :version_number, 'hash', '{}', :object_description,
+                    :is_srp, :procurement_year, :procurement_sequence, :pncp_publication_date,
+                    :last_update_date, :modality_id, :procurement_status_id
+                )
                 """
             ),
             {
@@ -62,10 +66,13 @@ def setup_analysis(
         conn.execute(
             text(
                 """
-                INSERT INTO procurement_analyses
-                (analysis_id, procurement_control_number, version_number, status, retry_count, updated_at, document_hash)
-                VALUES
-                (:analysis_id, :procurement_id, :version_number, :status, :retry_count, :updated_at, 'hash')
+                INSERT INTO procurement_analyses (
+                    analysis_id, procurement_control_number, version_number,
+                    status, retry_count, updated_at, document_hash
+                ) VALUES (
+                    :analysis_id, :procurement_id, :version_number,
+                    :status, :retry_count, :updated_at, 'hash'
+                )
                 """
             ),
             {
@@ -91,8 +98,10 @@ def test_retry_command_failed_analysis(db_session):
 
     mock_pubsub = MagicMock()
     runner = CliRunner()
-    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine), \
-         patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub):
+    with (
+        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+    ):
         result = runner.invoke(retry)
 
     assert result.exit_code == 0, result.output
@@ -129,8 +138,10 @@ def test_retry_command_stale_in_progress(db_session):
 
     mock_pubsub = MagicMock()
     runner = CliRunner()
-    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine), \
-            patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub):
+    with (
+        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+    ):
         result = runner.invoke(retry)
 
     assert result.exit_code == 0, result.output
@@ -161,13 +172,15 @@ def test_retry_command_max_retries_exceeded(db_session):
     setup_analysis(
         db_engine,
         status=ProcurementAnalysisStatus.ANALYSIS_FAILED,
-        retry_count=3, # Default max_retries is 3
+        retry_count=3,  # Default max_retries is 3
     )
 
     mock_pubsub = MagicMock()
     runner = CliRunner()
-    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine), \
-            patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub):
+    with (
+        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+    ):
         result = runner.invoke(retry)
 
     assert result.exit_code == 0
@@ -186,8 +199,10 @@ def test_retry_command_not_stale_in_progress(db_session):
 
     mock_pubsub = MagicMock()
     runner = CliRunner()
-    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine), \
-            patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub):
+    with (
+        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+    ):
         result = runner.invoke(retry)
 
     assert result.exit_code == 0
