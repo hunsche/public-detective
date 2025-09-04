@@ -100,6 +100,7 @@ def upgrade() -> None:
             processed_documents_gcs_path VARCHAR,
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
+            total_cost DECIMAL(10, 8),
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)
         );
@@ -211,6 +212,13 @@ def upgrade() -> None:
         CREATE INDEX idx_budget_ledgers_related_analysis_id ON {budget_ledgers_table} (related_analysis_id);
         CREATE INDEX idx_budget_ledgers_related_donation_id ON {budget_ledgers_table} (related_donation_id);
         CREATE INDEX idx_budget_ledgers_created_at ON {budget_ledgers_table} (created_at);
+
+        CREATE TABLE {get_qualified_name("token_prices")} (
+            id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            input_price_per_1k_tokens DECIMAL(10, 8) NOT NULL,
+            output_price_per_1k_tokens DECIMAL(10, 8) NOT NULL,
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        );
     """
     )
 
@@ -226,7 +234,9 @@ def downgrade() -> None:
     donations_table = get_qualified_name("donations")
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
+    token_prices_table = get_qualified_name("token_prices")
 
+    op.execute(f"DROP TABLE IF EXISTS {token_prices_table};")
     op.execute("DROP INDEX IF EXISTS idx_donations_donor_identifier;")
     op.execute("DROP INDEX IF EXISTS idx_donations_transaction_id;")
     op.execute("DROP INDEX IF EXISTS idx_donations_created_at;")

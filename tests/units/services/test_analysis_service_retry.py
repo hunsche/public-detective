@@ -16,12 +16,14 @@ class TestAnalysisServiceRetry(unittest.TestCase):
         self.mock_ai_provider = MagicMock()
         self.mock_gcs_provider = MagicMock()
         self.mock_pubsub_provider = MagicMock()
+        self.mock_token_prices_repo = MagicMock()
 
         self.analysis_service = AnalysisService(
             procurement_repo=self.mock_procurement_repo,
             analysis_repo=self.mock_analysis_repo,
             file_record_repo=self.mock_file_record_repo,
             status_history_repo=self.mock_status_history_repo,
+            token_prices_repo=self.mock_token_prices_repo,
             ai_provider=self.mock_ai_provider,
             gcs_provider=self.mock_gcs_provider,
             pubsub_provider=self.mock_pubsub_provider,

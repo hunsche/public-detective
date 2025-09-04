@@ -129,6 +129,7 @@ def test_debug_pause(subscription):
 @patch("worker.subscription.FileRecordsRepository")
 @patch("worker.subscription.AnalysisRepository")
 @patch("worker.subscription.ProcurementsRepository")
+@patch("worker.subscription.TokenPricesRepository")
 @patch("worker.subscription.AiProvider")
 @patch("worker.subscription.GcsProvider")
 @patch("worker.subscription.DatabaseManager")
@@ -136,6 +137,7 @@ def test_subscription_init_composition_root(
     mock_db_manager,
     mock_gcs_provider,
     mock_ai_provider,
+    mock_token_prices_repo,
     mock_procurement_repo,
     mock_analysis_repo,
     mock_file_record_repo,
@@ -150,6 +152,7 @@ def test_subscription_init_composition_root(
     mock_procurement_repo.assert_called_once()
     mock_analysis_repo.assert_called_once()
     mock_file_record_repo.assert_called_once()
+    mock_token_prices_repo.assert_called_once()
     mock_analysis_service.assert_called_once()
 
     _, kwargs = mock_analysis_service.call_args

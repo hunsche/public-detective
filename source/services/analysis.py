@@ -3,6 +3,7 @@ import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -20,6 +21,7 @@ from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
+from repositories.token_prices import TokenPricesRepository
 
 
 class AnalysisService:
@@ -36,6 +38,7 @@ class AnalysisService:
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
     status_history_repo: StatusHistoryRepository
+    token_prices_repo: TokenPricesRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -62,6 +65,7 @@ class AnalysisService:
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
         status_history_repo: StatusHistoryRepository,
+        token_prices_repo: TokenPricesRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -71,6 +75,7 @@ class AnalysisService:
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
         self.status_history_repo = status_history_repo
+        self.token_prices_repo = token_prices_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
@@ -221,7 +226,9 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            self.analysis_repo.save_analysis(analysis_id, final_result, input_tokens, output_tokens)
+            input_price, output_price = self._get_and_update_token_prices()
+            total_cost = (Decimal(input_tokens) / 1000) * input_price + (Decimal(output_tokens) / 1000) * output_price
+            self.analysis_repo.save_analysis(analysis_id, final_result, input_tokens, output_tokens, total_cost)
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
@@ -608,16 +615,49 @@ class AnalysisService:
         prompt = self._build_analysis_prompt(procurement, warnings)
         input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
 
+        input_price, output_price = self._get_and_update_token_prices()
+        total_cost = (Decimal(input_tokens) / 1000) * input_price + (Decimal(output_tokens) / 1000) * output_price
+
         analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             document_hash=analysis_document_hash,
             input_tokens_used=input_tokens,
             output_tokens_used=output_tokens,
+            total_cost=total_cost,
         )
+
         self.status_history_repo.create_record(
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
+
+    def _get_and_update_token_prices(self) -> tuple[Decimal, Decimal]:
+        # TODO: Implement a real API call to fetch token prices.
+        # The retry logic is simplified for this example.
+        for attempt in range(3):
+            try:
+                # Mocked API response
+                mock_api_prices = {"input_price": "0.0005", "output_price": "0.0015"}
+                input_price = Decimal(mock_api_prices["input_price"])
+                output_price = Decimal(mock_api_prices["output_price"])
+
+                latest_db_prices = self.token_prices_repo.get_latest_token_prices()
+                if not latest_db_prices or latest_db_prices[0] != input_price or latest_db_prices[1] != output_price:
+                    self.token_prices_repo.insert_token_price(input_price, output_price)
+
+                return input_price, output_price
+            except Exception as e:
+                self.logger.warning(f"Failed to fetch token prices from API on attempt {attempt + 1}: {e}")
+                time.sleep(1)
+
+        self.logger.error("Failed to fetch token prices from API after multiple attempts. Using latest from DB.")
+        latest_db_prices = self.token_prices_repo.get_latest_token_prices()
+        if latest_db_prices:
+            return latest_db_prices
+
+        # Fallback to a default if the database is also empty
+        self.logger.error("No token prices found in the database. Using default values.")
+        return Decimal("0.0005"), Decimal("0.0015")
 
     def run_analysis(self, start_date: date, end_date: date):
         """

@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -177,7 +178,7 @@ def test_save_analysis_updates_record(analysis_repository):
     )
 
     # Act
-    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50)
+    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50, Decimal("0.50"))
 
     # Assert
     mock_conn.execute.assert_called_once()
@@ -244,6 +245,7 @@ def test_save_pre_analysis_returns_id(analysis_repository):
         document_hash="pre-analysis-hash",
         input_tokens_used=200,
         output_tokens_used=100,
+        total_cost=Decimal("0.25"),
     )
 
     # Assert

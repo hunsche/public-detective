@@ -3,6 +3,7 @@ Unit tests for the AnalysisService pre-analysis logic.
 """
 
 from datetime import date
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -18,6 +19,7 @@ def mock_dependencies():
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
         "status_history_repo": MagicMock(),
+        "token_prices_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
@@ -92,7 +94,8 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies, mock_procurement
     )
 
     # Act
-    service._pre_analyze_procurement(mock_procurement, raw_data)
+    with patch.object(service, "_get_and_update_token_prices", return_value=(Decimal("0.0005"), Decimal("0.0015"))):
+        service._pre_analyze_procurement(mock_procurement, raw_data)
 
     # Assert
     service.procurement_repo.get_latest_version.assert_not_called()

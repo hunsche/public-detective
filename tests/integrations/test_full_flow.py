@@ -5,6 +5,7 @@ import threading
 import uuid
 from contextlib import redirect_stdout
 from datetime import date
+from decimal import Decimal
 from unittest.mock import patch
 
 import pytest
@@ -24,6 +25,7 @@ from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
+from repositories.token_prices import TokenPricesRepository
 from services.analysis import AnalysisService
 from sqlalchemy import text
 
@@ -111,11 +113,13 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    token_prices_repo = TokenPricesRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        token_prices_repo=token_prices_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -123,11 +127,13 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
 
     # 1. Manually insert data
     procurement_to_analyze = Procurement.model_validate(procurement_list_fixture[0])
+    raw_data_with_uuid = procurement_list_fixture[0].copy()
+    raw_data_with_uuid["uuid_for_test"] = str(uuid.uuid4())
     procurement_repo.save_procurement_version(
         procurement=procurement_to_analyze,
-        raw_data=json.dumps(procurement_list_fixture[0]),
+        raw_data=json.dumps(raw_data_with_uuid),
         version_number=1,
-        content_hash="test-hash-1",
+        content_hash=f"test-hash-{uuid.uuid4()}",
     )
     analysis_id = analysis_repo.save_pre_analysis(
         procurement_control_number=procurement_to_analyze.pncp_control_number,
@@ -135,6 +141,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
         document_hash="pre-analysis-hash-1",
         input_tokens_used=0,
         output_tokens_used=0,
+        total_cost=0,
     )
     status_history_repo.create_record(
         analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Initial pre-analysis record."
@@ -198,10 +205,13 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
         mock_response = requests.Response()
         mock_response.status_code = 200
         if "contratacoes/atualizacao" in url:
+            procurement_list_with_uuid = procurement_list_fixture.copy()
+            for item in procurement_list_with_uuid:
+                item["uuid_for_test"] = str(uuid.uuid4())
             mock_response.json = lambda: {
-                "data": procurement_list_fixture,
+                "data": procurement_list_with_uuid,
                 "totalPaginas": 1,
-                "totalRegistros": len(procurement_list_fixture),
+                "totalRegistros": len(procurement_list_with_uuid),
                 "numeroPagina": 1,
             }
         elif url.endswith("/arquivos"):
@@ -221,11 +231,13 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    token_prices_repo = TokenPricesRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        token_prices_repo=token_prices_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -234,8 +246,14 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     with (
         patch("source.repositories.procurements.requests.get", side_effect=mock_requests_get),
         patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)),
+        patch.object(
+            analysis_service, "_get_and_update_token_prices", return_value=(Decimal("0.0005"), Decimal("0.0015"))
+        ),
+        patch.object(analysis_service.logger, "error", side_effect=lambda *args, **kwargs: pytest.fail(str(args))),
     ):
+        print("Running pre-analysis...")
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
+        print("Pre-analysis finished.")
 
     with db_engine.connect() as connection:
         # Check total count

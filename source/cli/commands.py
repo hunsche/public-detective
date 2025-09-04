@@ -12,6 +12,7 @@ from repositories.analyses import AnalysisRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
+from repositories.token_prices import TokenPricesRepository
 from services.analysis import AnalysisService
 
 
@@ -41,12 +42,14 @@ def analyze(analysis_id: UUID):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        token_prices_repo = TokenPricesRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            token_prices_repo=token_prices_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -131,12 +134,14 @@ def pre_analyze(
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        token_prices_repo = TokenPricesRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            token_prices_repo=token_prices_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -200,12 +205,14 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        token_prices_repo = TokenPricesRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            token_prices_repo=token_prices_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,

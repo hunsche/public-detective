@@ -4,6 +4,7 @@ related to procurement analysis results.
 """
 
 import json
+from decimal import Decimal
 from typing import Any, cast
 from uuid import UUID
 
@@ -94,7 +95,12 @@ class AnalysisRepository:
             return None
 
     def save_analysis(
-        self, analysis_id: UUID, result: AnalysisResult, input_tokens_used: int, output_tokens_used: int
+        self,
+        analysis_id: UUID,
+        result: AnalysisResult,
+        input_tokens_used: int,
+        output_tokens_used: int,
+        total_cost: Decimal,
     ) -> None:
         """Updates an existing analysis record with the full analysis results.
 
@@ -129,6 +135,7 @@ class AnalysisRepository:
                 status = :status,
                 input_tokens_used = :input_tokens_used,
                 output_tokens_used = :output_tokens_used,
+                total_cost = :total_cost,
                 updated_at = now()
             WHERE analysis_id = :analysis_id;
         """
@@ -151,6 +158,7 @@ class AnalysisRepository:
             "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
             "input_tokens_used": input_tokens_used,
             "output_tokens_used": output_tokens_used,
+            "total_cost": total_cost,
         }
 
         with self.engine.connect() as conn:
@@ -223,6 +231,7 @@ class AnalysisRepository:
         document_hash: str,
         input_tokens_used: int,
         output_tokens_used: int,
+        total_cost: Decimal,
     ) -> UUID:
         """Saves a new, pending analysis record to the database.
 
@@ -247,10 +256,10 @@ class AnalysisRepository:
             """
             INSERT INTO procurement_analyses (
                 procurement_control_number, version_number, status, document_hash,
-                input_tokens_used, output_tokens_used
+                input_tokens_used, output_tokens_used, total_cost
             ) VALUES (
                 :procurement_control_number, :version_number, :status, :document_hash,
-                :input_tokens_used, :output_tokens_used
+                :input_tokens_used, :output_tokens_used, :total_cost
             )
             RETURNING analysis_id;
             """
@@ -262,6 +271,7 @@ class AnalysisRepository:
             "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
             "input_tokens_used": input_tokens_used,
             "output_tokens_used": output_tokens_used,
+            "total_cost": total_cost,
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
