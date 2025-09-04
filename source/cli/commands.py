@@ -1,5 +1,4 @@
 from datetime import date, datetime
-from decimal import Decimal
 from uuid import UUID
 
 import click
@@ -10,88 +9,10 @@ from providers.date import DateProvider
 from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
-
-
-@click.command("trigger-ranked-analysis")
-@click.option("--budget", type=Decimal, help="The manual budget for the analysis run.")
-@click.option("--use-auto-budget", is_flag=True, help="Use automatic budget calculation based on donations.")
-@click.option(
-    "--budget-period",
-    type=click.Choice(["daily", "weekly", "monthly"]),
-    help="The period for auto-budget calculation.",
-)
-@click.option(
-    "--zero-vote-budget-percent",
-    type=click.IntRange(0, 100),
-    default=100,
-    help="The percentage of the budget to be used for procurements with zero votes.",
-    show_default=True,
-)
-@click.option(
-    "--max-messages",
-    type=int,
-    default=None,
-    help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
-)
-def trigger_ranked_analysis(
-    budget: Decimal | None,
-    use_auto_budget: bool,
-    budget_period: str | None,
-    zero_vote_budget_percent: int,
-    max_messages: int | None,
-):
-    """Triggers a ranked analysis of pending procurements."""
-    if not use_auto_budget and budget is None:
-        raise click.UsageError("Either --budget or --use-auto-budget must be provided.")
-    if use_auto_budget and not budget_period:
-        raise click.UsageError("--budget-period is required when --use-auto-budget is set.")
-
-    if use_auto_budget:
-        click.echo("Triggering ranked analysis with auto-budget.")
-    else:
-        click.echo(f"Triggering ranked analysis with a manual budget of {budget:.2f} BRL.")
-
-    try:
-        db_engine = DatabaseManager.get_engine()
-        pubsub_provider = PubSubProvider()
-        gcs_provider = GcsProvider()
-        ai_provider = AiProvider(Analysis)
-
-        analysis_repo = AnalysisRepository(engine=db_engine)
-        file_record_repo = FileRecordsRepository(engine=db_engine)
-        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
-        status_history_repo = StatusHistoryRepository(engine=db_engine)
-        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
-
-        service = AnalysisService(
-            procurement_repo=procurement_repo,
-            analysis_repo=analysis_repo,
-            file_record_repo=file_record_repo,
-            status_history_repo=status_history_repo,
-            budget_ledger_repo=budget_ledger_repo,
-            ai_provider=ai_provider,
-            gcs_provider=gcs_provider,
-            pubsub_provider=pubsub_provider,
-        )
-
-        # The service will handle the logic of whether to use the manual or auto budget
-        service.run_ranked_analysis(
-            budget=budget,
-            use_auto_budget=use_auto_budget,
-            budget_period=budget_period,
-            zero_vote_budget_percent=zero_vote_budget_percent,
-            max_messages=max_messages,
-        )
-
-        click.secho("Ranked analysis completed successfully!", fg="green")
-    except Exception as e:
-        click.secho(f"An error occurred: {e}", fg="red")
-        raise click.Abort()
 
 
 @click.command("analyze")
@@ -120,14 +41,12 @@ def analyze(analysis_id: UUID):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
-        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
-            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -212,14 +131,12 @@ def pre_analyze(
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
-        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
-            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -233,31 +150,45 @@ def pre_analyze(
         raise click.Abort()
 
 
-@click.command("reap-stale-tasks")
+@click.command("retry")
 @click.option(
-    "--timeout-minutes",
+    "--initial-backoff-hours",
     type=int,
-    default=15,
-    help="The timeout in minutes to consider a task stale.",
+    default=6,
+    help="The initial backoff period in hours for the first retry.",
     show_default=True,
 )
-def reap_stale_tasks(timeout_minutes: int):
-    """Finds and resets long-running analysis tasks.
+@click.option(
+    "--max-retries",
+    type=int,
+    default=3,
+    help="The maximum number of retries for a failed analysis.",
+    show_default=True,
+)
+@click.option(
+    "--timeout-hours",
+    type=int,
+    default=1,
+    help="The timeout in hours to consider a task stale and eligible for retry.",
+    show_default=True,
+)
+def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int):
+    """Retries failed or stale procurement analyses.
 
-    This command identifies analysis tasks that have been in the
-    'ANALYSIS_IN_PROGRESS' state for longer than a specified timeout
-    period. It then updates their status to 'TIMEOUT'.
-
-    This is a maintenance command designed to handle cases where a worker
-    might have failed unexpectedly without updating the task's final status,
-    leaving it stuck. Resetting the status allows these tasks to be
-    identified and potentially re-queued for analysis.
+    This command identifies analyses that are in an 'ANALYSIS_FAILED' state
+    or have been in the 'ANALYSIS_IN_PROGRESS' state for longer than the
+    specified timeout. It then triggers a new analysis for them, respecting
+    an exponential backoff strategy.
 
     Args:
-        timeout_minutes: The number of minutes after which a task in the
-            'IN_PROGRESS' state is considered stale.
+        initial_backoff_hours: The base duration to wait before the first
+            retry.
+        max_retries: The maximum number of times an analysis will be
+            retried.
+        timeout_hours: The number of hours after which an 'IN_PROGRESS'
+            task is considered stale.
     """
-    click.echo(f"Searching for stale tasks with a timeout of {timeout_minutes} minutes...")
+    click.echo("Searching for analyses to retry...")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -269,26 +200,24 @@ def reap_stale_tasks(timeout_minutes: int):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
-        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
-            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
         )
 
-        reaped_count = service.reap_stale_analyses(timeout_minutes)
+        retried_count = service.retry_analyses(initial_backoff_hours, max_retries, timeout_hours)
 
-        if reaped_count > 0:
-            click.secho(f"Successfully reset {reaped_count} stale tasks to TIMEOUT status.", fg="green")
+        if retried_count > 0:
+            click.secho(f"Successfully triggered {retried_count} analyses for retry.", fg="green")
         else:
-            click.secho("No stale tasks found.", fg="yellow")
+            click.secho("No analyses found to retry.", fg="yellow")
 
     except Exception as e:
-        click.secho(f"An error occurred while reaping stale tasks: {e}", fg="red")
+        click.secho(f"An error occurred while retrying analyses: {e}", fg="red")
         raise click.Abort()

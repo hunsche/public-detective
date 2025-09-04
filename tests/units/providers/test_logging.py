@@ -1,33 +1,28 @@
-import logging
+"""
+Unit tests for the LoggingProvider.
+"""
 
-from source.providers.logging import ContextualFilter, LoggingProvider
+from providers.logging import LoggingProvider
 
 
-def test_contextual_filter_with_correlation_id():
+def test_logging_provider_is_singleton():
     """
-    Tests that the filter adds the correlation_id to the record when it's set.
+    Tests that the LoggingProvider follows the Singleton pattern.
     """
-    filter = ContextualFilter()
-    record = logging.LogRecord("test", logging.INFO, "", 0, "", (), None)
-
-    with LoggingProvider().set_correlation_id("test-id"):
-        filter.filter(record)
-
-    assert record.correlation_id == "test-id"
+    instance1 = LoggingProvider()
+    instance2 = LoggingProvider()
+    assert instance1 is instance2
 
 
-def test_contextual_filter_without_correlation_id():
+def test_correlation_id_context_manager():
     """
-    Tests that the filter adds a default value when correlation_id is not set.
+    Tests that the correlation ID is correctly set and cleared.
     """
-    from source.providers.logging import _log_context
+    provider = LoggingProvider()
+    with provider.set_correlation_id("test-id"):
+        # We need to access the internal _log_context for testing, which is acceptable for unit tests.
+        from providers.logging import _log_context
 
-    if hasattr(_log_context, "correlation_id"):
-        del _log_context.correlation_id
+        assert _log_context.correlation_id == "test-id"
 
-    filter = ContextualFilter()
-    record = logging.LogRecord("test", logging.INFO, "", 0, "", (), None)
-
-    filter.filter(record)
-
-    assert record.correlation_id == "-"
+    assert not hasattr(_log_context, "correlation_id") or _log_context.correlation_id is None

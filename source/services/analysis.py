@@ -3,7 +3,6 @@ import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
-from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -18,7 +17,6 @@ from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -38,7 +36,6 @@ class AnalysisService:
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
     status_history_repo: StatusHistoryRepository
-    budget_ledger_repo: BudgetLedgerRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -58,8 +55,6 @@ class AnalysisService:
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
-    _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("1.25")
-    _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("10.00")
 
     def __init__(
         self,
@@ -67,7 +62,6 @@ class AnalysisService:
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
         status_history_repo: StatusHistoryRepository,
-        budget_ledger_repo: BudgetLedgerRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -77,7 +71,6 @@ class AnalysisService:
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
         self.status_history_repo = status_history_repo
-        self.budget_ledger_repo = budget_ledger_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
@@ -557,7 +550,6 @@ class AnalysisService:
 
                 for procurement, raw_data in batch:
                     try:
-                        self.logger.info(f"Processing procurement {procurement.pncp_control_number}")
                         self._pre_analyze_procurement(procurement, raw_data)
                         messages_published_count += 1  # Increment count on successful pre-analysis
                         if max_messages is not None and messages_published_count >= max_messages:
@@ -597,8 +589,6 @@ class AnalysisService:
         all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
         procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
-        self.logger.info(f"Calculated procurement hash: {procurement_content_hash}")
-        self.logger.info(f"Calculated procurement hash: {procurement_content_hash}")
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
             self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
@@ -658,125 +648,30 @@ class AnalysisService:
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
 
-    def run_ranked_analysis(
-        self,
-        use_auto_budget: bool,
-        budget_period: str | None,
-        zero_vote_budget_percent: int,
-        budget: Decimal | None = None,
-        max_messages: int | None = None,
-    ) -> None:
-        """Runs the ranked analysis job.
+    def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
+        analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
+        retried_count = 0
 
-        This method fetches all pending analyses, orders them by votes and
-        estimated cost, and then processes them one by one until the
-        provided budget is exhausted or the message limit is reached.
+        for analysis in analyses_to_retry:
+            now = datetime.now(timezone.utc)
+            last_updated = analysis.updated_at.replace(tzinfo=timezone.utc)
+            backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
+            next_retry_time = last_updated + timedelta(hours=backoff_hours)
 
-        Args:
-            use_auto_budget: Flag to determine if automatic budget calculation should be used.
-            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
-            zero_vote_budget_percent: The percentage of the budget to be used for procurements with zero votes.
-            budget: The manual budget for the analysis run.
-            max_messages: An optional limit on the number of analyses to trigger.
-        """
-        if use_auto_budget:
-            if not budget_period:
-                raise ValueError("budget_period must be provided when use_auto_budget is True.")
-            execution_budget = self._calculate_auto_budget(budget_period)
-        elif budget is not None:
-            execution_budget = budget
-        else:
-            raise ValueError("Either a manual budget must be provided or auto-budget must be enabled.")
-
-        self.logger.info(f"Starting ranked analysis job with a budget of {execution_budget:.2f} BRL.")
-        if max_messages is not None:
-            self.logger.info(f"Analysis run is limited to a maximum of {max_messages} message(s).")
-
-        remaining_budget = execution_budget
-        zero_vote_budget = execution_budget * (Decimal(zero_vote_budget_percent) / 100)
-        self.logger.info(f"Zero-vote budget is {zero_vote_budget:.2f} BRL.")
-
-        pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
-        if not pending_analyses:
-            self.logger.info("No pending analyses found.")
-            return
-
-        self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
-        triggered_count = 0
-        for analysis in pending_analyses:
-            if max_messages is not None and triggered_count >= max_messages:
-                self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
-                break
-
-            if not analysis.input_tokens_used or not analysis.analysis_id:
-                self.logger.warning(f"Skipping analysis {analysis.analysis_id} due to missing token count.")
-                continue
-
-            estimated_cost = self._calculate_estimated_cost(
-                analysis.input_tokens_used, analysis.output_tokens_used or 0
-            )
-
-            if estimated_cost > remaining_budget:
-                self.logger.info(
-                    f"Stopping ranked analysis. "
-                    f"Next analysis cost ({estimated_cost:.2f} BRL) exceeds "
-                    f"remaining budget ({remaining_budget:.2f} BRL)."
+            if now >= next_retry_time:
+                self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                new_analysis_id = self.analysis_repo.save_retry_analysis(
+                    procurement_control_number=analysis.procurement_control_number,
+                    version_number=analysis.version_number,
+                    document_hash=analysis.document_hash,
+                    input_tokens_used=analysis.input_tokens_used,
+                    output_tokens_used=analysis.output_tokens_used,
+                    retry_count=analysis.retry_count + 1,
                 )
-                break
+                self.run_specific_analysis(new_analysis_id)
+                retried_count += 1
 
-            if analysis.votes_count == 0 and estimated_cost > zero_vote_budget:
-                self.logger.info(
-                    f"Skipping zero-vote analysis {analysis.analysis_id}. "
-                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
-                    f"zero-vote budget ({zero_vote_budget:.2f} BRL)."
-                )
-                continue
-
-            self.logger.info(
-                f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
-            )
-            try:
-                self.run_specific_analysis(analysis.analysis_id)
-                remaining_budget -= estimated_cost
-                if analysis.votes_count == 0:
-                    zero_vote_budget -= estimated_cost
-                self.budget_ledger_repo.save_expense(
-                    analysis.analysis_id,
-                    estimated_cost,
-                    f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
-                )
-                self.logger.info(
-                    f"Analysis {analysis.analysis_id} triggered. "
-                    f"Remaining budget: {remaining_budget:.2f} BRL. "
-                    f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
-                )
-                triggered_count += 1
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to trigger analysis {analysis.analysis_id}: {e}",
-                    exc_info=True,
-                )
-
-        self.logger.info("Ranked analysis job completed.")
-
-    def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
-        """Calculates the estimated cost of an analysis based on token counts."""
-        input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
-        output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
-        return input_cost + output_cost
-
-    def reap_stale_analyses(self, timeout_minutes: int) -> int:
-        """
-        Resets the status of stale analyses to TIMEOUT and records the change.
-        """
-        stale_ids = self.analysis_repo.reset_stale_analyses(timeout_minutes)
-        for analysis_id in stale_ids:
-            self._update_status_with_history(
-                analysis_id,
-                ProcurementAnalysisStatus.TIMEOUT,
-                f"Analysis timed out after {timeout_minutes} minutes.",
-            )
-        return len(stale_ids)
+        return retried_count
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """
@@ -794,37 +689,3 @@ class AnalysisService:
             self.logger.warning(f"No overall status found for procurement {procurement_control_number}.")
             return None
         return status_info  # type: ignore
-
-    def _calculate_auto_budget(self, budget_period: str) -> Decimal:
-        """Calculates the budget for the current run based on donation history and spending pace."""
-        today = datetime.now(timezone.utc).date()
-        if budget_period == "daily":
-            start_of_period = today
-            days_in_period = 1
-            day_of_period = 1
-        elif budget_period == "weekly":
-            start_of_period = today - timedelta(days=today.weekday())
-            days_in_period = 7
-            day_of_period = today.weekday() + 1
-        elif budget_period == "monthly":
-            start_of_period = today.replace(day=1)
-            next_month = start_of_period.replace(day=28) + timedelta(days=4)
-            days_in_period = (next_month - timedelta(days=next_month.day)).day
-            day_of_period = today.day
-        else:
-            raise ValueError(f"Invalid budget period: {budget_period}")
-
-        current_balance = self.budget_ledger_repo.get_total_donations()
-        expenses_in_period = self.budget_ledger_repo.get_total_expenses_for_period(start_of_period)
-        period_capital = current_balance + expenses_in_period
-        daily_target = period_capital / days_in_period
-        cumulative_target_today = daily_target * day_of_period
-        budget_for_this_run = cumulative_target_today - expenses_in_period
-
-        self.logger.debug(
-            f"Auto-budget calculation: Balance={current_balance:.2f}, "
-            f"Expenses={expenses_in_period:.2f}, Capital={period_capital:.2f}, "
-            f"DailyTarget={daily_target:.2f}, CumulativeTarget={cumulative_target_today:.2f}"
-        )
-
-        return Decimal(max(Decimal("0"), budget_for_this_run))

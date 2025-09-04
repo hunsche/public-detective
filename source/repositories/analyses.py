@@ -85,6 +85,8 @@ class AnalysisRepository:
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
+            row_dict["retry_count"] = row_dict.get("retry_count", 0)
+            row_dict["updated_at"] = row_dict.get("updated_at")
 
             return AnalysisResult.model_validate(row_dict)
         except ValidationError as e:
@@ -337,60 +339,23 @@ class AnalysisRepository:
             conn.commit()
         self.logger.info("Analysis status updated successfully.")
 
-    def reset_stale_analyses(self, timeout_minutes: int) -> list[UUID]:
-        """Resets the status of stale 'IN_PROGRESS' analyses to 'TIMEOUT'.
+    def get_analyses_to_retry(self, max_retries: int, timeout_hours: int) -> list[AnalysisResult]:
+        """
+        Retrieves a list of analyses that are eligible for a retry attempt.
 
-        This method is a cleanup utility to handle orphaned tasks. It finds
-        all analyses that have been in the 'ANALYSIS_IN_PROGRESS' state for
-        longer than the specified timeout period and updates their status to
-        'TIMEOUT', making them eligible for re-processing or investigation.
+        This method identifies analyses that have failed or have been stuck in
+        progress for too long, and have not yet exceeded the maximum number of
+        retry attempts.
 
         Args:
-            timeout_minutes: The duration in minutes after which an
-                'IN_PROGRESS' task is considered stale.
+            max_retries: The maximum number of retries allowed for an analysis.
+            timeout_hours: The number of hours after which an 'IN_PROGRESS' task
+                is considered stale.
 
         Returns:
-            A list of `analysis_id`s for the records that were reset.
+            A list of `AnalysisResult` objects that are eligible for retry.
         """
-        self.logger.info(f"Resetting analyses that have been in progress for more than {timeout_minutes} minutes.")
-        sql = text(
-            """
-            UPDATE procurement_analyses
-            SET status = :new_status, updated_at = NOW()
-            WHERE
-                status = :old_status
-                AND updated_at < NOW() - (INTERVAL '1 minute' * :timeout_minutes)
-            RETURNING analysis_id;
-            """
-        )
-        params = {
-            "new_status": ProcurementAnalysisStatus.TIMEOUT.value,
-            "old_status": ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value,
-            "timeout_minutes": timeout_minutes,
-        }
-        with self.engine.connect() as conn:
-            result = conn.execute(sql, params)
-            stale_ids = [row[0] for row in result]
-            conn.commit()
-
-        if stale_ids:
-            self.logger.info(f"Reset {len(stale_ids)} stale analyses: {stale_ids}")
-        else:
-            self.logger.info("No stale analyses found.")
-
-        return stale_ids
-
-    def get_pending_analyses_ranked(self) -> list[AnalysisResult]:
-        """Retrieves all pending analyses, ranked by votes and cost.
-
-        This method fetches all analyses with the 'PENDING_ANALYSIS' status,
-        ordering them first by the number of votes in descending order, and
-        then by the estimated input tokens (as a proxy for cost) in
-        ascending order.
-
-        Returns:
-            A list of `AnalysisResult` objects for the pending analyses.
-        """
+        self.logger.info("Fetching analyses to retry...")
         sql = text(
             """
             SELECT
@@ -398,6 +363,7 @@ class AnalysisRepository:
                 procurement_control_number,
                 version_number,
                 status,
+                retry_count,
                 risk_score,
                 risk_score_rationale,
                 procurement_summary,
@@ -410,26 +376,92 @@ class AnalysisRepository:
                 processed_documents_gcs_path,
                 input_tokens_used,
                 output_tokens_used,
-                votes_count,
                 created_at,
                 updated_at
             FROM procurement_analyses
-            WHERE status = :status
-            ORDER BY votes_count DESC, updated_at DESC, COALESCE(cardinality(warnings), 0) ASC, input_tokens_used ASC;
+            WHERE
+                (
+                    status = :failed_status
+                    OR (
+                        status = :in_progress_status
+                        AND updated_at < NOW() - (INTERVAL '1 hour' * :timeout_hours)
+                    )
+                )
+                AND retry_count < :max_retries;
             """
         )
-
+        params = {
+            "failed_status": ProcurementAnalysisStatus.ANALYSIS_FAILED.value,
+            "in_progress_status": ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value,
+            "timeout_hours": timeout_hours,
+            "max_retries": max_retries,
+        }
         with self.engine.connect() as conn:
-            result = conn.execute(
-                sql,
-                {"status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value},
-            ).fetchall()
+            result = conn.execute(sql, params).fetchall()
 
         if not result:
             return []
 
         columns = list(result[0]._fields)
-        return [self._parse_row_to_model(tuple(row), columns) for row in result if row is not None]
+        return [self._parse_row_to_model(tuple(row), columns) for row in result if row]
+
+    def save_retry_analysis(
+        self,
+        procurement_control_number: str,
+        version_number: int,
+        document_hash: str,
+        input_tokens_used: int,
+        output_tokens_used: int,
+        retry_count: int,
+    ) -> UUID:
+        """Saves a new, pending analysis record for a retry attempt.
+
+        This method creates a new analysis record with an incremented retry
+        count, setting its status to 'PENDING_ANALYSIS'.
+
+        Args:
+            procurement_control_number: The control number of the associated
+                procurement.
+            version_number: The version of the procurement being analyzed.
+            document_hash: The hash of the documents selected for analysis.
+            input_tokens_used: The estimated number of input tokens.
+            output_tokens_used: The estimated number of output tokens.
+            retry_count: The new retry count for this analysis attempt.
+
+        Returns:
+            The newly created `analysis_id` for the record.
+        """
+        self.logger.info(
+            f"Saving new retry analysis for {procurement_control_number} "
+            f"version {version_number} (attempt {retry_count})."
+        )
+        sql = text(
+            """
+            INSERT INTO procurement_analyses (
+                procurement_control_number, version_number, status, document_hash,
+                input_tokens_used, output_tokens_used, retry_count
+            ) VALUES (
+                :procurement_control_number, :version_number, :status, :document_hash,
+                :input_tokens_used, :output_tokens_used, :retry_count
+            )
+            RETURNING analysis_id;
+            """
+        )
+        params = {
+            "procurement_control_number": procurement_control_number,
+            "version_number": version_number,
+            "document_hash": document_hash,
+            "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
+            "input_tokens_used": input_tokens_used,
+            "output_tokens_used": output_tokens_used,
+            "retry_count": retry_count,
+        }
+        with self.engine.connect() as conn:
+            result_proxy = conn.execute(sql, params)
+            analysis_id = cast(UUID, result_proxy.scalar_one())
+            conn.commit()
+        self.logger.info(f"Retry analysis saved successfully with ID: {analysis_id}.")
+        return analysis_id
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """
@@ -445,7 +477,7 @@ class AnalysisRepository:
             A dictionary containing the 'procurement_id', 'latest_version', and
             'overall_status', or None if the procurement is not found.
         """
-        sql = text(
+        sql = text(  # pragma: no cover
             """
             WITH latest_procurement AS (
               SELECT

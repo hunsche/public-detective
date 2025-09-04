@@ -31,7 +31,6 @@ from models.procurements import (
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
-from providers.retry import retry_with_backoff
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
 
@@ -386,7 +385,6 @@ class ProcurementsRepository:
                             extracted.append((member_info.name, file_content))
         return extracted
 
-    @retry_with_backoff()
     def _get_all_documents_metadata(self, procurement: Procurement) -> list[ProcurementDocument]:
         """Fetches metadata for all of a procurement's documents from the API.
 
@@ -426,7 +424,6 @@ class ProcurementsRepository:
             self.logger.error(f"Failed to get/validate document list for {procurement.pncp_control_number}: {e}")
             return []
 
-    @retry_with_backoff()
     def _download_file_content(self, url: str) -> bytes | None:
         """Downloads the binary content of a file from a URL.
 
@@ -445,7 +442,6 @@ class ProcurementsRepository:
             self.logger.error(f"Failed to download content from {url}: {e}")
             return None
 
-    @retry_with_backoff()
     def _determine_original_filename(self, url: str) -> str | None:
         """Determines a file's original name from the Content-Disposition header.
 
@@ -471,7 +467,6 @@ class ProcurementsRepository:
             self.logger.warning(f"Could not determine filename from headers for {url}: {e}")
         return None
 
-    @retry_with_backoff()
     def get_updated_procurements(self, target_date: date) -> list[Procurement]:
         """Fetches all procurements updated on a specific date.
 
@@ -538,7 +533,6 @@ class ProcurementsRepository:
         self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
         return all_procurements
 
-    @retry_with_backoff()
     def get_updated_procurements_with_raw_data(self, target_date: date) -> list[tuple[Procurement, dict]]:
         """Fetches procurements updated on a date, with their raw JSON data.
 

@@ -18,7 +18,6 @@ def mock_dependencies():
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
         "status_history_repo": MagicMock(),
-        "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
@@ -99,23 +98,3 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies, mock_procurement
     service.procurement_repo.get_latest_version.assert_not_called()
     service.procurement_repo.save_procurement_version.assert_not_called()
     service.analysis_repo.save_pre_analysis.assert_not_called()
-
-
-def test_run_pre_analysis_sleeps_between_batches(mock_dependencies, mock_procurement):
-    """
-    Tests that the pre-analysis job sleeps between processing batches.
-    """
-    # Arrange
-    service = AnalysisService(**mock_dependencies)
-    # Simulate two procurements to trigger two batches
-    procurements = [(mock_procurement, {}), (mock_procurement, {})]
-    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
-    start_date = date(2025, 1, 1)
-    end_date = date(2025, 1, 1)
-
-    # Act
-    with patch("time.sleep") as mock_sleep:
-        service.run_pre_analysis(start_date, end_date, batch_size=1, sleep_seconds=5)
-
-    # Assert
-    mock_sleep.assert_called_once_with(5)

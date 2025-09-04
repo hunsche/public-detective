@@ -1,6 +1,6 @@
 import click
 
-from source.cli.commands import analyze, pre_analyze, reap_stale_tasks, trigger_ranked_analysis
+from source.cli.commands import analyze, pre_analyze, retry
 
 
 @click.group()
@@ -16,8 +16,7 @@ def cli():
 
 cli.add_command(analyze)
 cli.add_command(pre_analyze)
-cli.add_command(reap_stale_tasks)
-cli.add_command(trigger_ranked_analysis)
+cli.add_command(retry)
 
 if __name__ == "__main__":
     cli()

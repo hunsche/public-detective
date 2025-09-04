@@ -31,25 +31,24 @@ def upgrade() -> None:
 
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
 
+    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {donations_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {votes_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {transaction_type} CASCADE;")
+
     op.execute(
         f"""
-        DROP TABLE IF EXISTS {budget_ledgers_table} CASCADE;
-        DROP TABLE IF EXISTS {donations_table} CASCADE;
-        DROP TABLE IF EXISTS {votes_table} CASCADE;
-        DROP TABLE IF EXISTS {file_records_table} CASCADE;
-        DROP TABLE IF EXISTS {history_table} CASCADE;
-        DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;
-        DROP TABLE IF EXISTS {procurements_table} CASCADE;
-        DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;
-        DROP TYPE IF EXISTS {vote_type} CASCADE;
-        DROP TYPE IF EXISTS {transaction_type} CASCADE;
-
         CREATE TYPE {procurement_analysis_status_type} AS ENUM (
             'PENDING_ANALYSIS',
             'ANALYSIS_IN_PROGRESS',
             'ANALYSIS_SUCCESSFUL',
-            'ANALYSIS_FAILED',
-            'TIMEOUT'
+            'ANALYSIS_FAILED'
         );
 
         CREATE TYPE {vote_type} AS ENUM ('UP', 'DOWN');
@@ -76,6 +75,7 @@ def upgrade() -> None:
             version_number INTEGER NOT NULL,
             raw_data JSONB NOT NULL,
             content_hash VARCHAR(64),
+            votes_count INTEGER NOT NULL DEFAULT 0,
             UNIQUE (pncp_control_number, version_number)
         );
 
@@ -87,6 +87,7 @@ def upgrade() -> None:
             version_number INTEGER NOT NULL,
             analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             status {procurement_analysis_status_type} NOT NULL,
+            retry_count SMALLINT NOT NULL DEFAULT 0,
             risk_score SMALLINT,
             risk_score_rationale TEXT,
             procurement_summary TEXT,
@@ -99,10 +100,8 @@ def upgrade() -> None:
             processed_documents_gcs_path VARCHAR,
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
-            votes_count INTEGER NOT NULL DEFAULT 0,
             FOREIGN KEY (procurement_control_number, version_number)
-                REFERENCES {procurements_table}(pncp_control_number, version_number),
-            UNIQUE (procurement_control_number, version_number)
+                REFERENCES {procurements_table}(pncp_control_number, version_number)
         );
 
         CREATE TABLE {file_records_table} (
@@ -168,8 +167,6 @@ def upgrade() -> None:
             ON {procurement_analyses_table} (risk_score);
         CREATE INDEX idx_procurement_analyses_analysis_date
             ON {procurement_analyses_table} (analysis_date);
-        CREATE INDEX idx_procurement_analyses_votes_count
-            ON {procurement_analyses_table} (votes_count DESC);
 
 
         -- Indexes for file_records table
@@ -190,7 +187,7 @@ def upgrade() -> None:
         CREATE TABLE {donations_table} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             donor_identifier VARCHAR NOT NULL,
-            amount DECIMAL(18, 10) NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
             transaction_id VARCHAR,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
@@ -198,7 +195,7 @@ def upgrade() -> None:
         CREATE TABLE {budget_ledgers_table} (
             id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
             transaction_type {transaction_type} NOT NULL,
-            amount DECIMAL(18, 10) NOT NULL,
+            amount DECIMAL(10, 2) NOT NULL,
             related_analysis_id UUID REFERENCES {procurement_analyses_table}(analysis_id),
             related_donation_id UUID REFERENCES {donations_table}(id),
             description TEXT,
@@ -214,7 +211,7 @@ def upgrade() -> None:
         CREATE INDEX idx_budget_ledgers_related_analysis_id ON {budget_ledgers_table} (related_analysis_id);
         CREATE INDEX idx_budget_ledgers_related_donation_id ON {budget_ledgers_table} (related_donation_id);
         CREATE INDEX idx_budget_ledgers_created_at ON {budget_ledgers_table} (created_at);
-        """
+    """
     )
 
 
@@ -230,26 +227,58 @@ def downgrade() -> None:
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
 
+    op.execute("DROP INDEX IF EXISTS idx_donations_donor_identifier;")
+    op.execute("DROP INDEX IF EXISTS idx_donations_transaction_id;")
+    op.execute("DROP INDEX IF EXISTS idx_donations_created_at;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_analysis_id;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_donation_id;")
+    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_created_at;")
+    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table};")
+    op.execute(f"DROP TABLE IF EXISTS {donations_table};")
+    op.execute(f"DROP TYPE IF EXISTS {transaction_type};")
+    op.execute(f"DROP TABLE IF EXISTS {votes_table};")
+    op.execute(f"ALTER TABLE {procurements_table} DROP COLUMN IF EXISTS votes_count;")
+    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
+    op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
+
+    # Recreate the types and tables as they were before this migration
     op.execute(
         f"""
-        DROP INDEX IF EXISTS idx_procurement_analyses_votes_count;
-        ALTER TABLE {procurement_analyses_table} DROP COLUMN IF EXISTS votes_count;
-        ALTER TABLE {procurements_table} ADD COLUMN IF NOT EXISTS votes_count INTEGER NOT NULL DEFAULT 0;
-        DROP INDEX IF EXISTS idx_donations_donor_identifier;
-        DROP INDEX IF EXISTS idx_donations_transaction_id;
-        DROP INDEX IF EXISTS idx_donations_created_at;
-        DROP INDEX IF EXISTS idx_budget_ledgers_related_analysis_id;
-        DROP INDEX IF EXISTS idx_budget_ledgers_related_donation_id;
-        DROP INDEX IF EXISTS idx_budget_ledgers_created_at;
-        DROP TABLE IF EXISTS {budget_ledgers_table};
-        DROP TABLE IF EXISTS {donations_table};
-        DROP TYPE IF EXISTS {transaction_type};
-        DROP TABLE IF EXISTS {votes_table};
-        DROP TABLE IF EXISTS {history_table} CASCADE;
-        DROP TABLE IF EXISTS {file_records_table} CASCADE;
-        DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;
-        DROP TABLE IF EXISTS {procurements_table} CASCADE;
-        DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;
-        DROP TYPE IF EXISTS {vote_type} CASCADE;
+        CREATE TYPE {procurement_analysis_status_type} AS ENUM (
+            'PENDING_ANALYSIS',
+            'ANALYSIS_IN_PROGRESS',
+            'ANALYSIS_SUCCESSFUL',
+            'ANALYSIS_FAILED',
+            'TIMEOUT'
+        );
+
+        CREATE TABLE {procurement_analyses_table} (
+            analysis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            procurement_control_number VARCHAR(255) NOT NULL,
+            version_number INTEGER NOT NULL,
+            analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            status {procurement_analysis_status_type} NOT NULL,
+            risk_score SMALLINT,
+            risk_score_rationale TEXT,
+            procurement_summary TEXT,
+            analysis_summary TEXT,
+            red_flags JSONB,
+            seo_keywords TEXT[],
+            warnings TEXT[],
+            document_hash VARCHAR(64),
+            original_documents_gcs_path VARCHAR,
+            processed_documents_gcs_path VARCHAR,
+            input_tokens_used INTEGER,
+            output_tokens_used INTEGER,
+            FOREIGN KEY (procurement_control_number, version_number)
+                REFERENCES {procurements_table}(pncp_control_number, version_number),
+            UNIQUE (procurement_control_number, version_number)
+        );
         """
     )

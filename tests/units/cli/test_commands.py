@@ -5,10 +5,10 @@ from uuid import uuid4
 
 from click.testing import CliRunner
 
-from source.cli.commands import analyze, pre_analyze, reap_stale_tasks
+from source.cli.commands import analyze, pre_analyze, retry
 
 
-class TestReapStaleTasksCommand(unittest.TestCase):
+class TestRetryCommand(unittest.TestCase):
     @patch("source.cli.commands.DatabaseManager")
     @patch("source.cli.commands.PubSubProvider")
     @patch("source.cli.commands.GcsProvider")
@@ -18,67 +18,28 @@ class TestReapStaleTasksCommand(unittest.TestCase):
     @patch("source.cli.commands.ProcurementsRepository")
     @patch("source.cli.commands.StatusHistoryRepository")
     @patch("source.cli.commands.AnalysisService")
-    def test_reap_stale_tasks_command_success(
+    def test_retry_command_exception(
         self,
         mock_analysis_service,
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
+        mock_status_history_repo,
+        mock_procurement_repo,
+        mock_file_record_repo,
+        mock_analysis_repo,
+        mock_ai_provider,
+        mock_gcs_provider,
+        mock_pubsub_provider,
         mock_db_manager,
     ):
         runner = CliRunner()
-        timeout = 30
-        reaped_count = 5
 
         mock_service_instance = MagicMock()
-        mock_service_instance.reap_stale_analyses.return_value = reaped_count
+        mock_service_instance.retry_analyses.side_effect = Exception("Retry error")
         mock_analysis_service.return_value = mock_service_instance
 
-        result = runner.invoke(reap_stale_tasks, ["--timeout-minutes", str(timeout)])
+        result = runner.invoke(retry)
 
-        mock_db_manager.get_engine.assert_called_once()
-        mock_analysis_service.assert_called_once()
-        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
-        self.assertIn(f"Successfully reset {reaped_count} stale tasks to TIMEOUT status.", result.output)
-        self.assertEqual(result.exit_code, 0)
-
-    @patch("source.cli.commands.DatabaseManager")
-    @patch("source.cli.commands.PubSubProvider")
-    @patch("source.cli.commands.GcsProvider")
-    @patch("source.cli.commands.AiProvider")
-    @patch("source.cli.commands.AnalysisRepository")
-    @patch("source.cli.commands.FileRecordsRepository")
-    @patch("source.cli.commands.ProcurementsRepository")
-    @patch("source.cli.commands.StatusHistoryRepository")
-    @patch("source.cli.commands.AnalysisService")
-    def test_reap_stale_tasks_command_no_tasks(
-        self,
-        mock_analysis_service,
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
-        runner = CliRunner()
-        timeout = 15  # default
-
-        mock_service_instance = MagicMock()
-        mock_service_instance.reap_stale_analyses.return_value = 0
-        mock_analysis_service.return_value = mock_service_instance
-
-        result = runner.invoke(reap_stale_tasks)
-
-        mock_service_instance.reap_stale_analyses.assert_called_once_with(timeout)
-        self.assertIn("No stale tasks found.", result.output)
-        self.assertEqual(result.exit_code, 0)
+        self.assertIn("An error occurred while retrying analyses: Retry error", result.output)
+        self.assertNotEqual(result.exit_code, 0)
 
 
 class TestAnalysisCommand(unittest.TestCase):
@@ -155,39 +116,6 @@ class TestAnalysisCommand(unittest.TestCase):
 
         self.assertIn("An error occurred: Test error", result.output)
         self.assertNotEqual(result.exit_code, 0)
-
-    @patch("source.cli.commands.AnalysisService")
-    def test_pre_analysis_command_with_max_messages(self, mock_analysis_service):
-        runner = CliRunner()
-        start_date = "2025-01-01"
-        end_date = "2025-01-01"
-        max_messages = 10
-
-        mock_service_instance = MagicMock()
-        mock_analysis_service.return_value = mock_service_instance
-
-        result = runner.invoke(
-            pre_analyze,
-            [
-                "--start-date",
-                start_date,
-                "--end-date",
-                end_date,
-                "--max-messages",
-                str(max_messages),
-            ],
-        )
-
-        mock_service_instance.run_pre_analysis.assert_called_once_with(
-            date(2025, 1, 1),
-            date(2025, 1, 1),
-            100,  # default batch_size
-            60,  # default sleep_seconds
-            max_messages,
-        )
-
-        self.assertIn("Pre-analysis completed successfully!", result.output)
-        self.assertEqual(result.exit_code, 0)
 
 
 if __name__ == "__main__":
