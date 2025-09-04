@@ -1,7 +1,6 @@
 """
 Unit tests for the LoggingProvider.
 """
-from unittest.mock import patch
 
 from providers.logging import LoggingProvider
 

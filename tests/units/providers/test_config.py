@@ -1,6 +1,7 @@
 """
 Unit tests for the ConfigProvider.
 """
+
 from unittest.mock import patch
 
 from providers.config import ConfigProvider

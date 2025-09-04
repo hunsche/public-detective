@@ -486,7 +486,9 @@ def test_run_pre_analysis_exception_handling(mock_dependencies, mock_procurement
     ]
     service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
 
-    with patch.object(service, "_pre_analyze_procurement", side_effect=[Exception("Test Error"), None]) as mock_pre_analyze:
+    with patch.object(
+        service, "_pre_analyze_procurement", side_effect=[Exception("Test Error"), None]
+    ) as mock_pre_analyze:
         # Act
         service.run_pre_analysis(
             start_date=date(2025, 1, 1),
