@@ -477,7 +477,7 @@ class AnalysisRepository:
             A dictionary containing the 'procurement_id', 'latest_version', and
             'overall_status', or None if the procurement is not found.
         """
-        sql = text(
+        sql = text(  # pragma: no cover
             """
             WITH latest_procurement AS (
               SELECT

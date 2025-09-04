@@ -434,16 +434,26 @@ def test_parse_row_to_model_with_none_warnings(analysis_repository):
 def test_parse_row_to_model_with_list_warnings(analysis_repository):
     """
     Should correctly parse a row where 'warnings' is a list.
+def test_parse_row_to_model_with_warnings(analysis_repository):
+    """
+    Should correctly parse a row that includes warnings.
     """
     # Arrange
     columns = [
         "procurement_control_number",
         "risk_score",
+<<<<<<< HEAD
+=======
+        "risk_score_rationale",
+        "red_flags",
+>>>>>>> origin/main
         "warnings",
     ]
     row_tuple = (
         "12345",
         8,
+        "High risk",
+        "[]",
         ["Warning 1", "Warning 2"],
     )
 

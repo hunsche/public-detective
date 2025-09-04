@@ -599,6 +599,7 @@ def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
 
 
 def test_recursive_file_processing_7z(repo):
+<<<<<<< HEAD
     """Tests that 7z files are correctly processed recursively."""
     file_collection = []
     # Create a dummy 7z file in memory
@@ -631,11 +632,33 @@ def test_extract_from_zip_with_dir(repo):
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         zf.writestr("dir/", "")  # Add a directory
+=======
+    """Tests that .7z files are dispatched to the correct handler."""
+    with patch.object(repo, "_extract_from_7z") as mock_extract:
+        repo._recursive_file_processing(b"dummy", "test.7z", 0, [])
+        mock_extract.assert_called_once()
+
+
+def test_recursive_file_processing_tar(repo):
+    """Tests that .tar files are dispatched to the correct handler."""
+    with patch("tarfile.is_tarfile", return_value=True):
+        with patch.object(repo, "_extract_from_tar") as mock_extract:
+            repo._recursive_file_processing(b"dummy", "test.tar", 0, [])
+            mock_extract.assert_called_once()
+
+
+def test_extract_from_zip_with_dir(repo):
+    """Tests that directories in ZIP archives are ignored."""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        zf.writestr("dir/", "")
+>>>>>>> origin/main
         zf.writestr("file1.txt", "content1")
     zip_content = zip_buffer.getvalue()
 
     extracted_files = repo._extract_from_zip(zip_content)
     assert len(extracted_files) == 1
+<<<<<<< HEAD
     assert extracted_files[0] == ("file1.txt", b"content1")
 
 
@@ -644,12 +667,28 @@ def test_extract_from_rar_with_dir(repo):
     mock_rar_info_file = MagicMock()
     mock_rar_info_file.filename = "file1.txt"
     mock_rar_info_file.isdir.return_value = False
+=======
+    assert extracted_files[0][0] == "file1.txt"
+
+
+def test_extract_from_rar_with_dir(repo):
+    """Tests that directories in RAR archives are ignored."""
+>>>>>>> origin/main
     mock_rar_info_dir = MagicMock()
     mock_rar_info_dir.filename = "dir/"
     mock_rar_info_dir.isdir.return_value = True
 
+<<<<<<< HEAD
     mock_rar_archive = MagicMock()
     mock_rar_archive.infolist.return_value = [mock_rar_info_file, mock_rar_info_dir]
+=======
+    mock_rar_info_file = MagicMock()
+    mock_rar_info_file.filename = "file1.txt"
+    mock_rar_info_file.isdir.return_value = False
+
+    mock_rar_archive = MagicMock()
+    mock_rar_archive.infolist.return_value = [mock_rar_info_dir, mock_rar_info_file]
+>>>>>>> origin/main
     mock_rar_archive.read.return_value = b"content1"
 
     with patch("rarfile.RarFile") as mock_rar_file_class:
@@ -657,6 +696,7 @@ def test_extract_from_rar_with_dir(repo):
         extracted_files = repo._extract_from_rar(b"dummy rar content")
 
     assert len(extracted_files) == 1
+<<<<<<< HEAD
     assert extracted_files[0] == ("file1.txt", b"content1")
 
 
@@ -666,18 +706,57 @@ def test_extract_from_tar_with_dir_and_none_file(repo):
     mock_tar_info_file.name = "file1.txt"
     mock_tar_info_file.isfile.return_value = True
 
+=======
+    assert extracted_files[0][0] == "file1.txt"
+
+
+def test_extract_from_tar_with_dir_and_none_file(repo):
+    """Tests that directories and None file objects in TAR archives are handled."""
+>>>>>>> origin/main
     mock_tar_info_dir = MagicMock()
     mock_tar_info_dir.name = "dir/"
     mock_tar_info_dir.isfile.return_value = False
 
+<<<<<<< HEAD
     mock_tar_archive = MagicMock()
     mock_tar_archive.getmembers.return_value = [mock_tar_info_file, mock_tar_info_dir]
     # Return a valid file object for the first, and None for the second
     mock_tar_archive.extractfile.side_effect = [io.BytesIO(b"content1"), None]
+=======
+    mock_tar_info_file = MagicMock()
+    mock_tar_info_file.name = "file1.txt"
+    mock_tar_info_file.isfile.return_value = True
+
+    mock_tar_archive = MagicMock()
+    mock_tar_archive.getmembers.return_value = [mock_tar_info_dir, mock_tar_info_file]
+    mock_tar_archive.extractfile.return_value = None  # Simulate case where file cannot be extracted
+>>>>>>> origin/main
 
     with patch("tarfile.open") as mock_tar_open:
         mock_tar_open.return_value.__enter__.return_value = mock_tar_archive
         extracted_files = repo._extract_from_tar(b"dummy tar content")
 
+<<<<<<< HEAD
     assert len(extracted_files) == 1
     assert extracted_files[0] == ("file1.txt", b"content1")
+=======
+    assert len(extracted_files) == 0
+    mock_tar_archive.extractfile.assert_called_once_with(mock_tar_info_file)
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_validation_error(mock_get, repo):
+    """Tests that a validation error is handled when fetching raw data."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": [{"invalid": "data"}]}
+    mock_get.return_value = mock_response
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert procurements == []
+>>>>>>> origin/main
