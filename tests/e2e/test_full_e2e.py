@@ -211,15 +211,21 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
                 "INSERT INTO donations (id, donor_identifier, amount, transaction_id, created_at) "
                 "VALUES (:id, :donor_identifier, :amount, :transaction_id, NOW())"
             ),
-            [{"id": str(uuid.uuid4()), "donor_identifier": "E2E_TEST_DONOR", "amount": 15.00, "transaction_id": "E2E_TEST_TX_ID"}],
+            [
+                {
+                    "id": str(uuid.uuid4()),
+                    "donor_identifier": "E2E_TEST_DONOR",
+                    "amount": 15.00,
+                    "transaction_id": "E2E_TEST_TX_ID",
+                }
+            ],
         )
         connection.commit()
         print("--- Inserted mock donation ---")
 
     # 3. Trigger ranked analysis with auto-budget
     ranked_analysis_command = (
-        "poetry run python -m source.cli trigger-ranked-analysis "
-        "--use-auto-budget --budget-period daily"
+        "poetry run python -m source.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
     )
     run_command(ranked_analysis_command)
 
@@ -238,7 +244,11 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
 
         # Check that the expected number of analyses were successful
-        completed_analyses = connection.execute(text("SELECT * FROM procurement_analyses WHERE status = 'ANALYSIS_SUCCESSFUL'")).mappings().all()
+        completed_analyses = (
+            connection.execute(text("SELECT * FROM procurement_analyses WHERE status = 'ANALYSIS_SUCCESSFUL'"))
+            .mappings()
+            .all()
+        )
         print(f"Successfully completed analyses: {len(completed_analyses)}/{max_items_to_process}")
         assert len(completed_analyses) == max_items_to_process, f"Expected {max_items_to_process} successful analyses."
 
@@ -254,7 +264,7 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
     with db_session.connect() as connection:
         connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
         get_tables_query = text("SELECT tablename FROM pg_tables WHERE schemaname = :schema")
-        tables_result = connection.execute(get_tables_query, {"schema": os.environ['POSTGRES_DB_SCHEMA']})
+        tables_result = connection.execute(get_tables_query, {"schema": os.environ["POSTGRES_DB_SCHEMA"]})
         table_names = [row[0] for row in tables_result if row[0] != "alembic_version"]
         if "budget_ledgers" not in table_names:
             table_names.append("budget_ledgers")

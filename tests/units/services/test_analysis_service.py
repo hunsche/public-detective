@@ -441,7 +441,9 @@ def test_run_ranked_analysis_success(mock_dependencies):
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("2.0"), zero_vote_budget_percent=100)
+    service.run_ranked_analysis(
+        use_auto_budget=False, budget_period=None, budget=Decimal("2.0"), zero_vote_budget_percent=100
+    )
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
@@ -479,7 +481,9 @@ def test_run_ranked_analysis_stops_when_budget_exceeded(mock_dependencies):
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("1.2"), zero_vote_budget_percent=100)
+    service.run_ranked_analysis(
+        use_auto_budget=False, budget_period=None, budget=Decimal("1.2"), zero_vote_budget_percent=100
+    )
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
@@ -518,7 +522,9 @@ def test_run_ranked_analysis_stops_when_zero_vote_budget_exceeded(mock_dependenc
     service.run_specific_analysis = MagicMock()
 
     # Act: Total budget is 10, but zero-vote budget is only 1.0 (10% of 10)
-    service.run_ranked_analysis(budget=Decimal("10.0"), zero_vote_budget_percent=10)
+    service.run_ranked_analysis(
+        use_auto_budget=False, budget_period=None, budget=Decimal("10.0"), zero_vote_budget_percent=10
+    )
 
     # Assert
     assert service.run_specific_analysis.call_count == 1
@@ -538,7 +544,9 @@ def test_run_ranked_analysis_no_pending_analyses(mock_dependencies):
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("100.0"), zero_vote_budget_percent=100)
+    service.run_ranked_analysis(
+        use_auto_budget=False, budget_period=None, budget=Decimal("100.0"), zero_vote_budget_percent=100
+    )
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
@@ -569,9 +577,171 @@ def test_run_ranked_analysis_skips_missing_token_count(mock_dependencies):
     service.run_specific_analysis = MagicMock()
 
     # Act
-    service.run_ranked_analysis(budget=Decimal("1.0"), zero_vote_budget_percent=100)
+    service.run_ranked_analysis(
+        use_auto_budget=False, budget_period=None, budget=Decimal("1.0"), zero_vote_budget_percent=100
+    )
 
     # Assert
     assert service.analysis_repo.get_pending_analyses_ranked.call_count == 1
     service.run_specific_analysis.assert_called_once_with(analysis2.analysis_id)
     service.budget_ledger_repo.save_expense.assert_called_once()
+
+
+def test_analyze_procurement_with_gcs_test_prefix(mock_dependencies, mock_procurement, monkeypatch):
+    """Tests that the GCS path includes the test prefix when it's set."""
+    monkeypatch.setenv("GCP_GCS_TEST_PREFIX", "test-prefix")
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.model_dump.return_value = {
+        "risk_score": 1,
+        "procurement_summary": "test",
+        "analysis_summary": "test",
+    }
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Check that the destination blob name includes the test prefix
+    # The first call to upload_file is for the analysis report
+    service.gcs_provider.upload_file.assert_called()
+    all_calls = service.gcs_provider.upload_file.call_args_list
+    assert any("test-prefix" in call.kwargs["destination_blob_name"] for call in all_calls)
+
+
+def test_run_specific_analysis_not_pending(mock_dependencies):
+    """
+    Tests that run_specific_analysis does nothing if the analysis is not pending.
+    """
+    service = AnalysisService(**mock_dependencies)
+    analysis = MagicMock(spec=AnalysisResult)
+    analysis.status = "ANALYSIS_IN_PROGRESS"
+    service.analysis_repo.get_analysis_by_id.return_value = analysis
+
+    service.run_specific_analysis(uuid4())
+
+    service.pubsub_provider.publish.assert_not_called()
+
+
+def test_run_ranked_analysis_no_pending_analyses_found(mock_dependencies):
+    """
+    Tests that the ranked analysis job handles the case where there are no
+    pending analyses.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.analysis_repo.get_pending_analyses_ranked.return_value = []
+
+    with patch.object(service, "run_specific_analysis") as mock_run_specific_analysis:
+        # Act
+        service.run_ranked_analysis(
+            use_auto_budget=False, budget_period=None, budget=Decimal("100.0"), zero_vote_budget_percent=100
+        )
+
+        # Assert
+        mock_run_specific_analysis.assert_not_called()
+
+
+def test_run_ranked_analysis_with_max_messages(mock_dependencies):
+    """
+    Tests that the ranked analysis job respects the max_messages limit.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis1 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=1000,
+        output_tokens_used=200,
+        procurement_control_number="1",
+        version_number=1,
+        votes_count=1,
+    )
+    analysis2 = MagicMock(
+        spec=AnalysisResult,
+        analysis_id=uuid4(),
+        input_tokens_used=500,
+        output_tokens_used=100,
+        procurement_control_number="2",
+        version_number=1,
+        votes_count=0,
+    )
+    service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis1, analysis2]
+    service._calculate_estimated_cost = MagicMock(return_value=Decimal("1.0"))
+    with patch.object(service, "run_specific_analysis") as mock_run_specific_analysis:
+        # Act
+        service.run_ranked_analysis(
+            use_auto_budget=False,
+            budget_period=None,
+            budget=Decimal("100.0"),
+            zero_vote_budget_percent=100,
+            max_messages=1,
+        )
+
+        # Assert
+        mock_run_specific_analysis.assert_called_once()
+
+
+def test_run_specific_analysis_analysis_not_found(mock_dependencies):
+    """
+    Tests that run_specific_analysis does nothing if the analysis is not found.
+    """
+    service = AnalysisService(**mock_dependencies)
+    service.analysis_repo.get_analysis_by_id.return_value = None
+
+    service.run_specific_analysis(uuid4())
+
+    service.pubsub_provider.publish.assert_not_called()
+
+
+def test_run_ranked_analysis_raises_error_if_auto_budget_and_no_period(mock_dependencies):
+    """
+    Tests that a ValueError is raised if auto-budget is enabled but no
+    budget_period is provided.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="budget_period must be provided when use_auto_budget is True."):
+        service.run_ranked_analysis(use_auto_budget=True, budget_period=None, zero_vote_budget_percent=10)
+
+
+@pytest.mark.parametrize(
+    "budget_period,today,expected_start_date",
+    [
+        ("daily", date(2025, 9, 4), date(2025, 9, 4)),
+        ("weekly", date(2025, 9, 4), date(2025, 9, 1)),
+        ("monthly", date(2025, 9, 4), date(2025, 9, 1)),
+    ],
+)
+def test_calculate_auto_budget(mock_dependencies, budget_period, today, expected_start_date):
+    """
+    Tests that the auto-budget calculation is correct for different periods.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.budget_ledger_repo.get_total_donations.return_value = Decimal("1000")
+    service.budget_ledger_repo.get_total_expenses_for_period.return_value = Decimal("100")
+
+    with patch("source.services.analysis.datetime") as mock_datetime:
+        mock_datetime.now.return_value.date.return_value = today
+        # Act
+        budget = service._calculate_auto_budget(budget_period)
+
+    # Assert
+    assert isinstance(budget, Decimal)
+    service.budget_ledger_repo.get_total_expenses_for_period.assert_called_once_with(expected_start_date)
+
+
+def test_calculate_auto_budget_invalid_period(mock_dependencies):
+    """
+    Tests that a ValueError is raised for an invalid budget period.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+
+    # Act & Assert
+    with pytest.raises(ValueError, match="Invalid budget period: yearly"):
+        service._calculate_auto_budget("yearly")

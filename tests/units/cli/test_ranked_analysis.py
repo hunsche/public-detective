@@ -18,11 +18,17 @@ def test_trigger_ranked_analysis_success(mocker):
     result = runner.invoke(cli, ["trigger-ranked-analysis", "--budget", "123.45"])
 
     assert result.exit_code == 0
-    assert "Triggering ranked analysis with a budget of 123.45 BRL." in result.output
+    assert "Triggering ranked analysis with a manual budget of 123.45 BRL." in result.output
     assert "Ranked analysis completed successfully!" in result.output
 
     mock_service_class.assert_called_once()
-    mock_service_instance.run_ranked_analysis.assert_called_once_with(Decimal("123.45"), 100, None)
+    mock_service_instance.run_ranked_analysis.assert_called_once_with(
+        budget=Decimal("123.45"),
+        use_auto_budget=False,
+        budget_period=None,
+        zero_vote_budget_percent=100,
+        max_messages=None,
+    )
 
 
 def test_trigger_ranked_analysis_failure(mocker):

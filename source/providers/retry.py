@@ -1,6 +1,7 @@
 import time
+from collections.abc import Callable
 from functools import wraps
-from typing import Any, Callable
+from typing import Any
 
 from providers.logging import LoggingProvider
 

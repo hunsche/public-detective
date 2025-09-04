@@ -680,6 +680,8 @@ class AnalysisService:
             max_messages: An optional limit on the number of analyses to trigger.
         """
         if use_auto_budget:
+            if not budget_period:
+                raise ValueError("budget_period must be provided when use_auto_budget is True.")
             execution_budget = self._calculate_auto_budget(budget_period)
         elif budget is not None:
             execution_budget = budget
@@ -825,4 +827,4 @@ class AnalysisService:
             f"DailyTarget={daily_target:.2f}, CumulativeTarget={cumulative_target_today:.2f}"
         )
 
-        return max(Decimal("0"), budget_for_this_run)
+        return Decimal(max(Decimal("0"), budget_for_this_run))

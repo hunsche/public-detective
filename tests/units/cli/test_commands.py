@@ -156,6 +156,39 @@ class TestAnalysisCommand(unittest.TestCase):
         self.assertIn("An error occurred: Test error", result.output)
         self.assertNotEqual(result.exit_code, 0)
 
+    @patch("source.cli.commands.AnalysisService")
+    def test_pre_analysis_command_with_max_messages(self, mock_analysis_service):
+        runner = CliRunner()
+        start_date = "2025-01-01"
+        end_date = "2025-01-01"
+        max_messages = 10
+
+        mock_service_instance = MagicMock()
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(
+            pre_analyze,
+            [
+                "--start-date",
+                start_date,
+                "--end-date",
+                end_date,
+                "--max-messages",
+                str(max_messages),
+            ],
+        )
+
+        mock_service_instance.run_pre_analysis.assert_called_once_with(
+            date(2025, 1, 1),
+            date(2025, 1, 1),
+            100,  # default batch_size
+            60,  # default sleep_seconds
+            max_messages,
+        )
+
+        self.assertIn("Pre-analysis completed successfully!", result.output)
+        self.assertEqual(result.exit_code, 0)
+
 
 if __name__ == "__main__":
     unittest.main()
