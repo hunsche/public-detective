@@ -112,6 +112,41 @@ def test_idempotency_check(mock_dependencies, mock_procurement):
     assert saved_result.warnings == ["Reused warning"]
 
 
+def test_idempotency_check_with_gcs_test_prefix(mock_dependencies, mock_procurement):
+    """
+    Tests that the GCS path includes the test prefix during an idempotency check.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
+    mock_dependencies["procurement_repo"].process_procurement_documents.return_value = [("file.pdf", b"content")]
+
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.risk_score = 5
+    mock_ai_analysis.risk_score_rationale = "Reused"
+    mock_ai_analysis.procurement_summary = "Reused"
+    mock_ai_analysis.analysis_summary = "Reused"
+    mock_ai_analysis.red_flags = []
+    mock_ai_analysis.seo_keywords = []
+
+    mock_existing_analysis = MagicMock(spec=AnalysisResult)
+    mock_existing_analysis.ai_analysis = mock_ai_analysis
+    mock_existing_analysis.warnings = []
+    mock_existing_analysis.input_tokens_used = 1
+    mock_existing_analysis.output_tokens_used = 1
+
+    mock_dependencies["analysis_repo"].get_analysis_by_hash.return_value = mock_existing_analysis
+
+    # Act
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Assert
+    # Check that save_analysis was called with the correct GCS path
+    call_args, _ = mock_dependencies["analysis_repo"].save_analysis.call_args
+    saved_result = call_args[1]
+    assert saved_result.original_documents_gcs_path.startswith("test-prefix/")
+
+
 def test_save_file_record_called_for_each_file(mock_dependencies, mock_procurement):
     """Tests that save_file_record is called for each file."""
     # Arrange
@@ -381,3 +416,91 @@ def test_get_procurement_overall_status_handles_none(mock_dependencies):
     # Assert
     assert result is None
     service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_analyze_procurement_with_gcs_test_prefix(mock_dependencies, mock_procurement):
+    """
+    Tests that the GCS path includes the test prefix when the config is set.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.model_dump.return_value = {
+        "risk_score": 1,
+        "procurement_summary": "test",
+        "analysis_summary": "test",
+    }
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+
+    # Act
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Assert
+    # Check the call to _upload_analysis_report
+    _, kwargs = service.gcs_provider.upload_file.call_args_list[0]
+    destination_blob_name = kwargs["destination_blob_name"]
+    assert destination_blob_name.startswith("test-prefix/")
+
+    # Check the call to save_file_record
+    call_args, _ = service.file_record_repo.save_file_record.call_args
+    file_record = call_args[0]
+    assert file_record.gcs_path.startswith("test-prefix/")
+
+
+def test_run_pre_analysis_with_max_messages(mock_dependencies, mock_procurement):
+    """
+    Tests that pre-analysis stops when max_messages is reached.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    procurements = [(mock_procurement, {}), (mock_procurement, {})]
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
+
+    with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
+        # Act
+        service.run_pre_analysis(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 1),
+            batch_size=1,
+            sleep_seconds=0,
+            max_messages=1,
+        )
+
+        # Assert
+        mock_pre_analyze.assert_called_once()
+
+
+def test_run_pre_analysis_exception_handling(mock_dependencies, mock_procurement):
+    """
+    Tests that the pre-analysis loop continues even if one procurement fails.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.logger = MagicMock()
+    procurements = [
+        (mock_procurement, {"id": "1"}),
+        (mock_procurement, {"id": "2"}),
+    ]
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = procurements
+
+    with patch.object(
+        service, "_pre_analyze_procurement", side_effect=[Exception("Test Error"), None]
+    ) as mock_pre_analyze:
+        # Act
+        service.run_pre_analysis(
+            start_date=date(2025, 1, 1),
+            end_date=date(2025, 1, 1),
+            batch_size=2,
+            sleep_seconds=0,
+        )
+
+        # Assert
+        assert mock_pre_analyze.call_count == 2
+        # Check that the logger was called with the error
+        service.logger.error.assert_called_with(
+            f"Failed to pre-analyze procurement {mock_procurement.pncp_control_number}: Test Error",
+            exc_info=True,
+        )

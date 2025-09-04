@@ -2,6 +2,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import pytest
+from google.api_core.exceptions import GoogleAPICallError
 from worker.subscription import Subscription
 
 
@@ -193,3 +194,32 @@ def test_message_callback_stop_event_set(subscription, mock_message):
     subscription._message_callback(mock_message, max_messages=1, max_output_tokens=None)
 
     subscription._process_message.assert_not_called()
+
+
+@pytest.mark.parametrize("exception", [GoogleAPICallError("API Error")])
+def test_run_worker_handles_shutdown_exceptions(subscription, exception):
+    """Tests graceful shutdown on common exceptions."""
+    future = MagicMock()
+    future.result.side_effect = exception
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    subscription.run()
+
+    future.cancel.assert_called_once()
+
+
+def test_run_worker_finally_block_exception(subscription):
+    """
+    Tests that an exception in the finally block's result() call is handled.
+    """
+    future = MagicMock()
+    future.result.side_effect = [TimeoutError("Test timeout"), Exception("Final result error")]
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    # This should not raise an exception
+    subscription.run()
+
+    future.cancel.assert_called_once()
+    assert future.result.call_count == 2

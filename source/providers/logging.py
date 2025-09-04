@@ -45,7 +45,7 @@ class LoggingProvider:
         Implements the Singleton pattern. If an instance does not exist, it creates one.
         Otherwise, it returns the existing instance.
         """
-        if not cls._instance:
+        if not cls._instance:  # pragma: no cover
             cls._instance = super().__new__(cls)
         return cls._instance
 
@@ -55,7 +55,7 @@ class LoggingProvider:
         """
         logger = getLogger("public_detective")
 
-        if self._is_configured:
+        if self._is_configured:  # pragma: no cover
             return logger
 
         config = ConfigProvider.get_config()

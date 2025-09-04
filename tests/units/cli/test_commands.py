@@ -5,7 +5,41 @@ from uuid import uuid4
 
 from click.testing import CliRunner
 
-from source.cli.commands import analyze, pre_analyze
+from source.cli.commands import analyze, pre_analyze, retry
+
+
+class TestRetryCommand(unittest.TestCase):
+    @patch("source.cli.commands.DatabaseManager")
+    @patch("source.cli.commands.PubSubProvider")
+    @patch("source.cli.commands.GcsProvider")
+    @patch("source.cli.commands.AiProvider")
+    @patch("source.cli.commands.AnalysisRepository")
+    @patch("source.cli.commands.FileRecordsRepository")
+    @patch("source.cli.commands.ProcurementsRepository")
+    @patch("source.cli.commands.StatusHistoryRepository")
+    @patch("source.cli.commands.AnalysisService")
+    def test_retry_command_exception(
+        self,
+        mock_analysis_service,
+        mock_status_history_repo,
+        mock_procurement_repo,
+        mock_file_record_repo,
+        mock_analysis_repo,
+        mock_ai_provider,
+        mock_gcs_provider,
+        mock_pubsub_provider,
+        mock_db_manager,
+    ):
+        runner = CliRunner()
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.retry_analyses.side_effect = Exception("Retry error")
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(retry)
+
+        self.assertIn("An error occurred while retrying analyses: Retry error", result.output)
+        self.assertNotEqual(result.exit_code, 0)
 
 
 class TestAnalysisCommand(unittest.TestCase):
