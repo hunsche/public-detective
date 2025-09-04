@@ -129,11 +129,17 @@ def test_parse_row_to_model_with_dict(analysis_repository):
     assert result.ai_analysis.red_flags[0].category == RedFlagCategory.DIRECTING
 
 
-def test_parse_row_to_model_with_invalid_data(analysis_repository, caplog):
+@patch("repositories.analyses.LoggingProvider")
+def test_parse_row_to_model_with_invalid_data(mock_logging_provider, analysis_repository):
     """
     Should return None and log an error if parsing fails.
     """
     # Arrange
+    mock_logger = MagicMock()
+    mock_logging_provider.return_value.get_logger.return_value = mock_logger
+
+    analysis_repository.logger = mock_logger
+
     columns = ["risk_score"]
     row_tuple = ("not_an_int",)  # Invalid data type for risk_score
 
@@ -142,7 +148,8 @@ def test_parse_row_to_model_with_invalid_data(analysis_repository, caplog):
 
     # Assert
     assert result is None
-    assert "Failed to parse analysis result from DB" in caplog.text
+    mock_logger.error.assert_called_once()
+    assert "Failed to parse analysis result from DB due to validation error" in mock_logger.error.call_args[0][0]
 
 
 def test_save_analysis_updates_record(analysis_repository):
