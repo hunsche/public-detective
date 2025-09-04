@@ -372,3 +372,31 @@ def test_get_analyses_to_retry_not_found(analysis_repository):
     # Assert
     assert result == []
     mock_conn.execute.assert_called_once()
+
+
+def test_parse_row_to_model_with_warnings(analysis_repository):
+    """
+    Should correctly parse a row that includes warnings.
+    """
+    # Arrange
+    columns = [
+        "procurement_control_number",
+        "risk_score",
+        "risk_score_rationale",
+        "red_flags",
+        "warnings",
+    ]
+    row_tuple = (
+        "12345",
+        8,
+        "High risk",
+        "[]",
+        ["Warning 1", "Warning 2"],
+    )
+
+    # Act
+    result = analysis_repository._parse_row_to_model(row_tuple, columns)
+
+    # Assert
+    assert result is not None
+    assert result.warnings == ["Warning 1", "Warning 2"]
