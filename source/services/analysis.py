@@ -632,14 +632,15 @@ class AnalysisService:
         )
 
     def _get_and_update_token_prices(self) -> tuple[Decimal, Decimal]:
-        # TODO: Implement a real API call to fetch token prices.
+        # Prices are based on Gemini 1.5 Pro for prompts <= 128k tokens, as of 2025-09-04.
+        # See: https://ai.google.dev/gemini-api/docs/pricing
         # The retry logic is simplified for this example.
         for attempt in range(3):
             try:
-                # Mocked API response
-                mock_api_prices = {"input_price": "0.0005", "output_price": "0.0015"}
-                input_price = Decimal(mock_api_prices["input_price"])
-                output_price = Decimal(mock_api_prices["output_price"])
+                # Real prices from documentation
+                real_prices = {"input_price": "0.00125", "output_price": "0.005"}
+                input_price = Decimal(real_prices["input_price"])
+                output_price = Decimal(real_prices["output_price"])
 
                 latest_db_prices = self.token_prices_repo.get_latest_token_prices()
                 if not latest_db_prices or latest_db_prices[0] != input_price or latest_db_prices[1] != output_price:
@@ -657,7 +658,7 @@ class AnalysisService:
 
         # Fallback to a default if the database is also empty
         self.logger.error("No token prices found in the database. Using default values.")
-        return Decimal("0.0005"), Decimal("0.0015")
+        return Decimal("0.00125"), Decimal("0.005")
 
     def run_analysis(self, start_date: date, end_date: date):
         """
