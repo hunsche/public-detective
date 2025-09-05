@@ -10,7 +10,7 @@ import os
 import threading
 from typing import cast
 
-from google.cloud import storage
+from google.cloud import storage  # type: ignore
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 

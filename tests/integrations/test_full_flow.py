@@ -12,7 +12,7 @@ import requests
 from click.testing import CliRunner
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1, storage
+from google.cloud import pubsub_v1, storage  # type: ignore
 from models.analyses import Analysis
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement

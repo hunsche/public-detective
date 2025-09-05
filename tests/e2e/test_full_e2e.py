@@ -10,7 +10,7 @@ from zipfile import ZipFile
 import pytest
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1
+from google.cloud import pubsub_v1  # type: ignore
 from sqlalchemy import create_engine, text
 
 

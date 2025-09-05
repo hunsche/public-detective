@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.api_core.client_options import ClientOptions
-from google.cloud import pubsub_v1
+from google.cloud import pubsub_v1  # type: ignore
 from providers.pubsub import PubSubProvider
 
 

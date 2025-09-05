@@ -6,17 +6,17 @@ manages API configuration, file uploads, prompt execution, and robust parsing
 of the AI's response.
 """
 
-import json
 from mimetypes import guess_type
-from typing import Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 import vertexai
-from pydantic import BaseModel, ValidationError
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
+from pydantic import BaseModel, ValidationError
 from vertexai.generative_models import (
     FunctionDeclaration,
     GenerationConfig,
+    GenerationResponse,
     GenerativeModel,
     Part,
     Tool,
@@ -97,7 +97,7 @@ class AiProvider(Generic[PydanticModel]):
             A tuple containing the Pydantic model instance, input tokens, and output tokens.
         """
         self.logger.info(f"Sending request to Vertex AI for {len(files)} files.")
-        parts = [prompt]
+        parts: list[Any] = [prompt]
         for file_path, file_content in files:
             mime_type = guess_type(file_path)[0] or "application/octet-stream"
             parts.append(Part.from_data(data=file_content, mime_type=mime_type))
@@ -119,7 +119,7 @@ class AiProvider(Generic[PydanticModel]):
         validated_response = self._parse_and_validate_response(response)
 
         # Count output tokens after getting the response
-        output_tokens = self.model.count_tokens(response.candidates[0].content).total_tokens
+        output_tokens = self.model.count_tokens([response.candidates[0].content]).total_tokens
 
         return validated_response, input_tokens, output_tokens
 
@@ -128,7 +128,7 @@ class AiProvider(Generic[PydanticModel]):
         Calculates the number of tokens for a given prompt and list of files.
         """
         self.logger.info("Counting tokens for analysis...")
-        parts = [prompt]
+        parts: list[Any] = [prompt]
         for file_path, file_content in files:
             mime_type = guess_type(file_path)[0] or "application/octet-stream"
             parts.append(Part.from_data(data=file_content, mime_type=mime_type))
@@ -139,7 +139,7 @@ class AiProvider(Generic[PydanticModel]):
 
     def _generate_content_with_structured_output(
         self, parts: list, tool: Tool, max_output_tokens: int | None
-    ) -> "GenerationResponse":
+    ) -> GenerationResponse:
         """Generates content with a structured output.
 
         Args:
@@ -161,7 +161,7 @@ class AiProvider(Generic[PydanticModel]):
         self.logger.debug(f"Successfully received response from Vertex AI API: {response}")
         return response
 
-    def _parse_and_validate_response(self, response: "GenerationResponse") -> PydanticModel:
+    def _parse_and_validate_response(self, response: GenerationResponse) -> PydanticModel:
         """
         Parses the AI's response, expecting a function call with the structured data.
 
