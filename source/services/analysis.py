@@ -6,20 +6,20 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from source.constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
-from source.models.analyses import Analysis, AnalysisResult
-from source.models.file_records import NewFileRecord
-from source.models.procurement_analysis_status import ProcurementAnalysisStatus
-from source.models.procurements import Procurement
-from source.providers.ai import AiProvider
-from source.providers.config import Config, ConfigProvider
-from source.providers.gcs import GcsProvider
-from source.providers.logging import Logger, LoggingProvider
-from source.providers.pubsub import PubSubProvider
-from source.repositories.analyses import AnalysisRepository
-from source.repositories.file_records import FileRecordsRepository
-from source.repositories.procurements import ProcurementsRepository
-from source.repositories.status_history import StatusHistoryRepository
+from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
+from models.analyses import Analysis, AnalysisResult
+from models.file_records import NewFileRecord
+from models.procurement_analysis_status import ProcurementAnalysisStatus
+from models.procurements import Procurement
+from providers.ai import AiProvider
+from providers.config import Config, ConfigProvider
+from providers.gcs import GcsProvider
+from providers.logging import Logger, LoggingProvider
+from providers.pubsub import PubSubProvider
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
 
 
 class AnalysisService:
@@ -80,7 +80,13 @@ class AnalysisService:
     def _update_status_with_history(
         self, analysis_id: UUID, status: ProcurementAnalysisStatus, details: str | None = None
     ) -> None:
-        """Updates the analysis status and records the change in the history table."""
+        """Updates the analysis status and records the change in the history table.
+
+        Args:
+            analysis_id: The ID of the analysis to update.
+            status: The new status to set.
+            details: Optional details about the status change.
+        """
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
@@ -136,6 +142,9 @@ class AnalysisService:
 
         Args:
             procurement: The procurement object to be analyzed.
+            version_number: The version number of the procurement.
+            analysis_id: The ID of the analysis.
+            max_output_tokens: The maximum number of output tokens.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
@@ -648,6 +657,16 @@ class AnalysisService:
         self.logger.info("Analysis job for the entire date range has been completed.")
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
+        """Retries failed or stale analyses.
+
+        Args:
+            initial_backoff_hours: The initial backoff in hours.
+            max_retries: The maximum number of retries.
+            timeout_hours: The timeout in hours.
+
+        Returns:
+            The number of retried analyses.
+        """
         analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
         retried_count = 0
 

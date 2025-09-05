@@ -197,6 +197,16 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
     ```
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
+- **Import Style:** All imports must be relative to the `source` directory. Do not use the `source.` prefix in your import statements.
+    ```python
+    # Correct
+    from core.settings import settings
+    from providers.database import DatabaseManager
+
+    # Incorrect
+    from source.core.settings import settings
+    from source.providers.database import DatabaseManager
+    ```
 
 ## 6. Database Migrations
 

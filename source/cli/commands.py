@@ -2,17 +2,17 @@ from datetime import date, datetime
 from uuid import UUID
 
 import click
-from source.models.analyses import Analysis
-from source.providers.ai import AiProvider
-from source.providers.database import DatabaseManager
-from source.providers.date import DateProvider
-from source.providers.gcs import GcsProvider
-from source.providers.pubsub import PubSubProvider
-from source.repositories.analyses import AnalysisRepository
-from source.repositories.file_records import FileRecordsRepository
-from source.repositories.procurements import ProcurementsRepository
-from source.repositories.status_history import StatusHistoryRepository
-from source.services.analysis import AnalysisService
+from models.analyses import Analysis
+from providers.ai import AiProvider
+from providers.database import DatabaseManager
+from providers.date import DateProvider
+from providers.gcs import GcsProvider
+from providers.pubsub import PubSubProvider
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
+from services.analysis import AnalysisService
 
 
 @click.command("analyze")

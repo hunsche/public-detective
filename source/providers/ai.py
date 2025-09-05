@@ -12,8 +12,8 @@ from typing import Generic, TypeVar
 
 import vertexai
 from pydantic import BaseModel, ValidationError
-from source.providers.config import Config, ConfigProvider
-from source.providers.logging import Logger, LoggingProvider
+from providers.config import Config, ConfigProvider
+from providers.logging import Logger, LoggingProvider
 from vertexai.generative_models import (
     FunctionDeclaration,
     GenerationConfig,
@@ -140,6 +140,16 @@ class AiProvider(Generic[PydanticModel]):
     def _generate_content_with_structured_output(
         self, parts: list, tool: Tool, max_output_tokens: int | None
     ) -> "GenerationResponse":
+        """Generates content with a structured output.
+
+        Args:
+            parts: The parts of the content to generate.
+            tool: The tool to use for generation.
+            max_output_tokens: The maximum number of output tokens.
+
+        Returns:
+            The generation response.
+        """
         self.logger.info("Sending request to Vertex AI API with function calling.")
         generation_config = GenerationConfig(max_output_tokens=max_output_tokens) if max_output_tokens else None
 
@@ -154,6 +164,12 @@ class AiProvider(Generic[PydanticModel]):
     def _parse_and_validate_response(self, response: "GenerationResponse") -> PydanticModel:
         """
         Parses the AI's response, expecting a function call with the structured data.
+
+        Args:
+            response: The response from the AI model.
+
+        Returns:
+            The parsed and validated Pydantic model.
         """
         try:
             function_call = response.candidates[0].content.parts[0].function_call

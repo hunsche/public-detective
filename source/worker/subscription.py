@@ -14,19 +14,19 @@ from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
-from source.models.analyses import Analysis
-from source.providers.ai import AiProvider
-from source.providers.config import Config, ConfigProvider
-from source.providers.database import DatabaseManager
-from source.providers.gcs import GcsProvider
-from source.providers.logging import Logger, LoggingProvider
-from source.providers.pubsub import Message, PubSubProvider
+from models.analyses import Analysis
+from providers.ai import AiProvider
+from providers.config import Config, ConfigProvider
+from providers.database import DatabaseManager
+from providers.gcs import GcsProvider
+from providers.logging import Logger, LoggingProvider
+from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
-from source.repositories.analyses import AnalysisRepository
-from source.repositories.file_records import FileRecordsRepository
-from source.repositories.procurements import ProcurementsRepository
-from source.repositories.status_history import StatusHistoryRepository
-from source.services.analysis import AnalysisService
+from repositories.analyses import AnalysisRepository
+from repositories.file_records import FileRecordsRepository
+from repositories.procurements import ProcurementsRepository
+from repositories.status_history import StatusHistoryRepository
+from services.analysis import AnalysisService
 
 
 class Subscription:
@@ -53,6 +53,11 @@ class Subscription:
 
         This constructor acts as the Composition Root for the worker application.
         It instantiates and wires together all the necessary dependencies.
+
+        Args:
+            analysis_service: An optional, pre-configured AnalysisService instance.
+                              If not provided, it will be created with default
+                              dependencies. This is useful for testing.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -206,6 +211,7 @@ class Subscription:
         Args:
             max_messages: The maximum number of messages to process before stopping.
             timeout: The maximum time in seconds to wait for messages.
+            max_output_tokens: An optional token limit for the AI analysis.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
@@ -213,7 +219,7 @@ class Subscription:
             return
 
         def callback(message: Message):
-            self._message_callback(message, max_messages)
+            self._message_callback(message, max_messages, max_output_tokens)
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
         self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
