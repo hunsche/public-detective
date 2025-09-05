@@ -14,19 +14,19 @@ from contextlib import contextmanager
 
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
-from models.analyses import Analysis
-from providers.ai import AiProvider
-from providers.config import Config, ConfigProvider
-from providers.database import DatabaseManager
-from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
-from providers.pubsub import Message, PubSubProvider
+from source.models.analyses import Analysis
+from source.providers.ai import AiProvider
+from source.providers.config import Config, ConfigProvider
+from source.providers.database import DatabaseManager
+from source.providers.gcs import GcsProvider
+from source.providers.logging import Logger, LoggingProvider
+from source.providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
-from repositories.analyses import AnalysisRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
-from services.analysis import AnalysisService
+from source.repositories.analyses import AnalysisRepository
+from source.repositories.file_records import FileRecordsRepository
+from source.repositories.procurements import ProcurementsRepository
+from source.repositories.status_history import StatusHistoryRepository
+from source.services.analysis import AnalysisService
 
 
 class Subscription:
