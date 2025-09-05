@@ -163,6 +163,7 @@ def test_save_file_record_called_for_each_file(mock_dependencies, mock_procureme
             procurement_summary="test",
             analysis_summary="test",
             red_flags=[],
+            seo_keywords=[],
         ),
         100,
         50,
@@ -243,12 +244,14 @@ def test_analyze_procurement_main_success_path(mock_dependencies, mock_procureme
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
     service.analysis_repo.get_analysis_by_hash.return_value = None
-    mock_ai_analysis = MagicMock(spec=Analysis)
-    mock_ai_analysis.model_dump.return_value = {
-        "risk_score": 1,
-        "procurement_summary": "test",
-        "analysis_summary": "test",
-    }
+    mock_ai_analysis = Analysis(
+        risk_score=1,
+        risk_score_rationale="test",
+        procurement_summary="test",
+        analysis_summary="test",
+        red_flags=[],
+        seo_keywords=[],
+    )
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
 
     service.analyze_procurement(mock_procurement, 1, uuid4())
@@ -427,12 +430,14 @@ def test_analyze_procurement_with_gcs_test_prefix(mock_dependencies, mock_procur
     service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
     service.analysis_repo.get_analysis_by_hash.return_value = None
-    mock_ai_analysis = MagicMock(spec=Analysis)
-    mock_ai_analysis.model_dump.return_value = {
-        "risk_score": 1,
-        "procurement_summary": "test",
-        "analysis_summary": "test",
-    }
+    mock_ai_analysis = Analysis(
+        risk_score=1,
+        risk_score_rationale="test",
+        procurement_summary="test",
+        analysis_summary="test",
+        red_flags=[],
+        seo_keywords=[],
+    )
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
 
     # Act

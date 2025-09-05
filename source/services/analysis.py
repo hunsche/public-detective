@@ -6,20 +6,20 @@ from datetime import date, datetime, timedelta, timezone
 from typing import Any
 from uuid import UUID
 
-from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
-from models.analyses import Analysis, AnalysisResult
-from models.file_records import NewFileRecord
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from models.procurements import Procurement
-from providers.ai import AiProvider
-from providers.config import Config, ConfigProvider
-from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
-from providers.pubsub import PubSubProvider
-from repositories.analyses import AnalysisRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
+from source.constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
+from source.models.analyses import Analysis, AnalysisResult
+from source.models.file_records import NewFileRecord
+from source.models.procurement_analysis_status import ProcurementAnalysisStatus
+from source.models.procurements import Procurement
+from source.providers.ai import AiProvider
+from source.providers.config import Config, ConfigProvider
+from source.providers.gcs import GcsProvider
+from source.providers.logging import Logger, LoggingProvider
+from source.providers.pubsub import PubSubProvider
+from source.repositories.analyses import AnalysisRepository
+from source.repositories.file_records import FileRecordsRepository
+from source.repositories.procurements import ProcurementsRepository
+from source.repositories.status_history import StatusHistoryRepository
 
 
 class AnalysisService:
@@ -201,8 +201,7 @@ class AnalysisService:
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt,
-                files=files_for_ai,
+                prompt=prompt, files=files_for_ai, max_output_tokens=max_output_tokens
             )
 
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
