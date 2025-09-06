@@ -1,4 +1,5 @@
 from datetime import date, datetime
+from decimal import Decimal
 from uuid import UUID
 
 import click
@@ -9,6 +10,7 @@ from providers.date import DateProvider
 from providers.gcs import GcsProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -41,12 +43,14 @@ def analyze(analysis_id: UUID):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -131,12 +135,14 @@ def pre_analyze(
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -200,12 +206,14 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int):
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
@@ -220,4 +228,54 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int):
 
     except Exception as e:
         click.secho(f"An error occurred while retrying analyses: {e}", fg="red")
+        raise click.Abort()
+
+
+@click.command("trigger-ranked-analysis")
+@click.option(
+    "--daily-budget",
+    type=Decimal,
+    required=True,
+    help="The total budget for the day in BRL.",
+)
+@click.option(
+    "--zero-vote-budget-percentage",
+    type=Decimal,
+    default=Decimal("10.0"),
+    help="The percentage of the budget for zero-vote analyses.",
+    show_default=True,
+)
+def trigger_ranked_analysis(daily_budget: Decimal, zero_vote_budget_percentage: Decimal):
+    """Triggers pending analyses based on rank and budget."""
+    click.echo("Triggering ranked analyses...")
+
+    try:
+        db_engine = DatabaseManager.get_engine()
+        pubsub_provider = PubSubProvider()
+        gcs_provider = GcsProvider()
+        ai_provider = AiProvider(Analysis)
+
+        analysis_repo = AnalysisRepository(engine=db_engine)
+        file_record_repo = FileRecordsRepository(engine=db_engine)
+        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        status_history_repo = StatusHistoryRepository(engine=db_engine)
+        budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
+
+        service = AnalysisService(
+            procurement_repo=procurement_repo,
+            analysis_repo=analysis_repo,
+            file_record_repo=file_record_repo,
+            status_history_repo=status_history_repo,
+            budget_ledger_repo=budget_ledger_repo,
+            ai_provider=ai_provider,
+            gcs_provider=gcs_provider,
+            pubsub_provider=pubsub_provider,
+        )
+
+        triggered_count = service.trigger_ranked_analyses(daily_budget, zero_vote_budget_percentage)
+
+        click.secho(f"Successfully triggered {triggered_count} ranked analyses.", fg="green")
+
+    except Exception as e:
+        click.secho(f"An error occurred: {e}", fg="red")
         raise click.Abort()

@@ -87,6 +87,7 @@ class AnalysisRepository:
             row_dict["warnings"] = warnings
             row_dict["retry_count"] = row_dict.get("retry_count", 0)
             row_dict["updated_at"] = row_dict.get("updated_at")
+            row_dict["votes_count"] = row_dict.get("votes_count", 0)
 
             return AnalysisResult.model_validate(row_dict)
         except ValidationError as e:
@@ -194,7 +195,9 @@ class AnalysisRepository:
                 input_tokens_used,
                 output_tokens_used,
                 created_at,
-                updated_at
+                updated_at,
+                retry_count,
+                votes_count
             FROM procurement_analyses
             WHERE document_hash = :document_hash AND status = :status
             LIMIT 1;
@@ -299,7 +302,9 @@ class AnalysisRepository:
                 input_tokens_used,
                 output_tokens_used,
                 created_at,
-                updated_at
+                updated_at,
+                retry_count,
+                votes_count
             FROM procurement_analyses
             WHERE analysis_id = :analysis_id
             LIMIT 1;
@@ -377,7 +382,8 @@ class AnalysisRepository:
                 input_tokens_used,
                 output_tokens_used,
                 created_at,
-                updated_at
+                updated_at,
+                votes_count
             FROM procurement_analyses
             WHERE
                 (
@@ -414,7 +420,8 @@ class AnalysisRepository:
         output_tokens_used: int,
         retry_count: int,
     ) -> UUID:
-        """Saves a new, pending analysis record for a retry attempt.
+        """
+        Saves a new, pending analysis record for a retry attempt.
 
         This method creates a new analysis record with an incremented retry
         count, setting its status to 'PENDING_ANALYSIS'.
@@ -462,6 +469,56 @@ class AnalysisRepository:
             conn.commit()
         self.logger.info(f"Retry analysis saved successfully with ID: {analysis_id}.")
         return analysis_id
+
+    def get_pending_analyses_ranked(self) -> list[AnalysisResult]:
+        """Retrieves all pending analyses, ranked by votes and cost.
+
+        This method fetches all analyses with the 'PENDING_ANALYSIS' status,
+        ordering them first by the number of votes in descending order, and
+        then by the estimated input tokens (as a proxy for cost) in
+        ascending order.
+
+        Returns:
+            A list of `AnalysisResult` objects for the pending analyses.
+        """
+        self.logger.info("Fetching pending analyses, ranked by votes and cost...")
+        sql = text(
+            """
+            SELECT
+                analysis_id,
+                procurement_control_number,
+                version_number,
+                status,
+                retry_count,
+                risk_score,
+                risk_score_rationale,
+                procurement_summary,
+                analysis_summary,
+                red_flags,
+                seo_keywords,
+                warnings,
+                document_hash,
+                original_documents_gcs_path,
+                processed_documents_gcs_path,
+                input_tokens_used,
+                output_tokens_used,
+                created_at,
+                updated_at,
+                votes_count
+            FROM procurement_analyses
+            WHERE status = :pending_status
+            ORDER BY votes_count DESC, input_tokens_used ASC;
+            """
+        )
+        params = {"pending_status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value}
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, params).fetchall()
+
+        if not result:
+            return []
+
+        columns = list(result[0]._fields)
+        return [self._parse_row_to_model(tuple(row), columns) for row in result if row]
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """

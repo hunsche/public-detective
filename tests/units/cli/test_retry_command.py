@@ -1,21 +1,20 @@
 import unittest
 from unittest.mock import MagicMock, patch
 
+from cli.commands import retry
 from click.testing import CliRunner
-
-from source.cli.commands import retry
 
 
 class TestRetryCommand(unittest.TestCase):
-    @patch("source.cli.commands.DatabaseManager")
-    @patch("source.cli.commands.PubSubProvider")
-    @patch("source.cli.commands.GcsProvider")
-    @patch("source.cli.commands.AiProvider")
-    @patch("source.cli.commands.AnalysisRepository")
-    @patch("source.cli.commands.FileRecordsRepository")
-    @patch("source.cli.commands.ProcurementsRepository")
-    @patch("source.cli.commands.StatusHistoryRepository")
-    @patch("source.cli.commands.AnalysisService")
+    @patch("cli.commands.DatabaseManager")
+    @patch("cli.commands.PubSubProvider")
+    @patch("cli.commands.GcsProvider")
+    @patch("cli.commands.AiProvider")
+    @patch("cli.commands.AnalysisRepository")
+    @patch("cli.commands.FileRecordsRepository")
+    @patch("cli.commands.ProcurementsRepository")
+    @patch("cli.commands.StatusHistoryRepository")
+    @patch("cli.commands.AnalysisService")
     def test_retry_command_success(
         self,
         mock_analysis_service,
@@ -56,15 +55,15 @@ class TestRetryCommand(unittest.TestCase):
         self.assertIn(f"Successfully triggered {retried_count} analyses for retry.", result.output)
         self.assertEqual(result.exit_code, 0)
 
-    @patch("source.cli.commands.DatabaseManager")
-    @patch("source.cli.commands.PubSubProvider")
-    @patch("source.cli.commands.GcsProvider")
-    @patch("source.cli.commands.AiProvider")
-    @patch("source.cli.commands.AnalysisRepository")
-    @patch("source.cli.commands.FileRecordsRepository")
-    @patch("source.cli.commands.ProcurementsRepository")
-    @patch("source.cli.commands.StatusHistoryRepository")
-    @patch("source.cli.commands.AnalysisService")
+    @patch("cli.commands.DatabaseManager")
+    @patch("cli.commands.PubSubProvider")
+    @patch("cli.commands.GcsProvider")
+    @patch("cli.commands.AiProvider")
+    @patch("cli.commands.AnalysisRepository")
+    @patch("cli.commands.FileRecordsRepository")
+    @patch("cli.commands.ProcurementsRepository")
+    @patch("cli.commands.StatusHistoryRepository")
+    @patch("cli.commands.AnalysisService")
     def test_retry_command_no_analyses(
         self,
         mock_analysis_service,

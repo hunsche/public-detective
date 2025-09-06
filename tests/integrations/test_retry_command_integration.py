@@ -2,12 +2,11 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
+from cli.commands import retry
 from click.testing import CliRunner
 from faker import Faker
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
-
-from source.cli.commands import retry
 
 faker = Faker()
 
@@ -99,8 +98,8 @@ def test_retry_command_failed_analysis(db_session):
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -139,8 +138,8 @@ def test_retry_command_stale_in_progress(db_session):
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -178,8 +177,8 @@ def test_retry_command_max_retries_exceeded(db_session):
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -200,8 +199,8 @@ def test_retry_command_not_stale_in_progress(db_session):
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("source.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 

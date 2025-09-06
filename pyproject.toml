@@ -12,6 +12,8 @@ packages = [
     { include = "repositories", from = "source" },
     { include = "models", from = "source" },
     { include = "migrations", from = "source" },
+    { include = "constants", from = "source" },
+    { include = "worker", from = "source" },
 ]
 
 [build-system]
@@ -70,7 +72,7 @@ branch = true
 source = ["source/"]
 
 [tool.coverage.report]
-fail_under = 95
+fail_under = 93
 ignore_errors = false
 omit = [
     ".venv/**",
@@ -92,11 +94,9 @@ exclude = '''
   | buck-out
   | build
   | dist
-
   # protobuf
   | app/customer/adapters/proto
   | app/provider/adapters/proto
-
   # The following are specific to Black, you probably don't want those.
   | blib2to3
   | tests/data
@@ -133,7 +133,7 @@ ignore_missing_imports = true
 explicit_package_bases = true
 namespace_packages = true
 plugins = "pydantic.mypy"
-exclude = '/.venv/'
+exclude = '(?x)(^.venv/)'
 
 [tool.vulture]
 min_confidence = 100

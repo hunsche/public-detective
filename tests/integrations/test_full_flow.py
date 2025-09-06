@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 import requests
+from cli.__main__ import cli
 from click.testing import CliRunner
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
@@ -21,14 +22,13 @@ from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 from sqlalchemy import text
-
-from source.cli.__main__ import cli
-from source.worker.subscription import Subscription
+from worker.subscription import Subscription
 
 
 @pytest.fixture(scope="function")
@@ -111,11 +111,13 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -221,11 +223,13 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
+    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
+        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,

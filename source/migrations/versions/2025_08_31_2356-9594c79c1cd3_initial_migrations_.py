@@ -8,8 +8,7 @@ Create Date: 2025-08-31 23:56:00.000000
 from collections.abc import Sequence
 
 from alembic import op
-
-from source.migrations.helpers import get_qualified_name
+from migrations.helpers import get_qualified_name
 
 revision: str = "9594c79c1cd3"
 down_revision: str | None = None
@@ -30,17 +29,6 @@ def upgrade() -> None:
     transaction_type = get_qualified_name("transaction_type")
 
     op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
-
-    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {donations_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {votes_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
-    op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
-    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
-    op.execute(f"DROP TYPE IF EXISTS {transaction_type} CASCADE;")
 
     op.execute(
         f"""
@@ -88,6 +76,7 @@ def upgrade() -> None:
             analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             status {procurement_analysis_status_type} NOT NULL,
             retry_count SMALLINT NOT NULL DEFAULT 0,
+            votes_count INTEGER NOT NULL DEFAULT 0,
             risk_score SMALLINT,
             risk_score_rationale TEXT,
             procurement_summary TEXT,
@@ -227,58 +216,19 @@ def downgrade() -> None:
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
 
-    op.execute("DROP INDEX IF EXISTS idx_donations_donor_identifier;")
-    op.execute("DROP INDEX IF EXISTS idx_donations_transaction_id;")
-    op.execute("DROP INDEX IF EXISTS idx_donations_created_at;")
-    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_analysis_id;")
-    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_related_donation_id;")
-    op.execute("DROP INDEX IF EXISTS idx_budget_ledgers_created_at;")
-    op.execute(f"DROP TABLE IF EXISTS {budget_ledgers_table};")
-    op.execute(f"DROP TABLE IF EXISTS {donations_table};")
-    op.execute(f"DROP TYPE IF EXISTS {transaction_type};")
-    op.execute(f"DROP TABLE IF EXISTS {votes_table};")
-    op.execute(f"ALTER TABLE {procurements_table} DROP COLUMN IF EXISTS votes_count;")
-    op.execute(f"DROP TABLE IF EXISTS {history_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {file_records_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;")
-    op.execute(f"DROP TABLE IF EXISTS {procurements_table} CASCADE;")
-    op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
-    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
-
-    # Recreate the types and tables as they were before this migration
     op.execute(
         f"""
-        CREATE TYPE {procurement_analysis_status_type} AS ENUM (
-            'PENDING_ANALYSIS',
-            'ANALYSIS_IN_PROGRESS',
-            'ANALYSIS_SUCCESSFUL',
-            'ANALYSIS_FAILED',
-            'TIMEOUT'
-        );
-
-        CREATE TABLE {procurement_analyses_table} (
-            analysis_id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            procurement_control_number VARCHAR(255) NOT NULL,
-            version_number INTEGER NOT NULL,
-            analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            status {procurement_analysis_status_type} NOT NULL,
-            risk_score SMALLINT,
-            risk_score_rationale TEXT,
-            procurement_summary TEXT,
-            analysis_summary TEXT,
-            red_flags JSONB,
-            seo_keywords TEXT[],
-            warnings TEXT[],
-            document_hash VARCHAR(64),
-            original_documents_gcs_path VARCHAR,
-            processed_documents_gcs_path VARCHAR,
-            input_tokens_used INTEGER,
-            output_tokens_used INTEGER,
-            FOREIGN KEY (procurement_control_number, version_number)
-                REFERENCES {procurements_table}(pncp_control_number, version_number),
-            UNIQUE (procurement_control_number, version_number)
-        );
+        ALTER TABLE {procurement_analyses_table} RENAME COLUMN votes_count TO votes_count_dropped;
+        ALTER TABLE {procurement_analyses_table} RENAME COLUMN retry_count TO retry_count_dropped;
+        ALTER TABLE {procurements_table} RENAME TO {procurements_table}_dropped;
+        ALTER TABLE {procurement_analyses_table} RENAME TO {procurement_analyses_table}_dropped;
+        ALTER TABLE {file_records_table} RENAME TO {file_records_table}_dropped;
+        ALTER TABLE {history_table} RENAME TO {history_table}_dropped;
+        ALTER TABLE {votes_table} RENAME TO {votes_table}_dropped;
+        ALTER TABLE {donations_table} RENAME TO {donations_table}_dropped;
+        ALTER TABLE {budget_ledgers_table} RENAME TO {budget_ledgers_table}_dropped;
+        ALTER TYPE {procurement_analysis_status_type} RENAME TO {procurement_analysis_status_type}_dropped;
+        ALTER TYPE {vote_type} RENAME TO {vote_type}_dropped;
+        ALTER TYPE {transaction_type} RENAME TO {transaction_type}_dropped;
         """
     )

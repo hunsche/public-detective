@@ -7,9 +7,8 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
+from providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
-
-from source.providers.config import ConfigProvider
 
 
 @pytest.fixture(scope="function")

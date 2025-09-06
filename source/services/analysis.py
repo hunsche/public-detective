@@ -3,6 +3,7 @@ import json
 import os
 import time
 from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
@@ -17,6 +18,7 @@ from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -36,6 +38,7 @@ class AnalysisService:
     analysis_repo: AnalysisRepository
     file_record_repo: FileRecordsRepository
     status_history_repo: StatusHistoryRepository
+    budget_ledger_repo: BudgetLedgerRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
     pubsub_provider: PubSubProvider | None
@@ -55,6 +58,8 @@ class AnalysisService:
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
+    _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("2.62")
+    _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("7.88")
 
     def __init__(
         self,
@@ -62,6 +67,7 @@ class AnalysisService:
         analysis_repo: AnalysisRepository,
         file_record_repo: FileRecordsRepository,
         status_history_repo: StatusHistoryRepository,
+        budget_ledger_repo: BudgetLedgerRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
@@ -71,6 +77,7 @@ class AnalysisService:
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
         self.status_history_repo = status_history_repo
+        self.budget_ledger_repo = budget_ledger_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.pubsub_provider = pubsub_provider
@@ -78,7 +85,10 @@ class AnalysisService:
         self.config = ConfigProvider.get_config()
 
     def _update_status_with_history(
-        self, analysis_id: UUID, status: ProcurementAnalysisStatus, details: str | None = None
+        self,
+        analysis_id: UUID,
+        status: ProcurementAnalysisStatus,
+        details: str | None = None,
     ) -> None:
         """Updates the analysis status and records the change in the history table."""
         self.analysis_repo.update_analysis_status(analysis_id, status)
@@ -120,7 +130,11 @@ class AnalysisService:
             raise
 
     def analyze_procurement(
-        self, procurement: Procurement, version_number: int, analysis_id: UUID, max_output_tokens: int | None = None
+        self,
+        procurement: Procurement,
+        version_number: int,
+        analysis_id: UUID,
+        max_output_tokens: int | None = None,
     ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
@@ -511,7 +525,12 @@ class AnalysisService:
         self.logger.info(f"Published analysis request for analysis_id {analysis_id} to Pub/Sub.")
 
     def run_pre_analysis(
-        self, start_date: date, end_date: date, batch_size: int, sleep_seconds: int, max_messages: int | None = None
+        self,
+        start_date: date,
+        end_date: date,
+        batch_size: int,
+        sleep_seconds: int,
+        max_messages: int | None = None,
     ):
         """Runs the pre-analysis job for a given date range.
 
@@ -647,6 +666,84 @@ class AnalysisService:
             )
             current_date += timedelta(days=1)
         self.logger.info("Analysis job for the entire date range has been completed.")
+
+    def trigger_ranked_analyses(self, daily_budget: Decimal, zero_vote_budget_percentage: Decimal) -> int:
+        """Triggers pending analyses based on rank, respecting a daily budget.
+
+        This method fetches all pending analyses, calculates their estimated
+        cost, and triggers them in ranked order until the daily budget is
+        exhausted.
+
+        Args:
+            daily_budget: The total budget available for the day in BRL.
+            zero_vote_budget_percentage: The percentage of the daily budget
+                that can be spent on analyses with zero votes.
+
+        Returns:
+            The number of analyses successfully triggered.
+        """
+        self.logger.info("Starting ranked analysis job...")
+        pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
+        remaining_budget = daily_budget
+        zero_vote_budget = daily_budget * (zero_vote_budget_percentage / 100)
+        triggered_count = 0
+
+        for analysis in pending_analyses:
+            if remaining_budget <= 0:
+                self.logger.info("Daily budget exhausted. Stopping job.")
+                break
+
+            estimated_cost = self._calculate_estimated_cost(analysis.input_tokens_used, analysis.output_tokens_used)
+
+            if estimated_cost > remaining_budget:
+                self.logger.info(
+                    f"Skipping analysis {analysis.analysis_id}. "
+                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
+                    f"budget ({remaining_budget:.2f} BRL)."
+                )
+                continue
+
+            if analysis.votes_count == 0 and estimated_cost > zero_vote_budget:
+                self.logger.info(
+                    f"Skipping zero-vote analysis {analysis.analysis_id}. "
+                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
+                    f"zero-vote budget ({zero_vote_budget:.2f} BRL)."
+                )
+                continue
+
+            self.logger.info(
+                f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
+            )
+            try:
+                self.run_specific_analysis(analysis.analysis_id)
+                remaining_budget -= estimated_cost
+                if analysis.votes_count == 0:
+                    zero_vote_budget -= estimated_cost
+                self.budget_ledger_repo.save_expense(
+                    analysis.analysis_id,
+                    estimated_cost,
+                    f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
+                )
+                self.logger.info(
+                    f"Analysis {analysis.analysis_id} triggered. "
+                    f"Remaining budget: {remaining_budget:.2f} BRL. "
+                    f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
+                )
+                triggered_count += 1
+            except Exception as e:
+                self.logger.error(
+                    f"Failed to trigger analysis {analysis.analysis_id}: {e}",
+                    exc_info=True,
+                )
+
+        self.logger.info("Ranked analysis job completed.")
+        return triggered_count
+
+    def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
+        """Calculates the estimated cost of an analysis based on token counts."""
+        input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
+        output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
+        return input_cost + output_cost
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
         analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)

@@ -23,6 +23,7 @@ from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
 from repositories.analyses import AnalysisRepository
+from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -71,11 +72,13 @@ class Subscription:
             self.procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
 
             status_history_repo = StatusHistoryRepository(engine=db_engine)
+            budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
             self.analysis_service = AnalysisService(
                 procurement_repo=self.procurement_repo,
                 analysis_repo=analysis_repo,
                 file_record_repo=file_record_repo,
                 status_history_repo=status_history_repo,
+                budget_ledger_repo=budget_ledger_repo,
                 ai_provider=ai_provider,
                 gcs_provider=gcs_provider,
             )
