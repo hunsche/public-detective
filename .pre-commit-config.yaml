@@ -105,6 +105,11 @@ repos:
         entry: darglint
         language: python
         types: [python]
+        args:
+          # Nível de verbosidade para os erros. 2 é o mais completo.
+          - --verbosity=2
+          # Estilo de docstring a ser verificado (google, numpy, sphinx)
+          - --docstring-style=google
 
       - id: pytest-cov
         name: pytest-cov
