@@ -119,6 +119,16 @@ This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS
 
 ## 4. Running Tests
 
+### 4.1. Test Writing Style (`pytest` only)
+
+To maintain consistency and leverage the best features available, all tests in this project **must** be written using the modern `pytest` style. The use of the legacy `unittest` framework is prohibited for any new or modified tests.
+
+-   **Use Plain `assert`**: All assertions should use Python's built-in `assert` statement. Do not use `unittest.TestCase` methods like `self.assertEqual()` or `self.assertTrue()`.
+-   **Use `pytest` Fixtures**: For test setup and teardown, use `@pytest.fixture` decorators. Do not use `unittest`'s class-based `setUp()` and `tearDown()` methods.
+-   **Write Functional Tests**: Tests should be simple functions (e.g., `def test_something():`). Do not use `class TestSomething(unittest.TestCase):` inheritance.
+
+This rule is enforced to ensure all tests are clean, readable, and consistent with modern Python best practices.
+
 ### Unit Tests
 These do not require any external services.
 ```bash
