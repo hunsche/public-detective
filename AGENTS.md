@@ -250,23 +250,10 @@ The pre-commit pipeline enforces the following standards:
 -   **Import Sorting (isort):** As part of the Ruff linter, all imports are automatically sorted and grouped, ensuring a consistent and readable module structure.
 -   **Security (Bandit):** The [Bandit](https://github.com/PyCQA/bandit) tool is used to find common security issues in Python code.
 -   **Static Typing (MyPy):** All code must pass static type analysis using [MyPy](http://mypy-lang.org/). This helps prevent common runtime errors.
-    -   **Class Property Typing:** All instance properties (i.e., attributes assigned to `self`) must be explicitly typed at the class level. This improves readability and allows for better static analysis.
-
-        ```python
-        # Correct: Property is typed at the class level
-        class MyService:
-            my_repository: MyRepository
-
-            def __init__(self, repo: MyRepository):
-                self.my_repository = repo
-        ```
-
-        ```python
-        # Incorrect: Property is not declared at the class level
-        class MyService:
-            def __init__(self, repo: MyRepository):
-                self.my_repository = repo
-        ```
+-   **Docstring Standards (Interrogate, pydocstyle, darglint):** We enforce comprehensive and consistent docstrings.
+    -   **Coverage:** At least 95% of the codebase must be documented with docstrings (`interrogate`).
+    -   **Style:** All docstrings must follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) (`pydocstyle`).
+    -   **Correctness:** Docstrings must be synchronized with function signatures. The arguments, returns, and exceptions documented must match the actual code (`darglint`).
 -   **Test Coverage:** All contributions must maintain or increase the project's test coverage. The test suite will fail if the coverage drops below the threshold defined in `pyproject.toml`.
 
 ### C. Guiding Principles

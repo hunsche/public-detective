@@ -64,6 +64,12 @@ vulture = "^2.11"
 pre-commit = "^3.7.1"
 types-requests = "^2.32.4.20250611"
 
+
+[tool.poetry.group.dev.dependencies]
+interrogate = "^1.7.0"
+pydocstyle = "^6.3.0"
+darglint = "^1.8.1"
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
