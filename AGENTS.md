@@ -28,7 +28,9 @@ Key architectural features:
               return result
       ```
 
-- **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E2E tests.
+- **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E-to-E tests.
+
+- **No Abbreviations in SQL:** All table names, column names, and aliases in SQL queries must be fully spelled out and descriptive. Avoid abbreviations (e.g., use `users` instead of `u`, `user_id` instead of `uid`) to maximize readability and maintainability.
 
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
@@ -214,6 +216,15 @@ def downgrade() -> None:
 
 ### C. Table Naming Conventions
 All database tables must be named using the plural form of the entity they represent. For example, the table for users is named `users`, not `user`.
+
+### D. Indexing Strategy
+**To ensure optimal query performance, every column that is used in a `WHERE` clause, `JOIN` condition, or `ORDER BY` clause must have an index.**
+
+-   **Single-Column Indexes:** Create a standard index for columns used in simple filters.
+-   **Composite Indexes:** Create composite (multi-column) indexes for columns that are frequently queried together in the same `WHERE` clause. The order of columns in the index should match the query's selectivity (most selective column first).
+-   **Index Naming:** Use the convention `idx_table_name_column_names`.
+
+Before adding a new query to a repository, verify that all columns in the filter and sort clauses are properly indexed in the database migrations.
 
 ## 7. Pre-commit Hooks
 
