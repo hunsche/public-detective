@@ -236,3 +236,25 @@ poetry run pre-commit run --all-files
 This command simulates the CI environment and helps you find and fix issues in files you didn't directly modify.
 
 Thank you for your contribution!
+
+## 8. Import and Packaging Philosophy
+
+This project uses a specific package structure where each component in the `source` directory (e.g., `cli`, `services`) is treated as a distinct top-level package. This has important implications for imports and testing.
+
+### A. The "No `source` Prefix" Rule
+
+**All internal imports must be absolute from the component's root.** The `source` directory is **not** a package and must never be used as a prefix.
+
+-   **Correct:** `from cli.commands import analyze`
+-   **Incorrect:** `from source.cli.commands import analyze`
+
+This structure is defined in `pyproject.toml`. If you encounter import-related errors with tooling, do not add the `source.` prefix. The solution will likely involve adjusting the tool's configuration.
+
+### B. Mocking and Patching in Tests
+
+This rule is critical for tests. The path provided to a patch decorator must exactly match the import path used by the module under test.
+
+-   **Code:** `from cli.commands import DatabaseManager`
+-   **Test Patch:** `@patch("cli.commands.DatabaseManager")`
+
+Using an incorrect path (e.g., with a `source.` prefix) will cause mocks to fail silently and tests to hit real resources.
