@@ -3,7 +3,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from cli.commands import analyze, pre_analyze, retry
+from cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
 from click.testing import CliRunner
 
 
@@ -183,6 +183,94 @@ class TestAnalysisCommand(unittest.TestCase):
         mock_analysis_service.return_value = mock_service_instance
 
         result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
+
+        self.assertIn("An error occurred: Test error", result.output)
+        self.assertNotEqual(result.exit_code, 0)
+
+
+class TestTriggerRankedAnalysisCommand(unittest.TestCase):
+    @patch("cli.commands.DatabaseManager")
+    @patch("cli.commands.PubSubProvider")
+    @patch("cli.commands.GcsProvider")
+    @patch("cli.commands.AiProvider")
+    @patch("cli.commands.AnalysisRepository")
+    @patch("cli.commands.FileRecordsRepository")
+    @patch("cli.commands.ProcurementsRepository")
+    @patch("cli.commands.StatusHistoryRepository")
+    @patch("cli.commands.BudgetLedgerRepository")
+    @patch("cli.commands.AnalysisService")
+    def test_trigger_ranked_analysis_command_success(
+        self,
+        mock_analysis_service,
+        mock_budget_ledger_repo,
+        mock_status_history_repo,
+        mock_procurement_repo,
+        mock_file_record_repo,
+        mock_analysis_repo,
+        mock_ai_provider,
+        mock_gcs_provider,
+        mock_pubsub_provider,
+        mock_db_manager,
+    ):
+        runner = CliRunner()
+        daily_budget = "100.00"
+        zero_vote_budget_percentage = "10.0"
+        triggered_count = 5
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.trigger_ranked_analyses.return_value = triggered_count
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(
+            trigger_ranked_analysis,
+            [
+                "--daily-budget",
+                daily_budget,
+                "--zero-vote-budget-percentage",
+                zero_vote_budget_percentage,
+            ],
+        )
+
+        self.assertIn(f"Successfully triggered {triggered_count} ranked analyses.", result.output)
+        self.assertEqual(result.exit_code, 0)
+
+    @patch("cli.commands.DatabaseManager")
+    @patch("cli.commands.PubSubProvider")
+    @patch("cli.commands.GcsProvider")
+    @patch("cli.commands.AiProvider")
+    @patch("cli.commands.AnalysisRepository")
+    @patch("cli.commands.FileRecordsRepository")
+    @patch("cli.commands.ProcurementsRepository")
+    @patch("cli.commands.StatusHistoryRepository")
+    @patch("cli.commands.BudgetLedgerRepository")
+    @patch("cli.commands.AnalysisService")
+    def test_trigger_ranked_analysis_command_exception(
+        self,
+        mock_analysis_service,
+        mock_budget_ledger_repo,
+        mock_status_history_repo,
+        mock_procurement_repo,
+        mock_file_record_repo,
+        mock_analysis_repo,
+        mock_ai_provider,
+        mock_gcs_provider,
+        mock_pubsub_provider,
+        mock_db_manager,
+    ):
+        runner = CliRunner()
+        daily_budget = "100.00"
+
+        mock_service_instance = MagicMock()
+        mock_service_instance.trigger_ranked_analyses.side_effect = Exception("Test error")
+        mock_analysis_service.return_value = mock_service_instance
+
+        result = runner.invoke(
+            trigger_ranked_analysis,
+            [
+                "--daily-budget",
+                daily_budget,
+            ],
+        )
 
         self.assertIn("An error occurred: Test error", result.output)
         self.assertNotEqual(result.exit_code, 0)
