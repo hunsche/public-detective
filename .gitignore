@@ -123,3 +123,5 @@ tox.ini
 .env
 .mypy_cache
 .agents-scripts/
+
+gcp_credentials.json

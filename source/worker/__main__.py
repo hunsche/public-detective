@@ -13,6 +13,9 @@ from worker.subscription import Subscription
 logger = LoggingProvider().get_logger()
 
 
+from source.providers.credentials import setup_google_credentials
+
+
 @click.command()
 @click.option(
     "--max-messages",
@@ -33,6 +36,7 @@ logger = LoggingProvider().get_logger()
     help="Maximum number of output tokens for the AI model. Set to 'None' to remove the limit.",
 )
 def main(max_messages: int | None, timeout: int | None, max_output_tokens: str | None):
+    setup_google_credentials()
     """
     Main entry point for the Pub/Sub worker.
 

@@ -11,7 +11,7 @@ from collections.abc import Callable
 from typing import cast
 
 from google.api_core.client_options import ClientOptions
-from google.cloud import pubsub_v1
+from google.cloud import pubsub_v1  # type: ignore
 from google.cloud.pubsub_v1.publisher.futures import Future
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from google.cloud.pubsub_v1.subscriber.message import Message

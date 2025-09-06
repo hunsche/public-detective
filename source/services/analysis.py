@@ -80,7 +80,13 @@ class AnalysisService:
     def _update_status_with_history(
         self, analysis_id: UUID, status: ProcurementAnalysisStatus, details: str | None = None
     ) -> None:
-        """Updates the analysis status and records the change in the history table."""
+        """Updates the analysis status and records the change in the history table.
+
+        Args:
+            analysis_id: The ID of the analysis to update.
+            status: The new status to set.
+            details: Optional details about the status change.
+        """
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
@@ -136,6 +142,9 @@ class AnalysisService:
 
         Args:
             procurement: The procurement object to be analyzed.
+            version_number: The version number of the procurement.
+            analysis_id: The ID of the analysis.
+            max_output_tokens: The maximum number of output tokens.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
@@ -201,8 +210,7 @@ class AnalysisService:
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt,
-                files=files_for_ai,
+                prompt=prompt, files=files_for_ai, max_output_tokens=max_output_tokens
             )
 
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -649,6 +657,16 @@ class AnalysisService:
         self.logger.info("Analysis job for the entire date range has been completed.")
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
+        """Retries failed or stale analyses.
+
+        Args:
+            initial_backoff_hours: The initial backoff in hours.
+            max_retries: The maximum number of retries.
+            timeout_hours: The timeout in hours.
+
+        Returns:
+            The number of retried analyses.
+        """
         analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
         retried_count = 0
 
