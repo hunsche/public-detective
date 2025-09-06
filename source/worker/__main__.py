@@ -32,14 +32,18 @@ logger = LoggingProvider().get_logger()
     default=None,
     help="Maximum number of output tokens for the AI model. Set to 'None' to remove the limit.",
 )
-def main(max_messages: int | None, timeout: int | None, max_output_tokens: str | None):
-    """
-    Main entry point for the Pub/Sub worker.
+def main(max_messages: int | None, timeout: int | None, max_output_tokens: str | None) -> None:
+    """Main entry point for the Pub/Sub worker.
 
     This script initializes and runs the Subscription worker. It can be configured
     to exit after a specific number of messages (--max-messages) or after a
     period of inactivity (--timeout). If --max-messages is used without a
     --timeout, a default timeout of 10 seconds is applied.
+
+    Args:
+        max_messages: The maximum number of messages to process before exiting.
+        timeout: The time in seconds to wait for a message.
+        max_output_tokens: The maximum number of output tokens for the AI model.
     """
     if max_messages is not None and timeout is None:
         timeout = 10

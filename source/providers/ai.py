@@ -22,9 +22,9 @@ PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
 
 class AiProvider(Generic[PydanticModel]):
-    """
-    Provides a generic interface to interact with the Google Gemini AI model,
-    specialized for a specific Pydantic output model.
+    """Provides a generic interface to interact with the Google Gemini AI model.
+
+    This class is specialized for a specific Pydantic output model.
     """
 
     logger: Logger
@@ -33,13 +33,16 @@ class AiProvider(Generic[PydanticModel]):
     output_schema: type[PydanticModel]
 
     def __init__(self, output_schema: type[PydanticModel]):
-        """
-        Initializes the AiProvider, configuring the Gemini client for a specific
-        output schema.
+        """Initializes the AiProvider.
+
+        This method configures the Gemini client for a specific output schema.
 
         Args:
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
+
+        Raises:
+            ValueError: If the GCP_GEMINI_API_KEY is not configured.
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -56,9 +59,7 @@ class AiProvider(Generic[PydanticModel]):
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
     ) -> tuple[PydanticModel, int, int]:
-        """
-        Uploads a file, sends it with a prompt for analysis, and parses the
-        structured response into the Pydantic model instance defined for this provider.
+        """Uploads a file, sends it for analysis, and parses the response.
 
         This method is designed to be highly robust, handling cases where the AI
         response might be empty, blocked by safety settings, or returned in
@@ -78,10 +79,6 @@ class AiProvider(Generic[PydanticModel]):
               populated with the AI's response.
             - The number of input tokens used.
             - The number of output tokens used.
-
-        Raises:
-            ValueError: If the AI model returns a blocked, empty, or
-                        unparsable response.
         """
         uploaded_files = []
         for file in files:
@@ -121,9 +118,7 @@ class AiProvider(Generic[PydanticModel]):
                 genai.delete_file(uploaded_file.name)
 
     def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
-        """
-        Calculates the number of tokens for a given prompt and list of files
-        without making a call to generate content.
+        """Calculates the number of tokens for a given prompt and files.
 
         Args:
             prompt: The instructional prompt for the AI model.
@@ -177,7 +172,7 @@ class AiProvider(Generic[PydanticModel]):
                 self.logger.info("Successfully found structured data in function_call.")
                 return self.output_schema.model_validate(function_call.args)
 
-            self.logger.warning("No direct function_call found, attempting to parse from text response.")
+            self.logger.info("No direct function_call found, attempting to parse from text response.")
             text_content = response.text
             self.logger.debug(f"Received text response from Gemini: {text_content}")
             if text_content.strip().startswith("```json"):
@@ -200,8 +195,7 @@ class AiProvider(Generic[PydanticModel]):
             ) from e
 
     def _upload_file_to_gemini(self, content: bytes, display_name: str) -> File:
-        """Uploads file content to the Gemini File API and waits for it to
-        become active.
+        """Uploads file content to the Gemini File API and waits for it to become active.
 
         This method handles the conversion of in-memory byte content to a
         file-like object, uploads it, and then polls the API until the file's

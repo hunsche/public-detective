@@ -1,87 +1,117 @@
 default_language_version:
   python: python3.12
-
 repos:
-  - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
-    hooks:
-      - id: check-merge-conflict
-      - id: trailing-whitespace
-      - id: end-of-file-fixer
-      - id: debug-statements
-      - id: check-yaml
-      - id: check-added-large-files
-      - id: name-tests-test
-        language: python
-        files: (^|/)tests/.+\.py$
-        args: [ "--pytest-test-first" ]
-
-  - repo: https://github.com/asottile/pyupgrade
-    rev: v3.15.2
-    hooks:
-    - id: pyupgrade
-      args: [ "--py312-plus" ]
-
-  - repo: local
-    hooks:
-
-    - id: black
-      name: black
-      entry: black
-      language: python
-      require_serial: true
-      types_or: [ python, pyi ]
-
-    - id: isort
-      name: isort
-      entry: isort
-      require_serial: true
-      language: python
-      types_or: [ cython, pyi, python ]
-      args: [ "--filter-files" ]
-
-    - id: flake8
-      name: flake8
-      entry: flake8
-      language: python
-      types: [python]
-      require_serial: true
-
-    - id: mypy
-      name: mypy
-      entry: mypy
-      language: python
-      types_or: [python, pyi]
-      require_serial: true
-
-    - id: vulture
-      name: vulture
-      language: python
-      entry: vulture
-      types: [python]
-      require_serial: true
-
-    -   id: bandit
-        name: "Bandit (Security Analysis - Application)"
-        entry: bandit
-        language: python
-        types: [python]
-        args: ["-c", "pyproject.toml"]
-        additional_dependencies: ["bandit[toml]"]
-        exclude: ^source/migrations/versions/
-
-    -   id: bandit
-        name: "Bandit (Security Analysis - Migrations)"
-        entry: bandit
-        language: python
-        types: [python]
-        files: ^source/migrations/versions/
-        args: ["-c", ".bandit-migrations.yaml"]
-        additional_dependencies: ["bandit[yaml]"]
-
-    - id: pytest-cov
-      name: pytest-cov
-      entry: poetry run pytest --cov=source
-      language: system
-      types: [python]
-      pass_filenames: false
+- repo: https://github.com/pre-commit/pre-commit-hooks
+  rev: v4.6.0
+  hooks:
+  - id: check-merge-conflict
+  - id: trailing-whitespace
+  - id: end-of-file-fixer
+  - id: debug-statements
+  - id: check-yaml
+  - id: check-added-large-files
+  - id: name-tests-test
+    args:
+    - --pytest-test-first
+- repo: https://github.com/asottile/pyupgrade
+  rev: v3.15.2
+  hooks:
+  - id: pyupgrade
+    args:
+    - --py312-plus
+- repo: local
+  hooks:
+  - id: black
+    name: black
+    entry: black
+    language: python
+    require_serial: true
+    types_or:
+    - python
+    - pyi
+  - id: isort
+    name: isort
+    entry: isort
+    require_serial: true
+    language: python
+    types_or:
+    - cython
+    - pyi
+    - python
+    args:
+    - --filter-files
+  - id: flake8
+    name: flake8
+    entry: flake8
+    language: python
+    types:
+    - python
+    require_serial: true
+    additional_dependencies:
+    - flake8-bugbear
+    - flake8-comprehensions
+    - flake8-todos
+    - darglint
+  - id: mypy
+    name: mypy
+    entry: mypy
+    language: python
+    types_or:
+    - python
+    - pyi
+    require_serial: true
+    additional_dependencies:
+    - types-requests
+  - id: vulture
+    name: vulture
+    language: python
+    entry: vulture
+    types:
+    - python
+    require_serial: true
+  - id: bandit
+    name: Bandit (Security Analysis - Application)
+    entry: bandit
+    language: python
+    types:
+    - python
+    args:
+    - -c
+    - pyproject.toml
+    exclude: ^source/migrations/versions/
+  - id: bandit
+    name: Bandit (Security Analysis - Migrations)
+    entry: bandit
+    language: python
+    types:
+    - python
+    files: ^source/migrations/versions/
+    args:
+    - -c
+    - .bandit-migrations.yaml
+  - id: interrogate
+    name: interrogate
+    entry: interrogate
+    language: python
+    types:
+    - python
+    exclude: ^(source/migrations/|tests/)
+    args:
+    - -v
+    - --fail-under=95
+  - id: pydocstyle
+    name: pydocstyle
+    entry: pydocstyle
+    language: python
+    types:
+    - python
+    exclude: ^(source/migrations/|tests/)
+    args:
+    - --convention=google
+  - id: pytest-cov
+    name: pytest-cov
+    entry: poetry run pytest --cov=source
+    language: system
+    types:
+    - python
+    pass_filenames: false

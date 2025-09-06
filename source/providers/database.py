@@ -1,6 +1,4 @@
-"""
-This module provides a singleton database connection manager for the application.
-"""
+"""This module provides a singleton database connection manager for the application."""
 
 import threading
 
@@ -11,8 +9,7 @@ from sqlalchemy.engine import Engine
 
 
 class DatabaseManager:
-    """
-    Manages a thread-safe connection pool for PostgreSQL using SQLAlchemy.
+    """Manages a thread-safe connection pool for PostgreSQL using SQLAlchemy.
 
     This class implements the Singleton pattern to ensure that only one
     instance of the connection engine is created and shared across the
@@ -22,9 +19,11 @@ class DatabaseManager:
     _engine: Engine | None = None
     _engine_creation_lock = threading.Lock()
 
-    def __new__(cls):
-        """
-        Ensures that only one instance of this class can be created.
+    def __new__(cls) -> "DatabaseManager":
+        """Ensures that only one instance of this class can be created.
+
+        Returns:
+            The singleton instance of the DatabaseManager.
         """
         if not hasattr(cls, "instance"):
             cls.instance = super().__new__(cls)
@@ -32,8 +31,10 @@ class DatabaseManager:
 
     @classmethod
     def get_engine(cls) -> Engine:
-        """
-        Retrieves a singleton instance of the SQLAlchemy engine.
+        """Retrieves a singleton instance of the SQLAlchemy engine.
+
+        Returns:
+            The singleton instance of the SQLAlchemy engine.
         """
         if cls._engine is None:
             with cls._engine_creation_lock:
@@ -65,9 +66,7 @@ class DatabaseManager:
 
     @classmethod
     def release_engine(cls) -> None:
-        """
-        Disposes of the engine's connection pool and resets the singleton instance.
-        """
+        """Disposes of the engine's connection pool and resets the singleton instance."""
         if cls._engine:
             logger: Logger = LoggingProvider().get_logger()
             logger.info("Disposing of the database engine.")

@@ -5,8 +5,29 @@ from google.auth.credentials import AnonymousCredentials
 from providers.gcs import GcsProvider
 
 
-@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_with_emulator():
+def test_gcs_provider_initialization(mocker) -> None:
+    """
+    Should initialize the GcsProvider with a logger, config, and lock.
+    """
+    # Arrange
+    mock_logger = MagicMock()
+    mock_config = MagicMock()
+    mock_lock = MagicMock()
+
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=mock_logger)
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=mock_config)
+    mocker.patch("threading.Lock", return_value=mock_lock)
+
+    # Act
+    gcs_provider = GcsProvider()
+
+    # Assert
+    assert gcs_provider.logger is mock_logger
+    assert gcs_provider.config is mock_config
+    assert gcs_provider._client_creation_lock is mock_lock
+
+
+def test_get_or_create_client_with_emulator(mocker) -> None:
     """
     Should create a GCS client with AnonymousCredentials when GCP_GCS_HOST is set.
     """
@@ -14,11 +35,10 @@ def test_get_or_create_client_with_emulator():
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = "http://localhost:8086"
     mock_config.GCP_PROJECT = "test-project"
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=mock_config)
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
 
     gcs_provider = GcsProvider()
-    gcs_provider.config = mock_config
-    gcs_provider.logger = MagicMock()
-    gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None  # Ensure client is recreated
 
     with patch("google.cloud.storage.Client") as mock_storage_client:
@@ -33,8 +53,7 @@ def test_get_or_create_client_with_emulator():
         assert client is not None
 
 
-@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_for_production():
+def test_get_or_create_client_for_production(mocker) -> None:
     """
     Should create a GCS client with default credentials when GCP_GCS_HOST is not set.
     """
@@ -42,11 +61,10 @@ def test_get_or_create_client_for_production():
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None  # Emulator is not set
     mock_config.GCP_PROJECT = "prod-project"
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=mock_config)
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
 
     gcs_provider = GcsProvider()
-    gcs_provider.config = mock_config
-    gcs_provider.logger = MagicMock()
-    gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None  # Ensure client is recreated
 
     with patch("google.cloud.storage.Client") as mock_storage_client:
@@ -58,8 +76,7 @@ def test_get_or_create_client_for_production():
         assert client is not None
 
 
-@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_caches_instance():
+def test_get_or_create_client_caches_instance(mocker) -> None:
     """
     Should create a GCS client only once and then cache it.
     """
@@ -67,11 +84,10 @@ def test_get_or_create_client_caches_instance():
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None
     mock_config.GCP_PROJECT = "prod-project"
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=mock_config)
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
 
     gcs_provider = GcsProvider()
-    gcs_provider.config = mock_config
-    gcs_provider.logger = MagicMock()
-    gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None
 
     with patch("google.cloud.storage.Client") as mock_storage_client:
@@ -84,12 +100,13 @@ def test_get_or_create_client_caches_instance():
         assert client1 is client2
 
 
-@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_upload_file_success():
+def test_upload_file_success(mocker) -> None:
     """
     Should upload a file successfully and return its public URL.
     """
     # Arrange
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=MagicMock())
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
     gcs_provider = GcsProvider()
     mock_client = MagicMock()
     mock_bucket = MagicMock()
@@ -99,7 +116,6 @@ def test_upload_file_success():
     gcs_provider._get_or_create_client = MagicMock(return_value=mock_client)
     mock_client.bucket.return_value = mock_bucket
     mock_bucket.blob.return_value = mock_blob
-    gcs_provider.logger = MagicMock()
 
     # Act
     public_url = gcs_provider.upload_file("test-bucket", "file.pdf", b"content", "application/pdf")
@@ -111,18 +127,87 @@ def test_upload_file_success():
     assert public_url == "http://fake-url/file.pdf"
 
 
-@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_upload_file_failure():
+def test_upload_file_failure(mocker) -> None:
     """
     Should raise an exception when the upload fails.
     """
     # Arrange
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=MagicMock())
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
     gcs_provider = GcsProvider()
     mock_client = MagicMock()
     mock_client.bucket.side_effect = Exception("GCS Error")
     gcs_provider._get_or_create_client = MagicMock(return_value=mock_client)
-    gcs_provider.logger = MagicMock()
 
     # Act & Assert
     with pytest.raises(Exception, match="GCS Error"):
         gcs_provider.upload_file("test-bucket", "file.pdf", b"content", "application/pdf")
+
+
+def test_download_file_success(mocker) -> None:
+    """
+    Should download a file successfully and return its content.
+    """
+    # Arrange
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=MagicMock())
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
+    gcs_provider = GcsProvider()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.download_as_bytes.return_value = b"file content"
+
+    gcs_provider._get_or_create_client = MagicMock(return_value=mock_client)
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+
+    # Act
+    content = gcs_provider.download_file("test-bucket", "file.pdf")
+
+    # Assert
+    mock_client.bucket.assert_called_once_with("test-bucket")
+    mock_bucket.blob.assert_called_once_with("file.pdf")
+    mock_blob.download_as_bytes.assert_called_once()
+    assert content == b"file content"
+
+
+def test_download_file_empty(mocker) -> None:
+    """
+    Should return None when the downloaded file is empty.
+    """
+    # Arrange
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=MagicMock())
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
+    gcs_provider = GcsProvider()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+    mock_blob.download_as_bytes.return_value = b""
+
+    gcs_provider._get_or_create_client = MagicMock(return_value=mock_client)
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+
+    # Act
+    content = gcs_provider.download_file("test-bucket", "file.pdf")
+
+    # Assert
+    assert content is None
+    gcs_provider.logger.warning.assert_called_once()
+
+
+def test_download_file_failure(mocker) -> None:
+    """
+    Should raise an exception when the download fails.
+    """
+    # Arrange
+    mocker.patch("providers.gcs.ConfigProvider.get_config", return_value=MagicMock())
+    mocker.patch("providers.gcs.LoggingProvider.get_logger", return_value=MagicMock())
+    gcs_provider = GcsProvider()
+    mock_client = MagicMock()
+    mock_client.bucket.side_effect = Exception("GCS Error")
+    gcs_provider._get_or_create_client = MagicMock(return_value=mock_client)
+
+    # Act & Assert
+    with pytest.raises(Exception, match="GCS Error"):
+        gcs_provider.download_file("test-bucket", "file.pdf")

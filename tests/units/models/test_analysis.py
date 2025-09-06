@@ -5,7 +5,7 @@ Unit tests for the analysis models.
 from models.analyses import Analysis, RedFlag, RedFlagCategory
 
 
-def test_red_flag_creation():
+def test_red_flag_creation() -> None:
     """Tests the creation of a RedFlag object."""
     red_flag = RedFlag(
         category=RedFlagCategory.DIRECTING,
@@ -17,7 +17,7 @@ def test_red_flag_creation():
     assert red_flag.description == "Test description"
 
 
-def test_analysis_creation():
+def test_analysis_creation() -> None:
     """Tests the creation of an Analysis object."""
     analysis = Analysis(
         risk_score=5,
@@ -28,7 +28,7 @@ def test_analysis_creation():
     assert analysis.risk_score_rationale == "Test rationale"
 
 
-def test_red_flag_parsing():
+def test_red_flag_parsing() -> None:
     """Tests that red_flags are correctly parsed from dicts."""
     # Test with a list of dicts
     red_flags_dicts = [

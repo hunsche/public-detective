@@ -11,13 +11,18 @@ from services.analysis import AnalysisService
 
 
 @pytest.fixture
-def mock_dependencies():
-    """Fixture to create all mocked dependencies for AnalysisService."""
+def mock_dependencies() -> dict:
+    """Fixture to create all mocked dependencies for AnalysisService.
+
+    Returns:
+        A dictionary of mocked dependencies.
+    """
     return {
         "procurement_repo": MagicMock(),
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
         "status_history_repo": MagicMock(),
+        "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
@@ -25,8 +30,12 @@ def mock_dependencies():
 
 
 @pytest.fixture
-def mock_procurement():
-    """Fixture to create a standard procurement object for tests."""
+def mock_procurement() -> Procurement:
+    """Fixture to create a standard procurement object for tests.
+
+    Returns:
+        A Procurement object.
+    """
     procurement_data = {
         "processo": "123",
         "objetoCompra": "Test Object",
@@ -61,8 +70,12 @@ def mock_procurement():
     return Procurement.model_validate(procurement_data)
 
 
-def test_run_pre_analysis_no_procurements_found(mock_dependencies):
-    """Tests that the pre-analysis job handles dates with no procurements."""
+def test_run_pre_analysis_no_procurements_found(mock_dependencies: dict) -> None:
+    """Tests that the pre-analysis job handles dates with no procurements.
+
+    Args:
+        mock_dependencies: The mocked dependencies.
+    """
     # Arrange
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.get_updated_procurements_with_raw_data.return_value = []
@@ -78,10 +91,14 @@ def test_run_pre_analysis_no_procurements_found(mock_dependencies):
     assert service.procurement_repo.get_updated_procurements_with_raw_data.call_count == 1
 
 
-def test_pre_analyze_procurement_idempotency(mock_dependencies, mock_procurement):
+def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procurement: Procurement) -> None:
     """
     Tests that _pre_analyze_procurement skips processing if a procurement
     with the same hash already exists.
+
+    Args:
+        mock_dependencies: The mocked dependencies.
+        mock_procurement: The mocked procurement.
     """
     # Arrange
     service = AnalysisService(**mock_dependencies)
