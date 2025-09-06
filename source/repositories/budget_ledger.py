@@ -2,7 +2,10 @@
 This module defines the repository for handling budget ledger operations.
 """
 
-from sqlalchemy import Engine
+from decimal import Decimal
+from uuid import UUID
+
+from sqlalchemy import Engine, text
 
 
 class BudgetLedgerRepository:
@@ -12,7 +15,21 @@ class BudgetLedgerRepository:
         """Initializes the repository with a database engine."""
         self.engine = engine
 
-    def save_expense(self, analysis_id, estimated_cost):
+    def save_expense(self, analysis_id: UUID, amount: Decimal, description: str) -> None:
         """Saves an expense to the budget ledger."""
-        # This is a placeholder implementation.
-        pass
+        sql = text(
+            """
+            INSERT INTO budget_ledgers (transaction_type, related_analysis_id, amount, description)
+            VALUES ('EXPENSE', :analysis_id, :amount, :description)
+            """
+        )
+        with self.engine.connect() as conn:
+            conn.execute(
+                sql,
+                {
+                    "analysis_id": analysis_id,
+                    "amount": amount,
+                    "description": description,
+                },
+            )
+            conn.commit()
