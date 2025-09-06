@@ -273,6 +273,7 @@ The pre-commit pipeline enforces the following standards:
 
 In addition to the automated checks, we follow these principles:
 
+-   **Zero-Warning Policy:** Warnings are treated as errors. Code that produces warnings during linting, static analysis, or testing is considered incomplete. All warnings must be resolved before a contribution is considered finished.
 -   **Self-Documenting Code:** We prioritize clear, descriptive variable and method names over inline comments. Use docstrings for public classes and methods to explain the *why*, not the *what*. Avoid `#` comments unless absolutely necessary for complex logic.
 -   **English Language:** All code, docstrings, and documentation must be in **English**. The only exception is text that is user-facing or part of an AI prompt, which should be in **Portuguese (pt-br)**.
 -   **Structured Logging:** Do not use `print()` in the application code. Always use the `LoggingProvider` to ensure all output is structured and controllable.
