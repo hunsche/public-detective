@@ -11,10 +11,12 @@ import json
 import threading
 import uuid
 from collections.abc import Generator
+from concurrent.futures import TimeoutError
 from contextlib import contextmanager
 
 from exceptions.analysis import AnalysisError
 from google.api_core.exceptions import GoogleAPICallError
+from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.analyses import Analysis
 from providers.ai import AiProvider
@@ -50,8 +52,13 @@ class Subscription:
     streaming_pull_future: StreamingPullFuture | None
     pubsub_provider: PubSubProvider
     _stop_event: threading.Event
+    _processing_complete_event: threading.Event | None
 
-    def __init__(self, analysis_service: AnalysisService | None = None):
+    def __init__(
+        self,
+        analysis_service: AnalysisService | None = None,
+        processing_complete_event: threading.Event | None = None,
+    ):
         """Initializes the worker, loading configuration and services.
 
         This constructor acts as the Composition Root for the worker application.
@@ -60,10 +67,13 @@ class Subscription:
         Args:
             analysis_service: An optional instance of the AnalysisService.
                 If not provided, it will be created internally.
+            processing_complete_event: An optional event to signal when a
+                message has been fully processed.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
         self.pubsub_provider = PubSubProvider()
+        self._processing_complete_event = processing_complete_event
 
         if analysis_service:
             self.analysis_service = analysis_service
@@ -186,9 +196,15 @@ class Subscription:
                 exc_info=True,
             )
             message.nack()
+        finally:
+            if self._processing_complete_event:
+                self._processing_complete_event.set()
 
     def _message_callback(
-        self, message: Message, max_messages: int | None, max_output_tokens: int | None = None
+        self,
+        message: Message,
+        max_messages: int | None,
+        max_output_tokens: int | None = None,
     ) -> None:
         """Entry-point callback invoked by Pub/Sub upon message delivery.
 
@@ -202,9 +218,8 @@ class Subscription:
         """
         with self._lock:
             if self._stop_event.is_set():
+                message.nack()
                 return
-
-            self._process_message(message, max_output_tokens)
 
             self.processed_messages_count += 1
             if max_messages and self.processed_messages_count >= max_messages:
@@ -212,6 +227,8 @@ class Subscription:
                 self._stop_event.set()
                 if self.streaming_pull_future:
                     self.streaming_pull_future.cancel()
+
+        self._process_message(message, max_output_tokens)
 
     def run(
         self,
@@ -226,9 +243,9 @@ class Subscription:
         shutdown upon interruption or timeout.
 
         Args:
-            max_messages: The maximum number of messages to process before stopping.
-            timeout: The maximum time in seconds to wait for messages.
-            max_output_tokens: The token limit to apply to the analysis.
+            max_messages: Max messages to process before stopping.
+            timeout: Max time in seconds to wait for a new message.
+            max_output_tokens: Token limit for the AI analysis.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
@@ -241,10 +258,19 @@ class Subscription:
             Args:
                 message: The Pub/Sub message received from the subscription.
             """
-            self._message_callback(message, max_messages)
+            self._message_callback(message, max_messages, max_output_tokens)
 
-        self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
-        self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
+        flow_control = pubsub_v1.types.FlowControl(
+            max_messages=self.config.WORKER_MAX_CONCURRENCY,
+        )
+
+        self.streaming_pull_future = self.pubsub_provider.subscribe(
+            subscription_name, callback, flow_control=flow_control
+        )
+        self.logger.info(
+            f"Worker is now running, waiting for messages "
+            f"(max_concurrency: {self.config.WORKER_MAX_CONCURRENCY}, timeout: {timeout}s)..."
+        )
 
         try:
             self.streaming_pull_future.result(timeout=timeout)

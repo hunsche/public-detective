@@ -155,7 +155,11 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
 
             # 3. Run worker
             log_capture_stream = io.StringIO()
-            subscription = Subscription(analysis_service=analysis_service)
+            processing_complete_event = threading.Event()
+            subscription = Subscription(
+                analysis_service=analysis_service,
+                processing_complete_event=processing_complete_event,
+            )
             subscription.config.IS_DEBUG_MODE = False
 
             def worker_target() -> None:
@@ -164,10 +168,16 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
 
             worker_thread = threading.Thread(target=worker_target, daemon=True)
             worker_thread.start()
-            worker_thread.join(timeout=60)
 
+            event_was_set = processing_complete_event.wait(timeout=60)
+            if not event_was_set:
+                pytest.fail(
+                    "Worker thread timed out waiting for message processing to complete.\n"
+                    f"Logs:\n{log_capture_stream.getvalue()}"
+                )
+            worker_thread.join(timeout=5)  # Give the thread a moment to shut down
             if worker_thread.is_alive():
-                pytest.fail("Worker thread got stuck")
+                pytest.fail("Worker thread did not shut down gracefully after processing.")
 
     # 4. Check results
     with db_engine.connect() as connection:

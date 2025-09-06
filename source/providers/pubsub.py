@@ -149,7 +149,12 @@ class PubSubProvider:
             self.logger.error(f"Failed to publish to topic {topic_id}: {e}")
             raise
 
-    def subscribe(self, subscription_id: str, callback: Callable[[Message], None]) -> StreamingPullFuture:
+    def subscribe(
+        self,
+        subscription_id: str,
+        callback: Callable[[Message], None],
+        flow_control: pubsub_v1.types.FlowControl | None = None,
+    ) -> StreamingPullFuture:
         """Starts listening to a Pub/Sub subscription and executes a callback for each message.
 
         This method retrieves a cached SubscriberClient and initiates a
@@ -166,6 +171,8 @@ class PubSubProvider:
                       should accept one argument: a
                       `google.cloud.pubsub_v1.subscriber.message.Message`
                       object.
+            flow_control: An optional `FlowControl` object to configure
+                          concurrency and rate limiting.
 
         Returns:
             A `google.cloud.pubsub_v1.subscriber.futures.StreamingPullFuture`
@@ -180,7 +187,7 @@ class PubSubProvider:
             subscription_path = client.subscription_path(self.config.GCP_PROJECT, subscription_id)
             self.logger.info(f"Subscribing to subscription: {subscription_path}")
 
-            streaming_pull_future = client.subscribe(subscription_path, callback=callback)
+            streaming_pull_future = client.subscribe(subscription_path, callback=callback, flow_control=flow_control)
 
             self.logger.info(f"Successfully subscribed to {subscription_path}. Waiting for messages...")
             return streaming_pull_future

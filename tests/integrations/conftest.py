@@ -35,7 +35,7 @@ def db_session() -> Generator:
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
         f"{host}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
-    engine = create_engine(db_url)
+    engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
     # Wait for the database to be ready before proceeding
     for _ in range(15):

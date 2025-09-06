@@ -172,7 +172,7 @@ class AiProvider(Generic[PydanticModel]):
                 self.logger.info("Successfully found structured data in function_call.")
                 return self.output_schema.model_validate(function_call.args)
 
-            self.logger.warning("No direct function_call found, attempting to parse from text response.")
+            self.logger.info("No direct function_call found, attempting to parse from text response.")
             text_content = response.text
             self.logger.debug(f"Received text response from Gemini: {text_content}")
             if text_content.strip().startswith("```json"):

@@ -52,6 +52,8 @@ class Config(BaseSettings):
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
     GCP_GEMINI_PRICE_PER_1K_TOKENS: float = 0.002
 
+    WORKER_MAX_CONCURRENCY: int = 4
+
     @model_validator(mode="after")
     def set_derived_pubsub_names(self) -> "Config":
         """Dynamically sets the DLQ topic and subscription names.
