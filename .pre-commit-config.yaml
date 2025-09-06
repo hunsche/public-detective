@@ -45,6 +45,10 @@ repos:
         language: python
         types: [python]
         require_serial: true
+        additional_dependencies:
+          - flake8-bugbear    # Encontra bugs e más práticas
+          - flake8-comprehensions # Ajuda a escrever list/dict comprehensions melhores
+          - flake8-todos      # Alerta sobre TODOs e FIXMEs
 
       - id: mypy
         name: mypy
