@@ -226,25 +226,56 @@ All database tables must be named using the plural form of the entity they repre
 
 Before adding a new query to a repository, verify that all columns in the filter and sort clauses are properly indexed in the database migrations.
 
-## 7. Pre-commit Hooks
+## 7. Code Style and Quality Enforcement
 
-This project uses pre-commit hooks to enforce code quality and consistency. You **must** ensure your code passes these checks before submitting.
+This project enforces a strict set of code style and quality rules to ensure consistency, readability, and maintainability. All code is automatically checked and formatted using pre-commit hooks. You **must** ensure your code passes these checks before submitting.
 
-### A. Installation
-First, install the hooks so they run automatically before each commit:
-```bash
-poetry run pre-commit install
-```
+### A. How to Use
+1.  **Install the hooks:** This command sets up the hooks to run automatically before each commit.
+    ```bash
+    poetry run pre-commit install
+    ```
 
-### B. Usage and Troubleshooting
-The hooks will run on changed files when you run `git commit`. However, the CI pipeline runs the checks on **all files**. This can cause the pipeline to fail even if your local commit succeeds.
+2.  **Run checks manually (Recommended):** The CI pipeline runs checks on **all files**, while a local commit only checks the files you've changed. This can cause the CI to fail even if your local commit succeeds. To avoid this, run the checks on all files locally before pushing:
+    ```bash
+    poetry run pre-commit run --all-files
+    ```
 
-To avoid this, it is **highly recommended** to occasionally run the checks on all files locally:
-```bash
-poetry run pre-commit run --all-files
-```
+### B. Key Tools and Standards
 
-This command simulates the CI environment and helps you find and fix issues in files you didn't directly modify.
+The pre-commit pipeline enforces the following standards:
+
+-   **Formatting (Black):** All code is automatically formatted by the [Black](https://github.com/psf/black) code formatter. You don't need to worry about formatting manually; just write your code and the hook will handle the rest.
+-   **Linting (Ruff):** We use [Ruff](https://github.com/astral-sh/ruff) for high-performance linting. It checks for a wide range of potential errors, bugs, and stylistic issues, replacing the need for tools like `flake8` and `isort`.
+-   **Import Sorting (isort):** As part of the Ruff linter, all imports are automatically sorted and grouped, ensuring a consistent and readable module structure.
+-   **Security (Bandit):** The [Bandit](https://github.com/PyCQA/bandit) tool is used to find common security issues in Python code.
+-   **Static Typing (MyPy):** All code must pass static type analysis using [MyPy](http://mypy-lang.org/). This helps prevent common runtime errors.
+    -   **Class Property Typing:** All instance properties (i.e., attributes assigned to `self`) must be explicitly typed at the class level. This improves readability and allows for better static analysis.
+
+        ```python
+        # Correct: Property is typed at the class level
+        class MyService:
+            my_repository: MyRepository
+
+            def __init__(self, repo: MyRepository):
+                self.my_repository = repo
+        ```
+
+        ```python
+        # Incorrect: Property is not declared at the class level
+        class MyService:
+            def __init__(self, repo: MyRepository):
+                self.my_repository = repo
+        ```
+-   **Test Coverage:** All contributions must maintain or increase the project's test coverage. The test suite will fail if the coverage drops below the threshold defined in `pyproject.toml`.
+
+### C. Guiding Principles
+
+In addition to the automated checks, we follow these principles:
+
+-   **Self-Documenting Code:** We prioritize clear, descriptive variable and method names over inline comments. Use docstrings for public classes and methods to explain the *why*, not the *what*. Avoid `#` comments unless absolutely necessary for complex logic.
+-   **English Language:** All code, docstrings, and documentation must be in **English**. The only exception is text that is user-facing or part of an AI prompt, which should be in **Portuguese (pt-br)**.
+-   **Structured Logging:** Do not use `print()` in the application code. Always use the `LoggingProvider` to ensure all output is structured and controllable.
 
 Thank you for your contribution!
 
