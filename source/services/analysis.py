@@ -717,30 +717,55 @@ class AnalysisService:
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
         )
 
-    def trigger_ranked_analyses(self, daily_budget: Decimal, zero_vote_budget_percentage: Decimal) -> int:
-        """Triggers pending analyses based on rank, respecting a daily budget.
+    def run_ranked_analysis(
+        self,
+        use_auto_budget: bool,
+        budget_period: str | None,
+        zero_vote_budget_percent: int,
+        budget: Decimal | None = None,
+        max_messages: int | None = None,
+    ) -> None:
+        """Runs the ranked analysis job.
 
         This method fetches all pending analyses, calculates their estimated
-        cost, and triggers them in ranked order until the daily budget is
-        exhausted.
+        cost, and triggers them in ranked order until the specified or calculated
+        provided budget is exhausted or the message limit is reached.
 
         Args:
-            daily_budget: The total budget available for the day in BRL.
-            zero_vote_budget_percentage: The percentage of the daily budget
-                that can be spent on analyses with zero votes.
-
-        Returns:
-            The number of analyses successfully triggered.
+            use_auto_budget: Flag to determine if automatic budget calculation should be used.
+            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
+            zero_vote_budget_percent: The percentage of the budget to be used for procurements with zero votes.
+            budget: The manual budget for the analysis run.
+            max_messages: An optional limit on the number of analyses to trigger.
         """
-        self.logger.info("Starting ranked analysis job...")
+        if use_auto_budget:
+            if not budget_period:
+                raise ValueError("Budget period must be provided for auto-budget calculation.")
+            execution_budget = self._calculate_auto_budget(budget_period)
+        elif budget is not None:
+            execution_budget = budget
+        else:
+            raise ValueError("Either a manual budget must be provided or auto-budget must be enabled.")
+
+        self.logger.info(f"Starting ranked analysis job with a budget of {execution_budget:.2f} BRL.")
+        if max_messages is not None:
+            self.logger.info(f"Analysis run is limited to a maximum of {max_messages} message(s).")
+
+        remaining_budget = execution_budget
+        zero_vote_budget = execution_budget * (Decimal(zero_vote_budget_percent) / 100)
+        self.logger.info(f"Zero-vote budget is {zero_vote_budget:.2f} BRL.")
+
         pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
-        remaining_budget = daily_budget
-        zero_vote_budget = daily_budget * (zero_vote_budget_percentage / 100)
+        self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
         triggered_count = 0
 
         for analysis in pending_analyses:
             if remaining_budget <= 0:
-                self.logger.info("Daily budget exhausted. Stopping job.")
+                self.logger.info("Budget exhausted. Stopping job.")
+                break
+
+            if max_messages is not None and triggered_count >= max_messages:
+                self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
                 break
 
             estimated_cost = self._calculate_estimated_cost(analysis.input_tokens_used, analysis.output_tokens_used)
@@ -787,7 +812,6 @@ class AnalysisService:
                 )
 
         self.logger.info("Ranked analysis job completed.")
-        return triggered_count
 
     def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
         """Calculates the estimated cost of an analysis based on token counts.
@@ -872,3 +896,44 @@ class AnalysisService:
             self.logger.warning(f"No overall status found for procurement {procurement_control_number}.")
             return None
         return status_info  # type: ignore
+
+    def _calculate_auto_budget(self, budget_period: str) -> Decimal:
+        """Calculates the budget for the current run based on donation history and spending pace.
+
+        Args:
+            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
+
+        Returns:
+            The calculated budget for the current run.
+        """
+        today = datetime.now(timezone.utc).date()
+        if budget_period == "daily":
+            start_of_period = today
+            days_in_period = 1
+            day_of_period = 1
+        elif budget_period == "weekly":
+            start_of_period = today - timedelta(days=today.weekday())
+            days_in_period = 7
+            day_of_period = today.weekday() + 1
+        elif budget_period == "monthly":
+            start_of_period = today.replace(day=1)
+            next_month = start_of_period.replace(day=28) + timedelta(days=4)
+            days_in_period = (next_month - timedelta(days=next_month.day)).day
+            day_of_period = today.day
+        else:
+            raise ValueError(f"Invalid budget period: {budget_period}")
+
+        current_balance = self.budget_ledger_repo.get_total_donations()
+        expenses_in_period = self.budget_ledger_repo.get_total_expenses_for_period(start_of_period)
+        period_capital = current_balance + expenses_in_period
+        daily_target = period_capital / days_in_period
+        cumulative_target_today = daily_target * day_of_period
+        budget_for_this_run = cumulative_target_today - expenses_in_period
+
+        self.logger.debug(
+            f"Auto-budget calculation: Balance={current_balance:.2f}, "
+            f"Expenses={expenses_in_period:.2f}, Capital={period_capital:.2f}, "
+            f"DailyTarget={daily_target:.2f}, CumulativeTarget={cumulative_target_today:.2f}"
+        )
+
+        return Decimal(max(Decimal("0"), budget_for_this_run))

@@ -248,31 +248,51 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
 
 
 @click.command("trigger-ranked-analysis")
+@click.option("--budget", type=Decimal, help="The manual budget for the analysis run.")
+@click.option("--use-auto-budget", is_flag=True, help="Use automatic budget calculation based on donations.")
 @click.option(
-    "--daily-budget",
-    type=Decimal,
-    required=True,
-    help="The total budget for the day in BRL.",
+    "--budget-period",
+    type=click.Choice(["daily", "weekly", "monthly"]),
+    help="The period for auto-budget calculation.",
 )
 @click.option(
-    "--zero-vote-budget-percentage",
-    type=Decimal,
-    default=Decimal("10.0"),
-    help="The percentage of the budget for zero-vote analyses.",
+    "--zero-vote-budget-percent",
+    type=click.IntRange(0, 100),
+    default=10,
+    help="The percentage of the budget to be used for procurements with zero votes.",
     show_default=True,
 )
-def trigger_ranked_analysis(daily_budget: Decimal, zero_vote_budget_percentage: Decimal) -> None:
-    """Triggers pending analyses based on rank and budget.
+@click.option(
+    "--max-messages",
+    type=int,
+    default=None,
+    help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
+)
+def trigger_ranked_analysis(
+    budget: Decimal | None,
+    use_auto_budget: bool,
+    budget_period: str | None,
+    zero_vote_budget_percent: int,
+    max_messages: int | None,
+) -> None:
+    """Triggers a ranked analysis of pending procurements.
 
     Args:
-        daily_budget: The total budget for the day in BRL.
-        zero_vote_budget_percentage: The percentage of the budget for
-            zero-vote analyses.
-
-    Raises:
-        click.Abort: If an error occurs during the process.  # noqa: DAR401, DAR402
+        budget: The manual budget for the analysis run.
+        use_auto_budget: Flag to use automatic budget calculation.
+        budget_period: The period for auto-budget calculation.
+        zero_vote_budget_percent: The percentage of the budget for zero-vote items.
+        max_messages: Maximum number of analyses to trigger.
     """
-    click.echo("Triggering ranked analyses...")
+    if not use_auto_budget and budget is None:
+        raise click.UsageError("Either --budget or --use-auto-budget must be provided.")
+    if use_auto_budget and not budget_period:
+        raise click.UsageError("--budget-period is required when --use-auto-budget is set.")
+
+    if use_auto_budget:
+        click.echo("Triggering ranked analysis with auto-budget.")
+    else:
+        click.echo(f"Triggering ranked analysis with a manual budget of {budget:.2f} BRL.")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -297,10 +317,16 @@ def trigger_ranked_analysis(daily_budget: Decimal, zero_vote_budget_percentage: 
             pubsub_provider=pubsub_provider,
         )
 
-        triggered_count = service.trigger_ranked_analyses(daily_budget, zero_vote_budget_percentage)
+        # The service will handle the logic of whether to use the manual or auto budget
+        service.run_ranked_analysis(
+            budget=budget,
+            use_auto_budget=use_auto_budget,
+            budget_period=budget_period,
+            zero_vote_budget_percent=zero_vote_budget_percent,
+            max_messages=max_messages,
+        )
 
-        click.secho(f"Successfully triggered {triggered_count} ranked analyses.", fg="green")
-
-    except AnalysisError as e:
+        click.secho("Ranked analysis completed successfully!", fg="green")
+    except Exception as e:
         click.secho(f"An error occurred: {e}", fg="red")
         raise click.Abort()

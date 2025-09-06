@@ -231,7 +231,9 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup: None, db_session: Engine) -> N
         connection.commit()
         print("--- Inserted mock donation ---")
 
-    ranked_analysis_command = "poetry run python -m source.cli trigger-ranked-analysis --daily-budget 15.0"
+    ranked_analysis_command = (
+        "poetry run python -m source.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
+    )
     run_command(ranked_analysis_command)
 
     worker_command = (
