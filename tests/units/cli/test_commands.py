@@ -20,17 +20,17 @@ class TestRetryCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_retry_command_success(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,
-        mock_status_history_repo,
-        mock_procurement_repo,
-        mock_file_record_repo,
-        mock_analysis_repo,
-        mock_ai_provider,
-        mock_gcs_provider,
-        mock_pubsub_provider,
-        mock_db_manager,
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,
+        mock_status_history_repo: MagicMock,
+        mock_procurement_repo: MagicMock,
+        mock_file_record_repo: MagicMock,
+        mock_analysis_repo: MagicMock,
+        mock_ai_provider: MagicMock,
+        mock_gcs_provider: MagicMock,
+        mock_pubsub_provider: MagicMock,
+        mock_db_manager: MagicMock,
+    ) -> None:
         runner = CliRunner()
         initial_backoff_hours = 6
         max_retries = 3
@@ -71,17 +71,17 @@ class TestRetryCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_retry_command_no_analyses(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,  # noqa: F841
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,  # noqa: F841
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,  # noqa: F841
+    ) -> None:
         runner = CliRunner()
         initial_backoff_hours = 6
         max_retries = 3
@@ -121,17 +121,17 @@ class TestAnalysisCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_analyze_command_success(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,  # noqa: F841
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,  # noqa: F841
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,
+    ) -> None:
         runner = CliRunner()
         analysis_id = uuid4()
 
@@ -146,7 +146,7 @@ class TestAnalysisCommand(unittest.TestCase):
         self.assertIn("Analysis triggered successfully!", result.output)
         self.assertEqual(result.exit_code, 0)
 
-    def test_analyze_command_missing_id(self):
+    def test_analyze_command_missing_id(self) -> None:
         runner = CliRunner()
         result = runner.invoke(analyze, [], catch_exceptions=False)
         self.assertIn("Missing option '--analysis-id'", result.output)
@@ -164,17 +164,17 @@ class TestAnalysisCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_analyze_command_exception(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,  # noqa: F841
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,  # noqa: F841
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,  # noqa: F841
+    ) -> None:
         runner = CliRunner()
         analysis_id = uuid4()
 
@@ -205,17 +205,17 @@ class TestPreAnalysisCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_pre_analysis_command_with_valid_dates(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,  # noqa: F841
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,  # noqa: F841
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,  # noqa: F841
+    ) -> None:
         runner = CliRunner()
         start_date = "2025-01-01"
         end_date = "2025-01-02"
@@ -250,7 +250,7 @@ class TestPreAnalysisCommand(unittest.TestCase):
         self.assertIn("Pre-analysis completed successfully!", result.output)
         self.assertEqual(result.exit_code, 0)
 
-    def test_pre_analysis_command_with_invalid_date_range(self):
+    def test_pre_analysis_command_with_invalid_date_range(self) -> None:
         runner = CliRunner()
         start_date = "2025-01-02"
         end_date = "2025-01-01"
@@ -281,17 +281,17 @@ class TestPreAnalysisCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_pre_analysis_command_exception(
         self,
-        mock_analysis_service,
-        mock_budget_ledger_repo,  # noqa: F841
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
+        mock_analysis_service: MagicMock,
+        mock_budget_ledger_repo: MagicMock,  # noqa: F841
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,  # noqa: F841
+    ) -> None:
         runner = CliRunner()
         start_date = "2025-01-01"
         end_date = "2025-01-01"

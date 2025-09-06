@@ -1,7 +1,4 @@
-"""
-This module defines the repository for handling database operations
-related to procurement analysis results.
-"""
+"""This module defines the repository for handling database operations related to procurement analysis results."""
 
 import json
 from typing import Any, cast
@@ -345,8 +342,7 @@ class AnalysisRepository:
         self.logger.info("Analysis status updated successfully.")
 
     def get_analyses_to_retry(self, max_retries: int, timeout_hours: int) -> list[AnalysisResult]:
-        """
-        Retrieves a list of analyses that are eligible for a retry attempt.
+        """Retrieves a list of analyses that are eligible for a retry attempt.
 
         This method identifies analyses that have failed or have been stuck in
         progress for too long, and have not yet exceeded the maximum number of
@@ -420,8 +416,7 @@ class AnalysisRepository:
         output_tokens_used: int,
         retry_count: int,
     ) -> UUID:
-        """
-        Saves a new, pending analysis record for a retry attempt.
+        """Saves a new, pending analysis record for a retry attempt.
 
         This method creates a new analysis record with an incremented retry
         count, setting its status to 'PENDING_ANALYSIS'.
@@ -521,8 +516,7 @@ class AnalysisRepository:
         return [self._parse_row_to_model(tuple(row), columns) for row in result if row]
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
-        """
-        Retrieves the overall status of a procurement based on its analysis history.
+        """Retrieves the overall status of a procurement based on its analysis history.
 
         This method executes a complex query that determines the single, most relevant
         status for a procurement, considering all its versions and analysis states.

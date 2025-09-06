@@ -2,15 +2,22 @@
 Tests for the JSON schema of the analysis models, ensuring Gemini API compatibility.
 """
 
+from typing import Any
+
 import pytest
 from models.analyses import Analysis, RedFlag
 from pydantic import BaseModel
 
 
-def _recursively_check_for_key(data, key_to_find):
-    """
-    Recursively searches for a key in a nested dictionary.
-    Returns a list of paths to the found key.
+def _recursively_check_for_key(data: Any, key_to_find: str) -> list[list]:
+    """Recursively searches for a key in a nested dictionary.
+
+    Args:
+        data: The dictionary or list to search through.
+        key_to_find: The key to search for.
+
+    Returns:
+        A list of paths to the found key.
     """
     paths = []
     if isinstance(data, dict):
@@ -32,10 +39,12 @@ def _recursively_check_for_key(data, key_to_find):
     "model_class",
     [Analysis, RedFlag],
 )
-def test_no_default_key_in_model_schemas(model_class):
-    """
-    Ensures that the generated JSON schema for models sent to the Gemini API
+def test_no_default_key_in_model_schemas(model_class: type[BaseModel]) -> None:
+    """Ensures that the generated JSON schema for models sent to the Gemini API
     does not contain the 'default' key, which is not supported.
+
+    Args:
+        model_class: The Pydantic model class to check.
     """
     schema = model_class.model_json_schema()
     found_paths = _recursively_check_for_key(schema, "default")
@@ -45,7 +54,7 @@ def test_no_default_key_in_model_schemas(model_class):
     )
 
 
-def test_detection_logic_is_effective_control_test():
+def test_detection_logic_is_effective_control_test() -> None:
     """
     Control test to prove that the detection logic correctly finds a 'default'
     key when one is intentionally added to a model's schema.

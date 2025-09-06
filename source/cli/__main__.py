@@ -1,9 +1,11 @@
+"""Main entry point for the CLI application."""
+
 import click
 from cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
 
 
 @click.group()
-def cli():
+def cli() -> None:
     """A command-line interface for the Public Detective tool.
 
     This CLI provides a collection of commands to interact with the Public

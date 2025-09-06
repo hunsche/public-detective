@@ -7,20 +7,30 @@ from repositories.file_records import FileRecordsRepository
 
 
 @pytest.fixture
-def mock_engine():
-    """Fixture for a mocked database engine."""
+def mock_engine() -> MagicMock:
+    """Fixture for a mocked database engine.
+
+    Returns:
+        A MagicMock object.
+    """
     return MagicMock()
 
 
 @pytest.fixture
-def file_records_repository(mock_engine):
+def file_records_repository(mock_engine: MagicMock) -> FileRecordsRepository:
     """
     Fixture to create a FileRecordsRepository with a mocked database engine.
+
+    Args:
+        mock_engine: The mocked database engine.
+
+    Returns:
+        An instance of FileRecordsRepository.
     """
     return FileRecordsRepository(engine=mock_engine)
 
 
-def test_save_file_record(file_records_repository):
+def test_save_file_record(file_records_repository: FileRecordsRepository) -> None:
     # Arrange
     mock_conn = MagicMock()
     file_records_repository.engine.connect.return_value.__enter__.return_value = mock_conn

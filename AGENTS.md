@@ -199,6 +199,7 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
     ```
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
+- **Exception Handling:** Service layer methods (`source/services/`) must catch generic exceptions and re-raise them as specific, custom exceptions from the `source/exceptions/` package (e.g., `AnalysisError`). The presentation layers (`cli`, `worker`) are responsible for catching these specific exceptions and handling user-facing feedback (e.g., logging, raising `click.Abort()`).
 
 ## 6. Database Migrations
 
@@ -295,3 +296,27 @@ This rule is critical for tests. The path provided to a patch decorator must exa
 -   **Test Patch:** `@patch("cli.commands.DatabaseManager")`
 
 Using an incorrect path (e.g., with a `source.` prefix) will cause mocks to fail silently and tests to hit real resources.
+
+## 9. Exception Handling and Linter Configuration
+
+This project follows a specific philosophy for handling exceptions to ensure robustness and clarity, which also impacts our linter configuration.
+
+### A. Exception Handling Philosophy
+
+1.  **Custom Service Exceptions:** The Service layer (`source/services/`) is the core of the business logic. When a method in a service encounters an error (e.g., a database error, an API failure, or unexpected data), it **must** catch the generic exception and re-raise it as a specific, custom exception from the `source/exceptions/` package (e.g., `AnalysisError`). This encapsulates the implementation detail of the error and provides a clear, domain-specific error to the calling layer.
+
+2.  **Presentation Layer Handles Custom Exceptions:** The presentation layers (e.g., the `cli` or the `worker`) are responsible for calling the services. They should **never** handle generic `Exception` types. Instead, they must catch the specific custom exceptions raised by the service (e.g., `except AnalysisError as e:`).
+
+3.  **User-Facing Feedback:** After catching a custom exception, the presentation layer is responsible for providing appropriate user feedback. For the CLI, this means printing a user-friendly error message and exiting with a non-zero status code, typically by raising `click.Abort()`. For the worker, this means logging the error and NACK-ing the Pub/Sub message so it can be retried or sent to a dead-letter queue.
+
+This pattern creates a clean separation of concerns: the service layer signals *what* went wrong in business terms, and the presentation layer decides *how* to report that failure to the user or the infrastructure.
+
+### B. Darglint Configuration (`DAR401`/`DAR402`)
+
+The docstring linter `darglint` has a known issue where it cannot correctly parse the common pattern used in `click` applications: catching a custom exception and then raising `click.Abort()`. This leads to a conflicting pair of errors: `DAR401` (Missing exception) and `DAR402` (Excess exception).
+
+After extensive testing, it was confirmed that this is a limitation of the linter when faced with this specific, idiomatic code pattern. Refactoring the code to satisfy the linter would result in a less clear, non-standard implementation.
+
+Therefore, the project has made the pragmatic decision to **globally disable these two specific darglint rules** in the `.flake8` configuration file.
+
+**Trade-off:** By disabling these rules, we lose the automated check that ensures `Raises` sections in docstrings are perfectly synchronized with the code. This means all developers and agents **must be extra diligent** to manually update the `Raises` section of a function's docstring whenever they add or remove a `raise` statement.

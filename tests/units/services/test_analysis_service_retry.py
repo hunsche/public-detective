@@ -9,7 +9,7 @@ from services.analysis import AnalysisService
 
 
 class TestRetryAnalyses(unittest.TestCase):
-    def setUp(self):
+    def setUp(self) -> None:
         self.mock_procurement_repo = MagicMock()
         self.mock_analysis_repo = MagicMock(spec=AnalysisRepository)
         self.mock_file_record_repo = MagicMock()
@@ -30,13 +30,13 @@ class TestRetryAnalyses(unittest.TestCase):
             pubsub_provider=self.mock_pubsub_provider,
         )
 
-    def test_retry_analyses_no_analyses_found(self):
+    def test_retry_analyses_no_analyses_found(self) -> None:
         self.mock_analysis_repo.get_analyses_to_retry.return_value = []
         result = self.analysis_service.retry_analyses(6, 3, 1)
         self.assertEqual(result, 0)
         self.mock_analysis_repo.get_analyses_to_retry.assert_called_once_with(3, 1)
 
-    def test_retry_analyses_triggers_eligible_analysis(self):
+    def test_retry_analyses_triggers_eligible_analysis(self) -> None:
         analysis_id = uuid4()
         now = datetime.now(timezone.utc)
         mock_ai_analysis = Analysis(
@@ -76,7 +76,7 @@ class TestRetryAnalyses(unittest.TestCase):
             )
             mock_run_specific.assert_called_once()
 
-    def test_retry_analyses_skips_ineligible_analysis_due_to_backoff(self):
+    def test_retry_analyses_skips_ineligible_analysis_due_to_backoff(self) -> None:
         analysis_id = uuid4()
         now = datetime.now(timezone.utc)
         mock_ai_analysis = Analysis(

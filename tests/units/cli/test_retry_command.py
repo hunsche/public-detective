@@ -17,16 +17,16 @@ class TestRetryCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_retry_command_success(
         self,
-        mock_analysis_service,
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,
-    ):
+        mock_analysis_service: MagicMock,
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,
+    ) -> None:
         runner = CliRunner()
         initial_backoff_hours = 6
         max_retries = 3
@@ -66,16 +66,16 @@ class TestRetryCommand(unittest.TestCase):
     @patch("cli.commands.AnalysisService")
     def test_retry_command_no_analyses(
         self,
-        mock_analysis_service,
-        mock_status_history_repo,  # noqa: F841
-        mock_procurement_repo,  # noqa: F841
-        mock_file_record_repo,  # noqa: F841
-        mock_analysis_repo,  # noqa: F841
-        mock_ai_provider,  # noqa: F841
-        mock_gcs_provider,  # noqa: F841
-        mock_pubsub_provider,  # noqa: F841
-        mock_db_manager,  # noqa: F841
-    ):
+        mock_analysis_service: MagicMock,
+        mock_status_history_repo: MagicMock,  # noqa: F841
+        mock_procurement_repo: MagicMock,  # noqa: F841
+        mock_file_record_repo: MagicMock,  # noqa: F841
+        mock_analysis_repo: MagicMock,  # noqa: F841
+        mock_ai_provider: MagicMock,  # noqa: F841
+        mock_gcs_provider: MagicMock,  # noqa: F841
+        mock_pubsub_provider: MagicMock,  # noqa: F841
+        mock_db_manager: MagicMock,  # noqa: F841
+    ) -> None:
         runner = CliRunner()
         initial_backoff_hours = 6
         max_retries = 3

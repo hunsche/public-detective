@@ -12,8 +12,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Config(BaseSettings):
-    """
-    Pydantic model that defines and validates all application settings.
+    """Pydantic model that defines and validates all application settings.
 
     It automatically reads from environment variables or a .env file,
     providing type validation and default values.
@@ -55,9 +54,12 @@ class Config(BaseSettings):
 
     @model_validator(mode="after")
     def set_derived_pubsub_names(self) -> "Config":
-        """
-        Dynamically sets the DLQ topic and subscription names
-        after the initial values have been loaded.
+        """Dynamically sets the DLQ topic and subscription names.
+
+        This is done after the initial values have been loaded.
+
+        Returns:
+            The modified Config object.
         """
         if self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS is None:
             self.GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS = f"{self.GCP_PUBSUB_TOPIC_PROCUREMENTS}-dlq"
@@ -69,20 +71,20 @@ class Config(BaseSettings):
 
 
 class ConfigProvider:
-    """
-    A provider class that acts as a factory for the application's configuration.
+    """A provider class that acts as a factory for the application's configuration.
+
     It does not hold state but provides a method to create fresh config instances.
     """
 
     @staticmethod
     def get_config() -> Config:
-        """
-        Factory method that instantiates and returns a new Config object.
+        """Factory method that instantiates and returns a new Config object.
 
         Calling this function will always create a new instance of the Config model,
         which forces Pydantic to reload and re-validate all settings from the
         current environment variables. This ensures the configuration is always fresh.
 
-        :return: A new, validated Config object.
+        Returns:
+            A new, validated Config object.
         """
         return Config()

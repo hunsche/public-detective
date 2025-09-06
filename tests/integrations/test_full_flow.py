@@ -3,9 +3,11 @@ import json
 import os
 import threading
 import uuid
+from collections.abc import Generator
 from contextlib import redirect_stdout
 from datetime import date
-from unittest.mock import patch
+from typing import Any
+from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
@@ -28,11 +30,12 @@ from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 from worker.subscription import Subscription
 
 
 @pytest.fixture(scope="function")
-def integration_test_setup(db_session):  # noqa: F841
+def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  # noqa: F841
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
@@ -80,18 +83,18 @@ def integration_test_setup(db_session):  # noqa: F841
             connection.commit()
 
 
-def load_fixture(path):
+def load_fixture(path: str) -> Any:
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_binary_fixture(path):
+def load_binary_fixture(path: str) -> bytes:
     with open(path, "rb") as f:
         return f.read()
 
 
 @pytest.mark.timeout(180)
-def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F841
+def test_full_flow_integration(integration_test_setup: None, db_session: Engine) -> None:  # noqa: F841
     # ... setup fixtures ...
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
@@ -155,7 +158,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
             subscription = Subscription(analysis_service=analysis_service)
             subscription.config.IS_DEBUG_MODE = False
 
-            def worker_target():
+            def worker_target() -> None:
                 with redirect_stdout(log_capture_stream):
                     subscription.run(max_messages=1)
 
@@ -188,7 +191,7 @@ def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F84
 
 
 @pytest.mark.timeout(180)
-def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # noqa: F841
+def test_pre_analysis_flow_integration(integration_test_setup: None, db_session: Engine) -> None:  # noqa: F841
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
@@ -196,21 +199,21 @@ def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # n
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
 
-    def mock_requests_get(url, **kwargs):  # noqa: F841
-        mock_response = requests.Response()
+    def mock_requests_get(url: str, **kwargs: Any) -> requests.Response:  # noqa: F841
+        mock_response = MagicMock(spec=requests.Response)
         mock_response.status_code = 200
         if "contratacoes/atualizacao" in url:
-            mock_response.json = lambda: {
+            mock_response.json.return_value = {
                 "data": procurement_list_fixture,
                 "totalPaginas": 1,
                 "totalRegistros": len(procurement_list_fixture),
                 "numeroPagina": 1,
             }
         elif url.endswith("/arquivos"):
-            mock_response.json = lambda: document_list_fixture
+            mock_response.json.return_value = document_list_fixture
         elif "/arquivos/" in url:
-            mock_response._content = attachments_fixture
-            mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
+            mock_response.content = attachments_fixture
+            mock_response.headers = {"Content-Disposition": 'attachment; filename="Anexos.zip"'}
         else:
             mock_response.status_code = 404
         return mock_response

@@ -7,16 +7,17 @@ from click.testing import CliRunner
 from faker import Faker
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
+from sqlalchemy.engine import Engine
 
 faker = Faker()
 
 
 def setup_analysis(
-    db_engine,
-    status,
-    retry_count=0,
-    updated_at=None,
-):
+    db_engine: Engine,
+    status: ProcurementAnalysisStatus,
+    retry_count: int = 0,
+    updated_at: datetime | None = None,
+) -> tuple[uuid.UUID, str]:
     if updated_at is None:
         updated_at = datetime.now(timezone.utc)
 
@@ -87,8 +88,12 @@ def setup_analysis(
     return analysis_id, procurement_id
 
 
-def test_retry_command_failed_analysis(db_session):
-    """Test that a FAILED analysis is retried."""
+def test_retry_command_failed_analysis(db_session: Engine) -> None:
+    """Test that a FAILED analysis is retried.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+    """
     db_engine = db_session
     old_time = datetime.now(timezone.utc) - timedelta(hours=7)
     analysis_id, procurement_id = setup_analysis(
@@ -125,8 +130,12 @@ def test_retry_command_failed_analysis(db_session):
     assert new_analysis_result[1] == "ANALYSIS_IN_PROGRESS"
 
 
-def test_retry_command_stale_in_progress(db_session):
-    """Test that a stale IN_PROGRESS analysis is retried."""
+def test_retry_command_stale_in_progress(db_session: Engine) -> None:
+    """Test that a stale IN_PROGRESS analysis is retried.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+    """
     db_engine = db_session
     stale_time = datetime.now(timezone.utc) - timedelta(hours=7)
     analysis_id, procurement_id = setup_analysis(
@@ -165,8 +174,12 @@ def test_retry_command_stale_in_progress(db_session):
     assert new_analysis_result[1] == "ANALYSIS_IN_PROGRESS"
 
 
-def test_retry_command_max_retries_exceeded(db_session):
-    """Test that an analysis with max retries is not retried."""
+def test_retry_command_max_retries_exceeded(db_session: Engine) -> None:
+    """Test that an analysis with max retries is not retried.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+    """
     db_engine = db_session
     setup_analysis(
         db_engine,
@@ -187,8 +200,12 @@ def test_retry_command_max_retries_exceeded(db_session):
     mock_pubsub.publish.assert_not_called()
 
 
-def test_retry_command_not_stale_in_progress(db_session):
-    """Test that a recent IN_PROGRESS analysis is not retried."""
+def test_retry_command_not_stale_in_progress(db_session: Engine) -> None:
+    """Test that a recent IN_PROGRESS analysis is not retried.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+    """
     db_engine = db_session
     setup_analysis(
         db_engine,

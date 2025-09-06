@@ -20,8 +20,7 @@ from providers.logging import Logger, LoggingProvider
 
 
 class PubSubProvider:
-    """
-    Provides methods to interact with Google Cloud Pub/Sub.
+    """Provides methods to interact with Google Cloud Pub/Sub.
 
     This provider centralizes client management, abstracting away the
     instantiation and caching of both Publisher and Subscriber clients in a
@@ -35,6 +34,12 @@ class PubSubProvider:
     config: Config
 
     def __init__(self) -> None:
+        """Initializes the PubSubProvider.
+
+        This constructor sets up the logger, loads the application
+        configuration, and initializes a thread-safe lock and a dictionary
+        to cache client instances.
+        """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self._clients = {}
@@ -44,9 +49,9 @@ class PubSubProvider:
         self,
         client_class: type[pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient],
     ) -> pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient:
-        """
-        Internal helper to create a new GCP client instance, handling emulator setup.
+        """Internal helper to create a new GCP client instance.
 
+        This method handles emulator setup.
         This method centralizes the logic for instantiating a Pub/Sub client
         and configuring it for either the emulator or the actual Google Cloud
         environment.
@@ -73,8 +78,7 @@ class PubSubProvider:
         return client
 
     def _get_or_create_publisher_client(self) -> pubsub_v1.PublisherClient:
-        """
-        Retrieves a singleton instance of the Pub/Sub PublisherClient.
+        """Retrieves a singleton instance of the Pub/Sub PublisherClient.
 
         If a PublisherClient instance does not exist in the cache, it creates
         a new one in a thread-safe manner, caches it, and then returns it.
@@ -92,8 +96,7 @@ class PubSubProvider:
         return cast(pubsub_v1.PublisherClient, self._clients[client_key])
 
     def _get_or_create_subscriber_client(self) -> pubsub_v1.SubscriberClient:
-        """
-        Retrieves a singleton instance of the Pub/Sub SubscriberClient.
+        """Retrieves a singleton instance of the Pub/Sub SubscriberClient.
 
         If a SubscriberClient instance does not exist in the cache, it creates
         a new one in a thread-safe manner, caches it, and then returns it.
@@ -111,8 +114,7 @@ class PubSubProvider:
         return cast(pubsub_v1.SubscriberClient, self._clients[client_key])
 
     def publish(self, topic_id: str, data: bytes, timeout_seconds: int = 15) -> str:
-        """
-        Publishes a message to a specific Pub/Sub topic.
+        """Publishes a message to a specific Pub/Sub topic.
 
         This method retrieves a cached PublisherClient, constructs the topic path,
         publishes the message, and waits for a confirmation within a specified
@@ -129,7 +131,6 @@ class PubSubProvider:
 
         Raises:
             TimeoutError: If publishing times out.
-            Exception: For any other errors during the publish operation.
         """
         try:
             client = self._get_or_create_publisher_client()
@@ -149,8 +150,7 @@ class PubSubProvider:
             raise
 
     def subscribe(self, subscription_id: str, callback: Callable[[Message], None]) -> StreamingPullFuture:
-        """
-        Starts listening to a Pub/Sub subscription and executes a callback for each message.
+        """Starts listening to a Pub/Sub subscription and executes a callback for each message.
 
         This method retrieves a cached SubscriberClient and initiates a
         streaming pull request to the specified subscription. The provided

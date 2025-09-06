@@ -1,3 +1,5 @@
+"""This module defines the core service for handling procurement analyses."""
+
 import hashlib
 import json
 import os
@@ -8,6 +10,7 @@ from typing import Any
 from uuid import UUID
 
 from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
+from exceptions.analysis import AnalysisError
 from models.analyses import Analysis, AnalysisResult
 from models.file_records import NewFileRecord
 from models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -72,7 +75,18 @@ class AnalysisService:
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
     ) -> None:
-        """Initializes the service with its dependencies."""
+        """Initializes the service with its dependencies.
+
+        Args:
+            procurement_repo: The repository for procurement data.
+            analysis_repo: The repository for analysis data.
+            file_record_repo: The repository for file record data.
+            status_history_repo: The repository for status history data.
+            budget_ledger_repo: The repository for budget ledger data.
+            ai_provider: The provider for AI services.
+            gcs_provider: The provider for Google Cloud Storage services.
+            pubsub_provider: The provider for Pub/Sub services.
+        """
         self.procurement_repo = procurement_repo
         self.analysis_repo = analysis_repo
         self.file_record_repo = file_record_repo
@@ -90,11 +104,17 @@ class AnalysisService:
         status: ProcurementAnalysisStatus,
         details: str | None = None,
     ) -> None:
-        """Updates the analysis status and records the change in the history table."""
+        """Updates the analysis status and records the change in the history table.
+
+        Args:
+            analysis_id: The ID of the analysis to update.
+            status: The new status to set for the analysis.
+            details: Optional details about the status change.
+        """
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
 
-    def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None):
+    def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None) -> None:
         """Processes a single analysis request received from a message queue.
 
         This method is typically called by a worker that is consuming messages
@@ -104,30 +124,36 @@ class AnalysisService:
         Args:
             analysis_id: The unique ID of the analysis to be processed.
             max_output_tokens: An optional token limit for the AI analysis.
+
+        Raises:
+            AnalysisError: If the analysis pipeline fails.
         """
-        analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
-        if not analysis:
-            self.logger.error(f"Analysis with ID {analysis_id} not found.")
-            return
-
-        procurement = self.procurement_repo.get_procurement_by_id_and_version(
-            analysis.procurement_control_number, analysis.version_number
-        )
-        if not procurement:
-            self.logger.error(
-                f"Procurement {analysis.procurement_control_number} version {analysis.version_number} not found."
-            )
-            return
-
         try:
-            self.analyze_procurement(procurement, analysis.version_number, analysis_id, max_output_tokens)
-            self._update_status_with_history(
-                analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
+            analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis:
+                self.logger.error(f"Analysis with ID {analysis_id} not found.")
+                return
+
+            procurement = self.procurement_repo.get_procurement_by_id_and_version(
+                analysis.procurement_control_number, analysis.version_number
             )
+            if not procurement:
+                self.logger.error(
+                    f"Procurement {analysis.procurement_control_number} version {analysis.version_number} not found."
+                )
+                return
+
+            try:
+                self.analyze_procurement(procurement, analysis.version_number, analysis_id, max_output_tokens)
+                self._update_status_with_history(
+                    analysis_id, ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL, "Analysis completed successfully."
+                )
+            except Exception as e:
+                self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
+                self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
+                raise
         except Exception as e:
-            self.logger.error(f"Analysis pipeline failed for analysis {analysis_id}: {e}", exc_info=True)
-            self._update_status_with_history(analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, str(e))
-            raise
+            raise AnalysisError(f"Failed to process analysis from message: {e}") from e
 
     def analyze_procurement(
         self,
@@ -150,6 +176,12 @@ class AnalysisService:
 
         Args:
             procurement: The procurement object to be analyzed.
+            version_number: The version of the procurement being analyzed.
+            analysis_id: The unique ID of the analysis to be processed.
+            max_output_tokens: An optional token limit for the AI analysis.
+
+        Raises:
+            Exception: If the analysis pipeline fails.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
@@ -252,14 +284,29 @@ class AnalysisService:
             raise
 
     def _calculate_hash(self, files: list[tuple[str, bytes]]) -> str:
-        """Calculates a SHA-256 hash from the content of a list of files."""
+        """Calculates a SHA-256 hash from the content of a list of files.
+
+        Args:
+            files: A list of tuples, where each tuple contains the file path and its content.
+
+        Returns:
+            The calculated SHA-256 hash.
+        """
         hasher = hashlib.sha256()
         for _, content in sorted(files, key=lambda x: x[0]):
             hasher.update(content)
         return hasher.hexdigest()
 
     def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
-        """Uploads the analysis report to GCS and returns the full path."""
+        """Uploads the analysis report to GCS and returns the full path.
+
+        Args:
+            gcs_base_path: The base GCS path for this analysis run.
+            analysis_result: The analysis result to be uploaded.
+
+        Returns:
+            The full GCS path of the uploaded analysis report.
+        """
         analysis_report_content = json.dumps(analysis_result.model_dump(), indent=2).encode("utf-8")
         analysis_report_blob_name = f"{gcs_base_path}/analysis_report.json"
         self.gcs_provider.upload_file(
@@ -278,9 +325,9 @@ class AnalysisService:
         included_files: list[tuple[str, bytes]],
         excluded_files: dict[str, str],
     ) -> None:
-        """Uploads every original file to GCS and saves its metadata record
-        to the database.
+        """Uploads every original file to GCS and saves its metadata record.
 
+        This method saves the metadata record to the database.
         For each file, it determines if it was included in the AI analysis and
         records the reason for any exclusion.
 
@@ -401,7 +448,14 @@ class AnalysisService:
         return final_files, excluded_files, warnings
 
     def _get_priority(self, file_path: str) -> int:
-        """Determines the priority of a file based on keywords in its name."""
+        """Determines the priority of a file based on keywords in its name.
+
+        Args:
+            file_path: The path of the file to be prioritized.
+
+        Returns:
+            The priority of the file, where a lower number indicates a higher priority.
+        """
         path_lower = file_path.lower()
         for i, keyword in enumerate(self._FILE_PRIORITY_ORDER):
             if keyword in path_lower:
@@ -409,7 +463,14 @@ class AnalysisService:
         return len(self._FILE_PRIORITY_ORDER)
 
     def _get_priority_as_string(self, file_path: str) -> str:
-        """Returns the priority keyword found in the file path."""
+        """Returns the priority keyword found in the file path.
+
+        Args:
+            file_path: The path of the file to be analyzed.
+
+        Returns:
+            The priority keyword found in the file path, or a default message if no keyword is found.
+        """
         path_lower = file_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in path_lower:
@@ -419,7 +480,15 @@ class AnalysisService:
         return no_priority_message
 
     def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
-        """Constructs the prompt for the AI, including contextual warnings."""
+        """Constructs the prompt for the AI, including contextual warnings.
+
+        Args:
+            procurement: The procurement object to be analyzed.
+            warnings: A list of warnings to be included in the prompt.
+
+        Returns:
+            The constructed prompt for the AI.
+        """
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
         warnings_section = ""
         if warnings:
@@ -481,7 +550,7 @@ class AnalysisService:
         encontrabilidade desta análise.
         """
 
-    def run_specific_analysis(self, analysis_id: UUID):
+    def run_specific_analysis(self, analysis_id: UUID) -> None:
         """Triggers an analysis for a specific ID by publishing a message.
 
         This method is intended to be called by a user-facing interface (like
@@ -493,36 +562,40 @@ class AnalysisService:
             analysis_id: The ID of the analysis to be triggered.
 
         Raises:
+            AnalysisError: If an unexpected error occurs during the process.
             ValueError: If the Pub/Sub provider has not been configured.
         """
-        self.logger.info(f"Running specific analysis for analysis_id: {analysis_id}")
-        analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
-        if not analysis:
-            self.logger.error(f"Analysis with ID {analysis_id} not found.")
-            return
+        try:
+            self.logger.info(f"Running specific analysis for analysis_id: {analysis_id}")
+            analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis:
+                self.logger.error(f"Analysis with ID {analysis_id} not found.")
+                return
 
-        if analysis.status != ProcurementAnalysisStatus.PENDING_ANALYSIS.value:
-            self.logger.warning(
-                f"Analysis {analysis_id} is not in PENDING_ANALYSIS state (current: {analysis.status}). Skipping."
+            if analysis.status != ProcurementAnalysisStatus.PENDING_ANALYSIS.value:
+                self.logger.warning(
+                    f"Analysis {analysis_id} is not in PENDING_ANALYSIS state (current: {analysis.status}). Skipping."
+                )
+                return
+
+            self._update_status_with_history(
+                analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS, "Worker picked up the task."
             )
-            return
 
-        self._update_status_with_history(
-            analysis_id, ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS, "Worker picked up the task."
-        )
+            if not self.pubsub_provider:
+                raise ValueError("PubSubProvider is not configured for AnalysisService")
 
-        if not self.pubsub_provider:
-            raise ValueError("PubSubProvider is not configured for AnalysisService")
-
-        message_data = {
-            "procurement_control_number": analysis.procurement_control_number,
-            "version_number": analysis.version_number,
-            "analysis_id": str(analysis_id),
-        }
-        message_json = json.dumps(message_data)
-        message_bytes = message_json.encode()
-        self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
-        self.logger.info(f"Published analysis request for analysis_id {analysis_id} to Pub/Sub.")
+            message_data = {
+                "procurement_control_number": analysis.procurement_control_number,
+                "version_number": analysis.version_number,
+                "analysis_id": str(analysis_id),
+            }
+            message_json = json.dumps(message_data)
+            message_bytes = message_json.encode()
+            self.pubsub_provider.publish(self.config.GCP_PUBSUB_TOPIC_PROCUREMENTS, message_bytes)
+            self.logger.info(f"Published analysis request for analysis_id {analysis_id} to Pub/Sub.")
+        except Exception as e:
+            raise AnalysisError(f"An unexpected error occurred during specific analysis: {e}") from e
 
     def run_pre_analysis(
         self,
@@ -531,7 +604,7 @@ class AnalysisService:
         batch_size: int,
         sleep_seconds: int,
         max_messages: int | None = None,
-    ):
+    ) -> None:
         """Runs the pre-analysis job for a given date range.
 
         This method scans for new procurements within the specified date
@@ -546,48 +619,54 @@ class AnalysisService:
                 rate limiting.
             max_messages: An optional limit on the number of pre-analysis
                 tasks to create.
+
+        Raises:
+            AnalysisError: If an unexpected error occurs during the pre-analysis process.
         """
-        self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
-        current_date = start_date
-        messages_published_count = 0  # Initialize counter
-        while current_date <= end_date:
-            self.logger.info(f"Processing date: {current_date}")
-            procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
-                target_date=current_date
-            )
+        try:
+            self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
+            current_date = start_date
+            messages_published_count = 0  # Initialize counter
+            while current_date <= end_date:
+                self.logger.info(f"Processing date: {current_date}")
+                procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
+                    target_date=current_date
+                )
 
-            if not procurements_with_raw:
-                self.logger.info(f"No procurements were updated on {current_date}. Moving to next day.")
+                if not procurements_with_raw:
+                    self.logger.info(f"No procurements were updated on {current_date}. Moving to next day.")
+                    current_date += timedelta(days=1)
+                    continue
+
+                batch_count = 0
+                for i in range(0, len(procurements_with_raw), batch_size):
+                    batch = procurements_with_raw[i : i + batch_size]
+                    batch_count += 1
+                    self.logger.info(f"Processing batch {batch_count} with {len(batch)} procurements.")
+
+                    for procurement, raw_data in batch:
+                        try:
+                            self._pre_analyze_procurement(procurement, raw_data)
+                            messages_published_count += 1  # Increment count on successful pre-analysis
+                            if max_messages is not None and messages_published_count >= max_messages:
+                                self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
+                                return  # Exit the function
+                        except Exception as e:
+                            self.logger.error(
+                                f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
+                                exc_info=True,
+                            )
+
+                    if i + batch_size < len(procurements_with_raw):
+                        self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
+                        time.sleep(sleep_seconds)
+
                 current_date += timedelta(days=1)
-                continue
+            self.logger.info("Pre-analysis job for the entire date range has been completed.")
+        except Exception as e:
+            raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e
 
-            batch_count = 0
-            for i in range(0, len(procurements_with_raw), batch_size):
-                batch = procurements_with_raw[i : i + batch_size]
-                batch_count += 1
-                self.logger.info(f"Processing batch {batch_count} with {len(batch)} procurements.")
-
-                for procurement, raw_data in batch:
-                    try:
-                        self._pre_analyze_procurement(procurement, raw_data)
-                        messages_published_count += 1  # Increment count on successful pre-analysis
-                        if max_messages is not None and messages_published_count >= max_messages:
-                            self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
-                            return  # Exit the function
-                    except Exception as e:
-                        self.logger.error(
-                            f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
-                            exc_info=True,
-                        )
-
-                if i + batch_size < len(procurements_with_raw):
-                    self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
-                    time.sleep(sleep_seconds)
-
-            current_date += timedelta(days=1)
-        self.logger.info("Pre-analysis job for the entire date range has been completed.")
-
-    def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict):
+    def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict) -> None:
         """Performs the pre-analysis for a single procurement.
 
         This involves:
@@ -711,45 +790,81 @@ class AnalysisService:
         return triggered_count
 
     def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
-        """Calculates the estimated cost of an analysis based on token counts."""
+        """Calculates the estimated cost of an analysis based on token counts.
+
+        Args:
+            input_tokens: The number of input tokens used.
+            output_tokens: The number of output tokens used.
+
+        Returns:
+            The estimated cost of the analysis.
+        """
         input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
         output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
         return input_cost + output_cost
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
-        analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
-        retried_count = 0
+        """Retries failed or stale analyses.
 
-        for analysis in analyses_to_retry:
-            now = datetime.now(timezone.utc)
-            last_updated = analysis.updated_at.replace(tzinfo=timezone.utc)
-            backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
-            next_retry_time = last_updated + timedelta(hours=backoff_hours)
-
-            if now >= next_retry_time:
-                self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
-                new_analysis_id = self.analysis_repo.save_retry_analysis(
-                    procurement_control_number=analysis.procurement_control_number,
-                    version_number=analysis.version_number,
-                    document_hash=analysis.document_hash,
-                    input_tokens_used=analysis.input_tokens_used,
-                    output_tokens_used=analysis.output_tokens_used,
-                    retry_count=analysis.retry_count + 1,
-                )
-                self.run_specific_analysis(new_analysis_id)
-                retried_count += 1
-
-        return retried_count
-
-    def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
-        """
-        Retrieves the overall status of a procurement.
+        This method identifies analyses that have failed or have been in
+        progress for too long, and triggers a new analysis for them,
+        respecting an exponential backoff strategy.
 
         Args:
-            procurement_control_number: The unique control number of the procurement.
+            initial_backoff_hours: The base duration to wait before the first
+                retry.
+            max_retries: The maximum number of times an analysis will be
+                retried.
+            timeout_hours: The number of hours after which an 'IN_PROGRESS'
+                task is considered stale.
 
         Returns:
-            A dictionary with the overall status information or None if not found.
+            The number of analyses that were successfully triggered for retry.
+
+        Raises:
+            AnalysisError: If an unexpected error occurs during the process.
+        """
+        try:
+            analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
+            retried_count = 0
+
+            for analysis in analyses_to_retry:
+                now = datetime.now(timezone.utc)
+                last_updated = analysis.updated_at.replace(tzinfo=timezone.utc)
+                backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
+                next_retry_time = last_updated + timedelta(hours=backoff_hours)
+
+                if now >= next_retry_time:
+                    self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                    new_analysis_id = self.analysis_repo.save_retry_analysis(
+                        procurement_control_number=analysis.procurement_control_number,
+                        version_number=analysis.version_number,
+                        document_hash=analysis.document_hash,
+                        input_tokens_used=analysis.input_tokens_used,
+                        output_tokens_used=analysis.output_tokens_used,
+                        retry_count=analysis.retry_count + 1,
+                    )
+                    self.run_specific_analysis(new_analysis_id)
+                    retried_count += 1
+
+            return retried_count
+        except Exception as e:
+            raise AnalysisError(f"An unexpected error occurred during retry analyses: {e}") from e
+
+    def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
+        """Retrieves the overall status of a procurement.
+
+        This method queries the database to get a consolidated view of the
+        latest analysis status for a given procurement, including its risk
+        score and the date of the last update.
+
+        Args:
+            procurement_control_number: The unique control number of the
+                procurement.
+
+        Returns:
+            A dictionary containing the overall status information, or None if
+            no analysis is found for the given procurement.
         """
         self.logger.info(f"Fetching overall status for procurement {procurement_control_number}.")
         status_info = self.analysis_repo.get_procurement_overall_status(procurement_control_number)

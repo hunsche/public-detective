@@ -10,8 +10,10 @@ debugging.
 import json
 import threading
 import uuid
+from collections.abc import Generator
 from contextlib import contextmanager
 
+from exceptions.analysis import AnalysisError
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.analyses import Analysis
@@ -31,9 +33,9 @@ from services.analysis import AnalysisService
 
 
 class Subscription:
-    """Encapsulates a Google Cloud Pub/Sub worker that consumes, validates,
-    and processes procurement messages.
+    """Encapsulates a Google Cloud Pub/Sub worker.
 
+    This worker consumes, validates, and processes procurement messages.
     Its primary role is to act as the entry point for asynchronous processing,
     delegating the core business logic to the AnalysisService and ensuring
     robust message lifecycle management.
@@ -54,6 +56,10 @@ class Subscription:
 
         This constructor acts as the Composition Root for the worker application.
         It instantiates and wires together all the necessary dependencies.
+
+        Args:
+            analysis_service: An optional instance of the AnalysisService.
+                If not provided, it will be created internally.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -89,7 +95,7 @@ class Subscription:
         self._lock = threading.Lock()
 
     @contextmanager
-    def _debug_context(self, message: Message):
+    def _debug_context(self, message: Message) -> Generator[None, None, None]:
         """Serializes processing and extends ack deadline when in debug mode.
 
         Args:
@@ -103,7 +109,7 @@ class Subscription:
             self._extend_ack_deadline(message, 600)
             yield
 
-    def _extend_ack_deadline(self, message: Message, seconds: int):
+    def _extend_ack_deadline(self, message: Message, seconds: int) -> None:
         """Attempts to extend the message ack deadline for safer debugging.
 
         Args:
@@ -127,8 +133,13 @@ class Subscription:
         except EOFError:
             self.logger.debug("No TTY available; skipping pause.")
 
-    def _process_message(self, message: Message, max_output_tokens: int | None = None):
-        """Decodes, validates, analyzes the message, and manages ACK/NACK."""
+    def _process_message(self, message: Message, max_output_tokens: int | None = None) -> None:
+        """Decodes, validates, analyzes the message, and manages ACK/NACK.
+
+        Args:
+            message: The Pub/Sub message to process.
+            max_output_tokens: An optional token limit for the AI analysis.
+        """
         message_id = message.message_id
         try:
             data_str = message.data.decode()
@@ -163,14 +174,22 @@ class Subscription:
                 exc_info=True,
             )
             message.nack()
-        except Exception as e:
+        except AnalysisError as e:
             self.logger.error(
-                f"Unexpected error processing message {message_id}: {e}",
+                f"Analysis service error processing message {message_id}: {e}",
+                exc_info=True,
+            )
+            message.nack()
+        except Exception as e:
+            self.logger.critical(
+                f"Critical unexpected error processing message {message_id}: {e}",
                 exc_info=True,
             )
             message.nack()
 
-    def _message_callback(self, message: Message, max_messages: int | None, max_output_tokens: int | None = None):
+    def _message_callback(
+        self, message: Message, max_messages: int | None, max_output_tokens: int | None = None
+    ) -> None:
         """Entry-point callback invoked by Pub/Sub upon message delivery.
 
         Applies a debug-only context (single-flight + extended deadline) and
@@ -199,7 +218,7 @@ class Subscription:
         max_messages: int | None = None,
         timeout: int | None = None,
         max_output_tokens: int | None = None,
-    ):
+    ) -> None:
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
@@ -209,13 +228,19 @@ class Subscription:
         Args:
             max_messages: The maximum number of messages to process before stopping.
             timeout: The maximum time in seconds to wait for messages.
+            max_output_tokens: The token limit to apply to the analysis.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
             self.logger.critical("Subscription name not configured. Worker cannot start.")
             return
 
-        def callback(message: Message):
+        def callback(message: Message) -> None:
+            """Wrapper callback to pass extra arguments.
+
+            Args:
+                message: The Pub/Sub message received from the subscription.
+            """
             self._message_callback(message, max_messages)
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)

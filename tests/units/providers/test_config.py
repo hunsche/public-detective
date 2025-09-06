@@ -7,7 +7,7 @@ from unittest.mock import patch
 from providers.config import ConfigProvider
 
 
-def test_get_config_returns_config_instance():
+def test_get_config_returns_config_instance() -> None:
     """
     Tests that get_config returns an instance of Config.
     """

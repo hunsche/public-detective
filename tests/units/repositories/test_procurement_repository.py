@@ -14,7 +14,14 @@ from repositories.procurements import ProcurementsRepository
 
 
 def _get_mock_procurement_data(control_number: str) -> dict:
-    """Returns a dictionary with minimal valid data for a Procurement model."""
+    """Returns a dictionary with minimal valid data for a Procurement model.
+
+    Args:
+        control_number: The control number to use for the mock data.
+
+    Returns:
+        A dictionary with mock procurement data.
+    """
     return {
         "processo": "123",
         "objetoCompra": "Test Object",
@@ -44,28 +51,48 @@ def _get_mock_procurement_data(control_number: str) -> dict:
 
 
 @pytest.fixture
-def mock_engine():
-    """Fixture for a mocked database engine."""
+def mock_engine() -> MagicMock:
+    """Fixture for a mocked database engine.
+
+    Returns:
+        A MagicMock for the database engine.
+    """
     return MagicMock()
 
 
 @pytest.fixture
-def mock_pubsub_provider():
-    """Fixture for a mocked PubSubProvider."""
+def mock_pubsub_provider() -> MagicMock:
+    """Fixture for a mocked PubSubProvider.
+
+    Returns:
+        A MagicMock for the PubSubProvider.
+    """
     return MagicMock()
 
 
 @pytest.fixture
-def repo(mock_engine, mock_pubsub_provider):
-    """Provides a ProcurementsRepository instance with mocked dependencies."""
+def repo(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> ProcurementsRepository:
+    """Provides a ProcurementsRepository instance with mocked dependencies.
+
+    Args:
+        mock_engine: The mocked database engine.
+        mock_pubsub_provider: The mocked PubSubProvider.
+
+    Returns:
+        An instance of ProcurementsRepository.
+    """
     with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
         return ProcurementsRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
 
 
-def test_extract_from_zip(repo):
-    """Tests extracting files from a ZIP archive."""
+def test_extract_from_zip(repo: ProcurementsRepository) -> None:
+    """Tests extracting files from a ZIP archive.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         zf.writestr("file1.txt", "content1")
@@ -79,8 +106,12 @@ def test_extract_from_zip(repo):
     assert ("file2.txt", b"content2") in extracted_files
 
 
-def test_extract_from_7z(repo):
-    """Tests extracting files from a 7z archive."""
+def test_extract_from_7z(repo: ProcurementsRepository) -> None:
+    """Tests extracting files from a 7z archive.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     s_buffer = io.BytesIO()
     with py7zr.SevenZipFile(s_buffer, "w") as archive:
         archive.writestr("content1", "file1.txt")
@@ -94,8 +125,12 @@ def test_extract_from_7z(repo):
     assert ("file2.txt", b"content2") in extracted_files
 
 
-def test_extract_from_tar(repo):
-    """Tests extracting files from a TAR archive."""
+def test_extract_from_tar(repo: ProcurementsRepository) -> None:
+    """Tests extracting files from a TAR archive.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
         info1 = tarfile.TarInfo(name="file1.txt")
@@ -115,8 +150,13 @@ def test_extract_from_tar(repo):
 
 
 @patch("requests.get")
-def test_get_all_documents_metadata_success(mock_get, repo):
-    """Tests successful fetching and filtering of document metadata."""
+def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests successful fetching and filtering of document metadata.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = [
@@ -164,8 +204,13 @@ def test_get_all_documents_metadata_success(mock_get, repo):
 
 
 @patch("requests.get")
-def test_get_all_documents_metadata_request_error(mock_get, repo):
-    """Tests handling of request errors when fetching document metadata."""
+def test_get_all_documents_metadata_request_error(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of request errors when fetching document metadata.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_get.side_effect = requests.RequestException
     procurement = MagicMock(spec=Procurement)
     procurement.pncp_control_number = "123"
@@ -179,8 +224,13 @@ def test_get_all_documents_metadata_request_error(mock_get, repo):
 
 
 @patch("requests.get")
-def test_get_all_documents_metadata_empty_list(mock_get, repo):
-    """Tests handling of an empty list of documents from the API."""
+def test_get_all_documents_metadata_empty_list(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of an empty list of documents from the API.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = []
@@ -196,8 +246,13 @@ def test_get_all_documents_metadata_empty_list(mock_get, repo):
 
 
 @patch("requests.get")
-def test_download_file_content_success(mock_get, repo):
-    """Tests successful download of file content."""
+def test_download_file_content_success(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests successful download of file content.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.content = b"file content"
@@ -210,8 +265,13 @@ def test_download_file_content_success(mock_get, repo):
 
 
 @patch("requests.get")
-def test_download_file_content_error(mock_get, repo):
-    """Tests handling of request errors during file download."""
+def test_download_file_content_error(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of request errors during file download.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_get.side_effect = requests.RequestException
 
     content = repo._download_file_content("http://test.url/file.pdf")
@@ -220,8 +280,15 @@ def test_download_file_content_error(mock_get, repo):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data_request_error(mock_get, repo):
-    """Tests that a request exception is handled when fetching raw data."""
+def test_get_updated_procurements_with_raw_data_request_error(
+    mock_get: MagicMock, repo: ProcurementsRepository
+) -> None:
+    """Tests that a request exception is handled when fetching raw data.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_get.side_effect = requests.RequestException("API down")
     target_date = date(2025, 1, 1)
     repo.config.TARGET_IBGE_CODES = ["12345"]
@@ -233,8 +300,13 @@ def test_get_updated_procurements_with_raw_data_request_error(mock_get, repo):
 
 
 @patch("requests.head")
-def test_determine_original_filename_success(mock_head, repo):
-    """Tests successful determination of filename from Content-Disposition header."""
+def test_determine_original_filename_success(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests successful determination of filename from Content-Disposition header.
+
+    Args:
+        mock_head: Mock for requests.head.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.headers = {"Content-Disposition": 'attachment; filename="test_file.pdf"'}
     mock_head.return_value = mock_response
@@ -245,16 +317,26 @@ def test_determine_original_filename_success(mock_head, repo):
 
 
 @patch("requests.head")
-def test_determine_original_filename_error(mock_head, repo):
-    """Tests handling of request errors when determining filename."""
+def test_determine_original_filename_error(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of request errors when determining filename.
+
+    Args:
+        mock_head: Mock for requests.head.
+        repo: The ProcurementsRepository instance.
+    """
     mock_head.side_effect = requests.RequestException
     filename = repo._determine_original_filename("http://test")
     assert filename is None
 
 
 @patch("requests.head")
-def test_determine_original_filename_no_header(mock_head, repo):
-    """Tests handling of missing Content-Disposition header."""
+def test_determine_original_filename_no_header(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of missing Content-Disposition header.
+
+    Args:
+        mock_head: Mock for requests.head.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.headers = {}
     mock_head.return_value = mock_response
@@ -262,8 +344,12 @@ def test_determine_original_filename_no_header(mock_head, repo):
     assert filename is None
 
 
-def test_create_zip_from_files_success(repo):
-    """Tests successful creation of a ZIP archive from a list of files."""
+def test_create_zip_from_files_success(repo: ProcurementsRepository) -> None:
+    """Tests successful creation of a ZIP archive from a list of files.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     files = [("file1.txt", b"content1"), ("path/to/file2.txt", b"content2")]
 
     zip_bytes = repo.create_zip_from_files(files, "control-123")
@@ -277,14 +363,23 @@ def test_create_zip_from_files_success(repo):
         assert zf.read("path_to_file2.txt") == b"content2"
 
 
-def test_create_zip_from_files_empty_list(repo):
-    """Tests that no ZIP is created if the file list is empty."""
+def test_create_zip_from_files_empty_list(repo: ProcurementsRepository) -> None:
+    """Tests that no ZIP is created if the file list is empty.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     zip_bytes = repo.create_zip_from_files([], "control-123")
     assert zip_bytes is None
 
 
-def test_publish_procurement_to_pubsub_error(repo, mock_pubsub_provider):
-    """Tests handling of Google API errors when publishing to Pub/Sub."""
+def test_publish_procurement_to_pubsub_error(repo: ProcurementsRepository, mock_pubsub_provider: MagicMock) -> None:
+    """Tests handling of Google API errors when publishing to Pub/Sub.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_pubsub_provider: The mocked PubSubProvider.
+    """
     procurement = MagicMock(spec=Procurement)
     procurement.pncp_control_number = "123"
     procurement.model_dump_json.return_value = '{"key": "value"}'
@@ -295,8 +390,13 @@ def test_publish_procurement_to_pubsub_error(repo, mock_pubsub_provider):
     assert result is False
 
 
-def test_publish_procurement_to_pubsub_success(repo, mock_pubsub_provider):
-    """Tests successful publishing of a procurement to Pub/Sub."""
+def test_publish_procurement_to_pubsub_success(repo: ProcurementsRepository, mock_pubsub_provider: MagicMock) -> None:
+    """Tests successful publishing of a procurement to Pub/Sub.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_pubsub_provider: The mocked PubSubProvider.
+    """
     procurement = MagicMock(spec=Procurement)
     procurement.pncp_control_number = "123"
     procurement.model_dump_json.return_value = '{"key": "value"}'
@@ -308,16 +408,27 @@ def test_publish_procurement_to_pubsub_success(repo, mock_pubsub_provider):
     mock_pubsub_provider.publish.assert_called_once()
 
 
-def test_recursive_file_processing_non_archive(repo):
-    """Tests that non-archive files are added directly to the collection."""
-    file_collection = []
+def test_recursive_file_processing_non_archive(repo: ProcurementsRepository) -> None:
+    """Tests that non-archive files are added directly to the collection.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
+    file_collection: list = []
     repo._recursive_file_processing(b"simple content", "file.txt", 0, file_collection)
     assert file_collection == [("file.txt", b"simple content")]
 
 
 @patch("requests.get")
-def test_get_updated_procurements_pagination_and_error_handling(mock_get, repo):
-    """Tests pagination and error handling in get_updated_procurements."""
+def test_get_updated_procurements_pagination_and_error_handling(
+    mock_get: MagicMock, repo: ProcurementsRepository
+) -> None:
+    """Tests pagination and error handling in get_updated_procurements.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response_page1 = MagicMock()
     mock_response_page1.status_code = 200
     mock_response_page1.json.return_value = {
@@ -364,8 +475,13 @@ def test_get_updated_procurements_pagination_and_error_handling(mock_get, repo):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_no_city_codes(mock_get, repo):
-    """Tests that a nationwide search is performed if no city codes are configured."""
+def test_get_updated_procurements_no_city_codes(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests that a nationwide search is performed if no city codes are configured.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 204
     mock_get.return_value = mock_response
@@ -383,8 +499,13 @@ def test_get_updated_procurements_no_city_codes(mock_get, repo):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_request_error(mock_get, repo):
-    """Tests that a request exception is handled when fetching procurements."""
+def test_get_updated_procurements_request_error(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests that a request exception is handled when fetching procurements.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_get.side_effect = requests.RequestException("API down")
     target_date = date(2025, 1, 1)
     repo.config.TARGET_IBGE_CODES = ["12345"]
@@ -395,16 +516,24 @@ def test_get_updated_procurements_request_error(mock_get, repo):
     assert procurements == []
 
 
-def test_process_procurement_documents_no_docs(repo):
-    """Tests that an empty list is returned when no documents are found."""
+def test_process_procurement_documents_no_docs(repo: ProcurementsRepository) -> None:
+    """Tests that an empty list is returned when no documents are found.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     procurement = MagicMock(spec=Procurement)
     with patch.object(repo, "_get_all_documents_metadata", return_value=[]):
         result = repo.process_procurement_documents(procurement)
         assert result == []
 
 
-def test_process_procurement_documents_download_fails(repo):
-    """Tests that processing continues even if a document download fails."""
+def test_process_procurement_documents_download_fails(repo: ProcurementsRepository) -> None:
+    """Tests that processing continues even if a document download fails.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     procurement = MagicMock(spec=Procurement)
     mock_doc = MagicMock()
     mock_doc.url = "http://fail.com"
@@ -414,25 +543,38 @@ def test_process_procurement_documents_download_fails(repo):
             assert result == []
 
 
-def test_recursive_file_processing_corrupted_archive(repo):
-    """Tests that a corrupted archive is treated as a single file."""
-    file_collection = []
+def test_recursive_file_processing_corrupted_archive(repo: ProcurementsRepository) -> None:
+    """Tests that a corrupted archive is treated as a single file.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
+    file_collection: list = []
     corrupted_content = b"not a zip"
     with patch.object(repo, "_extract_from_zip", side_effect=zipfile.BadZipFile):
         repo._recursive_file_processing(corrupted_content, "archive.zip", 0, file_collection)
         assert file_collection == [("archive.zip", corrupted_content)]
 
 
-def test_create_zip_from_files_error(repo):
-    """Tests that None is returned if zip creation fails."""
+def test_create_zip_from_files_error(repo: ProcurementsRepository) -> None:
+    """Tests that None is returned if zip creation fails.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     with patch("zipfile.ZipFile.writestr", side_effect=Exception("zip error")):
         result = repo.create_zip_from_files([("file.txt", b"content")], "control-123")
         assert result is None
 
 
 @patch("requests.get")
-def test_get_all_docs_metadata_no_content(mock_get, repo):
-    """Tests handling of 204 No Content status."""
+def test_get_all_docs_metadata_no_content(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of 204 No Content status.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_get.return_value.status_code = 204
     procurement = MagicMock(spec=Procurement)
     procurement.government_entity = MagicMock()
@@ -445,8 +587,13 @@ def test_get_all_docs_metadata_no_content(mock_get, repo):
 
 
 @patch("requests.head")
-def test_determine_original_filename_no_match(mock_head, repo):
-    """Tests handling of Content-Disposition header with no filename match."""
+def test_determine_original_filename_no_match(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of Content-Disposition header with no filename match.
+
+    Args:
+        mock_head: Mock for requests.head.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.headers = {"Content-Disposition": "attachment"}
     mock_head.return_value = mock_response
@@ -454,8 +601,13 @@ def test_determine_original_filename_no_match(mock_head, repo):
     assert filename is None
 
 
-def test_get_latest_version(repo, mock_engine):
-    """Tests retrieving the latest version number for a procurement."""
+def test_get_latest_version(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """Tests retrieving the latest version number for a procurement.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
+    """
     conn_mock = mock_engine.connect().__enter__()
     conn_mock.execute.return_value.scalar_one_or_none.return_value = 5
 
@@ -465,8 +617,13 @@ def test_get_latest_version(repo, mock_engine):
     conn_mock.execute.assert_called_once()
 
 
-def test_get_latest_version_none_found(repo, mock_engine):
-    """Tests retrieving the latest version when none exists."""
+def test_get_latest_version_none_found(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """Tests retrieving the latest version when none exists.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
+    """
     conn_mock = mock_engine.connect().__enter__()
     conn_mock.execute.return_value.scalar_one_or_none.return_value = None
 
@@ -475,8 +632,13 @@ def test_get_latest_version_none_found(repo, mock_engine):
     assert version == 0
 
 
-def test_get_procurement_by_hash(repo, mock_engine):
-    """Tests checking for a procurement by its content hash."""
+def test_get_procurement_by_hash(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """Tests checking for a procurement by its content hash.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
+    """
     conn_mock = mock_engine.connect().__enter__()
     conn_mock.execute.return_value.scalar_one_or_none.return_value = 1
 
@@ -485,8 +647,13 @@ def test_get_procurement_by_hash(repo, mock_engine):
     assert exists is True
 
 
-def test_get_procurement_by_hash_not_found(repo, mock_engine):
-    """Tests checking for a procurement by hash when it does not exist."""
+def test_get_procurement_by_hash_not_found(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """Tests checking for a procurement by hash when it does not exist.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
+    """
     conn_mock = mock_engine.connect().__enter__()
     conn_mock.execute.return_value.scalar_one_or_none.return_value = None
 
@@ -495,8 +662,13 @@ def test_get_procurement_by_hash_not_found(repo, mock_engine):
     assert exists is False
 
 
-def test_save_procurement_version(repo, mock_engine):
-    """Tests saving a new version of a procurement."""
+def test_save_procurement_version(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """Tests saving a new version of a procurement.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
+    """
     procurement = Procurement.model_validate(_get_mock_procurement_data("PNCP-123"))
 
     repo.save_procurement_version(procurement, '{"key":"value"}', 2, "some-hash")
@@ -508,8 +680,13 @@ def test_save_procurement_version(repo, mock_engine):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data(mock_get, repo):
-    """Tests fetching updated procurements with raw data."""
+def test_get_updated_procurements_with_raw_data(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests fetching updated procurements with raw data.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     raw_procurement_data = _get_mock_procurement_data("1")
     mock_response = MagicMock()
     mock_response.status_code = 200
@@ -536,15 +713,23 @@ def test_get_updated_procurements_with_raw_data(mock_get, repo):
     assert procurements[0][1] == raw_procurement_data
 
 
-def test_extract_from_rar_error(repo):
-    """Tests that an empty list is returned if rar extraction fails."""
+def test_extract_from_rar_error(repo: ProcurementsRepository) -> None:
+    """Tests that an empty list is returned if rar extraction fails.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
         result = repo._extract_from_rar(b"not a rar")
         assert result == []
 
 
-def test_extract_from_rar_success(repo):
-    """Tests extracting files from a RAR archive."""
+def test_extract_from_rar_success(repo: ProcurementsRepository) -> None:
+    """Tests extracting files from a RAR archive.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     mock_rar_info1 = MagicMock()
     mock_rar_info1.filename = "file1.txt"
     mock_rar_info1.isdir.return_value = False
@@ -567,9 +752,15 @@ def test_extract_from_rar_success(repo):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data_no_city_codes(mock_get, repo):
+def test_get_updated_procurements_with_raw_data_no_city_codes(
+    mock_get: MagicMock, repo: ProcurementsRepository
+) -> None:
     """
     Tests that a nationwide search is performed for raw data if no city codes are configured.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
     """
     mock_response = MagicMock()
     mock_response.status_code = 204
@@ -586,9 +777,13 @@ def test_get_updated_procurements_with_raw_data_no_city_codes(mock_get, repo):
         assert "codigoMunicipioIbge" not in call.kwargs["params"]
 
 
-def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
+def test_get_procurement_by_id_and_version_not_found(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
     """
     Tests that None is returned when a procurement is not found by ID and version.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+        mock_engine: The mocked database engine.
     """
     conn_mock = mock_engine.connect().__enter__()
     conn_mock.execute.return_value.scalar_one_or_none.return_value = None
@@ -598,23 +793,35 @@ def test_get_procurement_by_id_and_version_not_found(repo, mock_engine):
     assert result is None
 
 
-def test_recursive_file_processing_7z(repo):
-    """Tests that .7z files are dispatched to the correct handler."""
+def test_recursive_file_processing_7z(repo: ProcurementsRepository) -> None:
+    """Tests that .7z files are dispatched to the correct handler.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     with patch.object(repo, "_extract_from_7z") as mock_extract:
         repo._recursive_file_processing(b"dummy", "test.7z", 0, [])
         mock_extract.assert_called_once()
 
 
-def test_recursive_file_processing_tar(repo):
-    """Tests that .tar files are dispatched to the correct handler."""
+def test_recursive_file_processing_tar(repo: ProcurementsRepository) -> None:
+    """Tests that .tar files are dispatched to the correct handler.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     with patch("tarfile.is_tarfile", return_value=True):
         with patch.object(repo, "_extract_from_tar") as mock_extract:
             repo._recursive_file_processing(b"dummy", "test.tar", 0, [])
             mock_extract.assert_called_once()
 
 
-def test_extract_from_zip_with_dir(repo):
-    """Tests that directories in ZIP archives are ignored."""
+def test_extract_from_zip_with_dir(repo: ProcurementsRepository) -> None:
+    """Tests that directories in ZIP archives are ignored.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     zip_buffer = io.BytesIO()
     with zipfile.ZipFile(zip_buffer, "w") as zf:
         zf.writestr("dir/", "")
@@ -626,8 +833,12 @@ def test_extract_from_zip_with_dir(repo):
     assert extracted_files[0][0] == "file1.txt"
 
 
-def test_extract_from_rar_with_dir(repo):
-    """Tests that directories in RAR archives are ignored."""
+def test_extract_from_rar_with_dir(repo: ProcurementsRepository) -> None:
+    """Tests that directories in RAR archives are ignored.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     mock_rar_info_dir = MagicMock()
     mock_rar_info_dir.filename = "dir/"
     mock_rar_info_dir.isdir.return_value = True
@@ -648,8 +859,12 @@ def test_extract_from_rar_with_dir(repo):
     assert extracted_files[0][0] == "file1.txt"
 
 
-def test_extract_from_tar_with_dir_and_none_file(repo):
-    """Tests that directories and None file objects in TAR archives are handled."""
+def test_extract_from_tar_with_dir_and_none_file(repo: ProcurementsRepository) -> None:
+    """Tests that directories and None file objects in TAR archives are handled.
+
+    Args:
+        repo: The ProcurementsRepository instance.
+    """
     mock_tar_info_dir = MagicMock()
     mock_tar_info_dir.name = "dir/"
     mock_tar_info_dir.isfile.return_value = False
@@ -671,8 +886,15 @@ def test_extract_from_tar_with_dir_and_none_file(repo):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data_validation_error(mock_get, repo):
-    """Tests that a validation error is handled when fetching raw data."""
+def test_get_updated_procurements_with_raw_data_validation_error(
+    mock_get: MagicMock, repo: ProcurementsRepository
+) -> None:
+    """Tests that a validation error is handled when fetching raw data.
+
+    Args:
+        mock_get: Mock for requests.get.
+        repo: The ProcurementsRepository instance.
+    """
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {"data": [{"invalid": "data"}]}

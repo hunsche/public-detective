@@ -4,6 +4,7 @@ import socket
 import subprocess  # nosec B404
 import time
 import uuid
+from collections.abc import Generator
 from pathlib import Path
 from zipfile import ZipFile
 
@@ -12,10 +13,15 @@ from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 
-def run_command(command: str):
-    """Executes a shell command and streams its output in real-time."""
+def run_command(command: str) -> None:
+    """Executes a shell command and streams its output in real-time.
+
+    Args:
+        command: The shell command to execute.
+    """
     print(f"\n--- Running command: {command} ---")
     process = subprocess.Popen(
         command,
@@ -36,12 +42,15 @@ def run_command(command: str):
 
 
 @pytest.fixture(scope="session", autouse=True)
-def db_session():
-    """
-    Manages the test database lifecycle.
+def db_session() -> Generator:
+    """Manages the test database lifecycle.
+
     This fixture is session-scoped and runs automatically for all tests.
     It creates a unique schema for the test run, applies migrations,
     and cleans up by dropping the schema afterwards.
+
+    Yields:
+        The SQLAlchemy engine instance.
     """
     print("\n--- Setting up database session ---")
 
@@ -109,11 +118,18 @@ def db_session():
 
 
 @pytest.fixture(scope="function")
-def e2e_test_setup(db_session):
-    """
-    Configures the environment for a single E2E test function.
+def e2e_test_setup(db_session: Engine) -> Generator:
+    """Configures the environment for a single E2E test function.
+
     Sets up unique Pub/Sub topics, GCS paths, and cleans up afterwards.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+
+    Yields:
+        None.
     """
+
     print("\n--- Setting up E2E test environment ---")
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
@@ -167,14 +183,18 @@ def e2e_test_setup(db_session):
 
 
 @pytest.mark.timeout(240)
-def test_ranked_analysis_e2e_flow(e2e_test_setup, db_session):  # noqa: F841
-    """
-    Tests the full E2E flow for ranked analysis against live dependencies:
+def test_ranked_analysis_e2e_flow(e2e_test_setup: None, db_session: Engine) -> None:  # noqa: F841
+    """Tests the full E2E flow for ranked analysis against live dependencies.
+
     1. Pre-analyzes procurements, creating analysis records in the DB.
     2. Injects a donation to establish a budget.
     3. Triggers the ranked analysis with auto-budget.
     4. Runs the worker to consume messages.
     5. Validates that analyses were processed and the budget ledger was updated.
+
+    Args:
+        e2e_test_setup: The fixture to set up the E2E test environment.
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
     """
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"

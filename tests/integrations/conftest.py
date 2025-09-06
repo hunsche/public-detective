@@ -2,6 +2,7 @@ import os
 import time
 import uuid
 import zipfile
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -12,7 +13,7 @@ from sqlalchemy import create_engine, text
 
 
 @pytest.fixture(scope="function")
-def db_session():
+def db_session() -> Generator:
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():

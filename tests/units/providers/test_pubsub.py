@@ -1,4 +1,5 @@
 import os
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,25 +9,29 @@ from providers.pubsub import PubSubProvider
 
 
 @pytest.fixture
-def mock_config_provider():
+def mock_config_provider() -> Generator[MagicMock, None, None]:
     with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_get_config.return_value.GCP_PROJECT = "test-project"
         yield mock_get_config
 
 
 @pytest.fixture
-def mock_logger_provider():
+def mock_logger_provider() -> Generator[MagicMock, None, None]:
     with patch("providers.logging.LoggingProvider") as mock_logging_provider:
         yield mock_logging_provider
 
 
 @pytest.fixture
-def pubsub_provider(mock_config_provider, mock_logger_provider):
+def pubsub_provider(mock_config_provider: MagicMock, mock_logger_provider: MagicMock) -> PubSubProvider:
     return PubSubProvider()
 
 
-def test_create_client_instance_no_emulator(pubsub_provider):
-    """Tests that the client is created without emulator settings if the env var is not set."""
+def test_create_client_instance_no_emulator(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the client is created without emulator settings if the env var is not set.
+
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
     with patch.dict(os.environ, {}, clear=True):
         with patch("google.cloud.pubsub_v1.PublisherClient") as mock_publisher:
             mock_publisher.__name__ = "PublisherClient"
@@ -34,8 +39,12 @@ def test_create_client_instance_no_emulator(pubsub_provider):
             mock_publisher.assert_called_once_with()
 
 
-def test_create_client_instance_with_emulator(pubsub_provider):
-    """Tests that the client is created with emulator settings if the env var is set."""
+def test_create_client_instance_with_emulator(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the client is created with emulator settings if the env var is set.
+
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
     emulator_host = "localhost:8085"
     with patch.dict(os.environ, {"PUBSUB_EMULATOR_HOST": emulator_host}, clear=True):
         with patch("google.cloud.pubsub_v1.PublisherClient") as mock_publisher:
@@ -49,8 +58,12 @@ def test_create_client_instance_with_emulator(pubsub_provider):
             assert kwargs["client_options"].api_endpoint == emulator_host
 
 
-def test_get_or_create_publisher_client_caches_instance(pubsub_provider):
-    """Tests that the publisher client is created only once and then cached."""
+def test_get_or_create_publisher_client_caches_instance(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the publisher client is created only once and then cached.
+
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
     with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
         client1 = pubsub_provider._get_or_create_publisher_client()
         client2 = pubsub_provider._get_or_create_publisher_client()
@@ -58,8 +71,12 @@ def test_get_or_create_publisher_client_caches_instance(pubsub_provider):
         assert client1 is client2
 
 
-def test_get_or_create_subscriber_client_caches_instance(pubsub_provider):
-    """Tests that the subscriber client is created only once and then cached."""
+def test_get_or_create_subscriber_client_caches_instance(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the subscriber client is created only once and then cached.
+
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
     with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
         client1 = pubsub_provider._get_or_create_subscriber_client()
         client2 = pubsub_provider._get_or_create_subscriber_client()
@@ -68,7 +85,7 @@ def test_get_or_create_subscriber_client_caches_instance(pubsub_provider):
 
 
 @patch.object(PubSubProvider, "_get_or_create_publisher_client")
-def test_publish_success(mock_get_publisher, pubsub_provider):
+def test_publish_success(mock_get_publisher: MagicMock, pubsub_provider: PubSubProvider) -> None:
     mock_publisher_instance = MagicMock()
     future = MagicMock()
     future.result.return_value = "message-id"
@@ -83,7 +100,7 @@ def test_publish_success(mock_get_publisher, pubsub_provider):
 
 
 @patch.object(PubSubProvider, "_get_or_create_publisher_client")
-def test_publish_timeout(mock_get_publisher, pubsub_provider):
+def test_publish_timeout(mock_get_publisher: MagicMock, pubsub_provider: PubSubProvider) -> None:
     mock_publisher_instance = MagicMock()
     future = MagicMock()
     future.result.side_effect = TimeoutError
@@ -95,7 +112,7 @@ def test_publish_timeout(mock_get_publisher, pubsub_provider):
 
 
 @patch.object(PubSubProvider, "_get_or_create_publisher_client")
-def test_publish_exception(mock_get_publisher, pubsub_provider):
+def test_publish_exception(mock_get_publisher: MagicMock, pubsub_provider: PubSubProvider) -> None:
     mock_publisher_instance = MagicMock()
     mock_publisher_instance.publish.side_effect = Exception("Pub/Sub error")
     mock_get_publisher.return_value = mock_publisher_instance
@@ -105,13 +122,13 @@ def test_publish_exception(mock_get_publisher, pubsub_provider):
 
 
 @patch.object(PubSubProvider, "_get_or_create_subscriber_client")
-def test_subscribe_success(mock_get_subscriber, pubsub_provider):
+def test_subscribe_success(mock_get_subscriber: MagicMock, pubsub_provider: PubSubProvider) -> None:
     mock_subscriber_instance = MagicMock()
     mock_streaming_pull_future = MagicMock()
     mock_subscriber_instance.subscribe.return_value = mock_streaming_pull_future
     mock_get_subscriber.return_value = mock_subscriber_instance
 
-    def callback(message):
+    def callback(message: MagicMock) -> None:
         pass
 
     future = pubsub_provider.subscribe("test-subscription", callback)
@@ -122,12 +139,12 @@ def test_subscribe_success(mock_get_subscriber, pubsub_provider):
 
 
 @patch.object(PubSubProvider, "_get_or_create_subscriber_client")
-def test_subscribe_exception(mock_get_subscriber, pubsub_provider):
+def test_subscribe_exception(mock_get_subscriber: MagicMock, pubsub_provider: PubSubProvider) -> None:
     mock_subscriber_instance = MagicMock()
     mock_subscriber_instance.subscribe.side_effect = Exception("Sub error")
     mock_get_subscriber.return_value = mock_subscriber_instance
 
-    def callback(message):
+    def callback(message: MagicMock) -> None:
         pass
 
     with pytest.raises(Exception, match="Sub error"):
