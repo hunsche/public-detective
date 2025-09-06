@@ -245,15 +245,22 @@ This project enforces a strict set of code style and quality rules to ensure con
 
 The pre-commit pipeline enforces the following standards:
 
--   **Formatting (Black):** All code is automatically formatted by the [Black](https://github.com/psf/black) code formatter. You don't need to worry about formatting manually; just write your code and the hook will handle the rest.
--   **Linting (Ruff):** We use [Ruff](https://github.com/astral-sh/ruff) for high-performance linting. It checks for a wide range of potential errors, bugs, and stylistic issues, replacing the need for tools like `flake8` and `isort`.
--   **Import Sorting (isort):** As part of the Ruff linter, all imports are automatically sorted and grouped, ensuring a consistent and readable module structure.
+-   **Formatting (Black):** All code is automatically formatted by the [Black](https://github.com/psf/black) code formatter.
+-   **Import Sorting (isort):** All imports are automatically sorted and grouped by [isort](https://pycqa.github.io/isort/), ensuring a consistent and readable module structure.
+-   **Linting (Flake8):** We use [Flake8](https://flake8.pycqa.org/en/latest/) for linting, enhanced with several plugins to enforce a higher standard of code quality:
+    -   `flake8-bugbear`: Finds likely bugs and design problems.
+    -   `flake8-comprehensions`: Helps write better and more idiomatic comprehensions.
+    -   `flake8-todos`: Ensures that temporary code markers like `TODO` are addressed.
+    -   The configuration also explicitly enables `E266` to enforce the **No Inline Comments** rule.
 -   **Security (Bandit):** The [Bandit](https://github.com/PyCQA/bandit) tool is used to find common security issues in Python code.
--   **Static Typing (MyPy):** All code must pass static type analysis using [MyPy](http://mypy-lang.org/). This helps prevent common runtime errors.
+-   **Static Typing (MyPy):** All code must pass strict static type analysis using [MyPy](http://mypy-lang.org/). Our configuration enforces:
+    -   **Full Annotation Coverage:** All function definitions must have type annotations (`disallow_untyped_defs`).
+    -   **Explicit Optionals:** Values that can be `None` must be explicitly typed with `Optional` (`no_implicit_optional`).
+    -   **No `Any` Returns:** Functions are not allowed to implicitly return the `Any` type (`warn_return_any`).
 -   **Docstring Standards (Interrogate, pydocstyle, darglint):** We enforce comprehensive and consistent docstrings.
-    -   **Coverage:** At least 95% of the codebase must be documented with docstrings (`interrogate`).
+    -   **Coverage:** At least 95% of the codebase must be documented (`interrogate`).
     -   **Style:** All docstrings must follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) (`pydocstyle`).
-    -   **Correctness:** Docstrings must be synchronized with function signatures. The arguments, returns, and exceptions documented must match the actual code (`darglint`).
+    -   **Correctness:** Docstrings must be synchronized with function signatures (`darglint`).
 -   **Test Coverage:** All contributions must maintain or increase the project's test coverage. The test suite will fail if the coverage drops below the threshold defined in `pyproject.toml`.
 
 ### C. Guiding Principles
