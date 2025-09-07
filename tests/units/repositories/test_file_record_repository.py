@@ -36,6 +36,7 @@ def test_save_file_record(file_records_repository: FileRecordsRepository) -> Non
     file_records_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     record = NewFileRecord(
+        id=uuid4(),
         analysis_id=uuid4(),
         file_name="test.pdf",
         gcs_path="test/gcs/path",

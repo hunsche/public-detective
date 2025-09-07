@@ -44,11 +44,11 @@ class FileRecordsRepository:
         sql = text(
             """
             INSERT INTO file_records (
-                analysis_id, file_name, gcs_path, extension, size_bytes,
+                id, analysis_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
                 prioritization_logic
             ) VALUES (
-                :analysis_id, :file_name, :gcs_path, :extension, :size_bytes,
+                :id, :analysis_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
                 :prioritization_logic
             );

@@ -60,6 +60,7 @@ class NewFileRecord(BaseModel):
     information that is collected before a record is persisted.
     """
 
+    id: UUID
     analysis_id: UUID
     file_name: str
     gcs_path: str

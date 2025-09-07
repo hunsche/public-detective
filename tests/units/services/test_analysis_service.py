@@ -166,7 +166,9 @@ def test_process_and_save_file_records(mock_dependencies: dict[str, Any]) -> Non
     included_files = [("file1.pdf", b"content1")]
     excluded_files: dict[str, str] = {}
 
-    service._process_and_save_file_records(analysis_id, gcs_base_path, all_files, included_files, excluded_files)
+    service._process_and_save_file_records(
+        analysis_id, "procurement_control_number", gcs_base_path, all_files, included_files, excluded_files
+    )
 
     service.gcs_provider.upload_file.assert_called_once()
     service.file_record_repo.save_file_record.assert_called_once()

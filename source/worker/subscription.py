@@ -163,7 +163,7 @@ class Subscription:
                 return
 
             procurement_id = analysis.procurement_control_number
-            correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
+            correlation_id = f"{procurement_id}:{analysis_id}:worker:{uuid.uuid4().hex[:8]}"
 
             with LoggingProvider().set_correlation_id(correlation_id):
                 self.logger.info(

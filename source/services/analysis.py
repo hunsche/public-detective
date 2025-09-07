@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -236,6 +237,7 @@ class AnalysisService:
             # Even if we reuse the analysis, we must record the files for the *new* analysis run
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
+                procurement_control_number=control_number,
                 gcs_base_path=gcs_base_path,
                 all_files=all_original_files,
                 included_files=files_for_ai,
@@ -271,6 +273,7 @@ class AnalysisService:
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
+                procurement_control_number=control_number,
                 gcs_base_path=gcs_base_path,
                 all_files=all_original_files,
                 included_files=files_for_ai,
@@ -320,6 +323,7 @@ class AnalysisService:
     def _process_and_save_file_records(
         self,
         analysis_id: UUID,
+        procurement_control_number: str,
         gcs_base_path: str,
         all_files: list[tuple[str, bytes]],
         included_files: list[tuple[str, bytes]],
@@ -333,6 +337,7 @@ class AnalysisService:
 
         Args:
             analysis_id: The ID of the parent analysis run.
+            procurement_control_number: The control number of the procurement.
             gcs_base_path: The base GCS path for this analysis run.
             all_files: A list of all original files (path, content).
             included_files: The list of files that were sent to the AI.
@@ -342,31 +347,37 @@ class AnalysisService:
         included_filenames = {f[0] for f in included_files}
 
         for file_path, file_content in all_files:
-            file_name = os.path.basename(file_path)
-            gcs_path = f"{gcs_base_path}/files/{file_name}"
+            file_id = uuid.uuid4()
+            upload_id = uuid.uuid4().hex[:8]
+            correlation_id = f"{procurement_control_number}:{file_id}:{upload_id}"
 
-            self.gcs_provider.upload_file(
-                bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-                destination_blob_name=gcs_path,
-                content=file_content,
-                content_type="application/octet-stream",
-            )
+            with LoggingProvider().set_correlation_id(correlation_id):
+                file_name = os.path.basename(file_path)
+                gcs_path = f"{gcs_base_path}/files/{file_name}"
 
-            is_included = file_path in included_filenames
-            exclusion_reason = excluded_files.get(file_path)
+                self.gcs_provider.upload_file(
+                    bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+                    destination_blob_name=gcs_path,
+                    content=file_content,
+                    content_type="application/octet-stream",
+                )
 
-            file_record = NewFileRecord(
-                analysis_id=analysis_id,
-                file_name=file_name,
-                gcs_path=gcs_path,
-                extension=os.path.splitext(file_name)[1].lstrip("."),
-                size_bytes=len(file_content),
-                nesting_level=0,
-                included_in_analysis=is_included,
-                exclusion_reason=exclusion_reason,
-                prioritization_logic=self._get_priority_as_string(file_path),
-            )
-            self.file_record_repo.save_file_record(file_record)
+                is_included = file_path in included_filenames
+                exclusion_reason = excluded_files.get(file_path)
+
+                file_record = NewFileRecord(
+                    id=file_id,
+                    analysis_id=analysis_id,
+                    file_name=file_name,
+                    gcs_path=gcs_path,
+                    extension=os.path.splitext(file_name)[1].lstrip("."),
+                    size_bytes=len(file_content),
+                    nesting_level=0,
+                    included_in_analysis=is_included,
+                    exclusion_reason=exclusion_reason,
+                    prioritization_logic=self._get_priority_as_string(file_path),
+                )
+                self.file_record_repo.save_file_record(file_record)
 
     def _select_and_prepare_files_for_ai(
         self,
@@ -680,42 +691,44 @@ class AnalysisService:
             procurement: The procurement to be pre-analyzed.
             raw_data: The raw JSON data of the procurement.
         """
-        all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        correlation_id = f"{procurement.pncp_control_number}:pre-analysis:{uuid.uuid4().hex[:8]}"
+        with LoggingProvider().set_correlation_id(correlation_id):
+            all_original_files = self.procurement_repo.process_procurement_documents(procurement)
+            files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
 
-        raw_data_str = json.dumps(raw_data, sort_keys=True)
-        all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
-        procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
+            raw_data_str = json.dumps(raw_data, sort_keys=True)
+            all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
+            procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
-        if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
-            self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
-            return
+            if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
+                self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
+                return
 
-        analysis_document_hash = self._calculate_hash(files_for_ai)
+            analysis_document_hash = self._calculate_hash(files_for_ai)
 
-        latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
-        new_version = latest_version + 1
+            latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
+            new_version = latest_version + 1
 
-        self.procurement_repo.save_procurement_version(
-            procurement=procurement,
-            raw_data=raw_data_str,
-            version_number=new_version,
-            content_hash=procurement_content_hash,
-        )
+            self.procurement_repo.save_procurement_version(
+                procurement=procurement,
+                raw_data=raw_data_str,
+                version_number=new_version,
+                content_hash=procurement_content_hash,
+            )
 
-        prompt = self._build_analysis_prompt(procurement, warnings)
-        input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+            prompt = self._build_analysis_prompt(procurement, warnings)
+            input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
 
-        analysis_id = self.analysis_repo.save_pre_analysis(
-            procurement_control_number=procurement.pncp_control_number,
-            version_number=new_version,
-            document_hash=analysis_document_hash,
-            input_tokens_used=input_tokens,
-            output_tokens_used=output_tokens,
-        )
-        self.status_history_repo.create_record(
-            analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
-        )
+            analysis_id = self.analysis_repo.save_pre_analysis(
+                procurement_control_number=procurement.pncp_control_number,
+                version_number=new_version,
+                document_hash=analysis_document_hash,
+                input_tokens_used=input_tokens,
+                output_tokens_used=output_tokens,
+            )
+            self.status_history_repo.create_record(
+                analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
+            )
 
     def run_ranked_analysis(
         self,
@@ -786,30 +799,34 @@ class AnalysisService:
                 )
                 continue
 
-            self.logger.info(
-                f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
+            correlation_id = (
+                f"{analysis.procurement_control_number}:{analysis.analysis_id}:ranked-analysis:{uuid.uuid4().hex[:8]}"
             )
-            try:
-                self.run_specific_analysis(analysis.analysis_id)
-                remaining_budget -= estimated_cost
-                if analysis.votes_count == 0:
-                    zero_vote_budget -= estimated_cost
-                self.budget_ledger_repo.save_expense(
-                    analysis.analysis_id,
-                    estimated_cost,
-                    f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
-                )
+            with LoggingProvider().set_correlation_id(correlation_id):
                 self.logger.info(
-                    f"Analysis {analysis.analysis_id} triggered. "
-                    f"Remaining budget: {remaining_budget:.2f} BRL. "
-                    f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
+                    f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
                 )
-                triggered_count += 1
-            except Exception as e:
-                self.logger.error(
-                    f"Failed to trigger analysis {analysis.analysis_id}: {e}",
-                    exc_info=True,
-                )
+                try:
+                    self.run_specific_analysis(analysis.analysis_id)
+                    remaining_budget -= estimated_cost
+                    if analysis.votes_count == 0:
+                        zero_vote_budget -= estimated_cost
+                    self.budget_ledger_repo.save_expense(
+                        analysis.analysis_id,
+                        estimated_cost,
+                        f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
+                    )
+                    self.logger.info(
+                        f"Analysis {analysis.analysis_id} triggered. "
+                        f"Remaining budget: {remaining_budget:.2f} BRL. "
+                        f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
+                    )
+                    triggered_count += 1
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to trigger analysis {analysis.analysis_id}: {e}",
+                        exc_info=True,
+                    )
 
         self.logger.info("Ranked analysis job completed.")
 
@@ -859,17 +876,19 @@ class AnalysisService:
                 next_retry_time = last_updated + timedelta(hours=backoff_hours)
 
                 if now >= next_retry_time:
-                    self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
-                    new_analysis_id = self.analysis_repo.save_retry_analysis(
-                        procurement_control_number=analysis.procurement_control_number,
-                        version_number=analysis.version_number,
-                        document_hash=analysis.document_hash,
-                        input_tokens_used=analysis.input_tokens_used,
-                        output_tokens_used=analysis.output_tokens_used,
-                        retry_count=analysis.retry_count + 1,
-                    )
-                    self.run_specific_analysis(new_analysis_id)
-                    retried_count += 1
+                    correlation_id = f"{analysis.procurement_control_number}:retry:{uuid.uuid4().hex[:8]}"
+                    with LoggingProvider().set_correlation_id(correlation_id):
+                        self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                        new_analysis_id = self.analysis_repo.save_retry_analysis(
+                            procurement_control_number=analysis.procurement_control_number,
+                            version_number=analysis.version_number,
+                            document_hash=analysis.document_hash,
+                            input_tokens_used=analysis.input_tokens_used,
+                            output_tokens_used=analysis.output_tokens_used,
+                            retry_count=analysis.retry_count + 1,
+                        )
+                        self.run_specific_analysis(new_analysis_id)
+                        retried_count += 1
 
             return retried_count
         except Exception as e:
