@@ -2,7 +2,7 @@ import subprocess  # nosec B404
 import sys
 
 
-def test_main_entrypoint() -> None:
+def test_main_entrypoint():
     """
     Tests that the main entrypoint runs without errors.
     """

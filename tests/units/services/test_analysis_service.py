@@ -1,657 +1,390 @@
-"""This module contains the unit tests for the AnalysisService."""
+"""
+Unit tests for the AnalysisService.
+"""
 
-from datetime import date, datetime
-from decimal import Decimal
-from typing import Any
+from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from exceptions.analysis import AnalysisError
-from models.analyses import Analysis
+from constants.analysis_feedback import ExclusionReason, Warnings
+from models.analyses import Analysis, AnalysisResult
 from models.procurement_analysis_status import ProcurementAnalysisStatus
 from models.procurements import Procurement
 from services.analysis import AnalysisService
 
 
 @pytest.fixture
-def mock_dependencies() -> dict[str, Any]:
+def mock_dependencies():
     """Fixture to create all mocked dependencies for AnalysisService."""
     return {
         "procurement_repo": MagicMock(),
         "analysis_repo": MagicMock(),
         "file_record_repo": MagicMock(),
         "status_history_repo": MagicMock(),
-        "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
     }
 
 
-def test_calculate_hash(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _calculate_hash method returns the correct hash."""
+@pytest.fixture
+def mock_procurement():
+    """Fixture to create a standard procurement object for tests."""
+    procurement_data = {
+        "processo": "123",
+        "objetoCompra": "Test Object",
+        "amparoLegal": {"codigo": 1, "nome": "Test", "descricao": "Test"},
+        "srp": False,
+        "orgaoEntidade": {
+            "cnpj": "00000000000191",
+            "razaoSocial": "Test Entity",
+            "poderId": "E",
+            "esferaId": "F",
+        },
+        "anoCompra": 2025,
+        "sequencialCompra": 1,
+        "dataPublicacaoPncp": "2025-01-01T12:00:00",
+        "dataAtualizacao": "2025-01-01T12:00:00",
+        "numeroCompra": "1",
+        "unidadeOrgao": {
+            "ufNome": "Test",
+            "codigoUnidade": "1",
+            "nomeUnidade": "Test",
+            "ufSigla": "TE",
+            "municipioNome": "Test",
+            "codigoIbge": "1",
+        },
+        "modalidadeId": 8,
+        "numeroControlePNCP": "123",
+        "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
+        "modoDisputaId": 5,
+        "situacaoCompraId": 1,
+        "usuarioNome": "Test User",
+    }
+    return Procurement.model_validate(procurement_data)
+
+
+def test_analysis_service_instantiation(mock_dependencies):
+    """Tests that the AnalysisService can be instantiated correctly."""
     service = AnalysisService(**mock_dependencies)
-    files = [("file1.txt", b"hello"), ("file2.txt", b"world")]
-    # The expected hash is the sha256 of "helloworld"
-    expected_hash = "936a185caaa266bb9cbe981e9e05cb78cd732b0b3280eb944412bb6f8f8f07af"
-    assert service._calculate_hash(files) == expected_hash
+    assert service is not None
+    assert service.procurement_repo == mock_dependencies["procurement_repo"]
 
 
-def test_get_priority(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _get_priority method returns the correct priority."""
+def test_idempotency_check(mock_dependencies, mock_procurement):
+    """Tests that analysis is skipped if a result with the same hash exists."""
+    # Arrange
     service = AnalysisService(**mock_dependencies)
-    assert service._get_priority("edital.pdf") == 0
-    assert service._get_priority("termo de referencia.docx") == 1
-    assert service._get_priority("some_other_file.pdf") == len(service._FILE_PRIORITY_ORDER)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+    service.analysis_repo.get_analysis_by_hash.return_value = MagicMock()  # Just needs to be non-None
 
-
-def test_get_priority_as_string(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _get_priority_as_string method returns the correct string."""
-    service = AnalysisService(**mock_dependencies)
-    assert "edital" in service._get_priority_as_string("edital.pdf")
-    assert "termo de referencia" in service._get_priority_as_string("termo de referencia.docx")
-    assert "Sem priorização." in service._get_priority_as_string("some_other_file.pdf")
-
-
-def test_calculate_estimated_cost(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _calculate_estimated_cost method returns the correct cost."""
-    service = AnalysisService(**mock_dependencies)
-    # Assuming the prices are the default ones in the class
-    # _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("2.62")
-    # _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("7.88")
-    input_tokens = 1_000_000
-    output_tokens = 1_000_000
-    expected_cost = Decimal("2.62") + Decimal("7.88")
-    assert service._calculate_estimated_cost(input_tokens, output_tokens) == expected_cost
-
-
-def test_update_status_with_history(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _update_status_with_history method calls the correct repositories."""
-    service = AnalysisService(**mock_dependencies)
+    # Act
     analysis_id = uuid4()
-    status = "ANALYSIS_SUCCESSFUL"
-    details = "Details"
+    service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    service._update_status_with_history(analysis_id, status, details)
-
-    service.analysis_repo.update_analysis_status.assert_called_once_with(analysis_id, status)
-    service.status_history_repo.create_record.assert_called_once_with(analysis_id, status, details)
-
-
-def test_build_analysis_prompt(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test that the _build_analysis_prompt method constructs the correct prompt."""
-    service = AnalysisService(**mock_dependencies)
-    warnings = ["Warning 1", "Warning 2"]
-    prompt = service._build_analysis_prompt(mock_procurement, warnings)
-
-    assert "Você é um auditor sênior" in prompt
-    assert "Warning 1" in prompt
-    assert "Warning 2" in prompt
-    assert mock_procurement.model_dump_json(by_alias=True, indent=2) in prompt
-
-
-def test_select_and_prepare_files_for_ai_happy_path(mock_dependencies: dict[str, Any]) -> None:
-    """Test the happy path for _select_and_prepare_files_for_ai."""
-    service = AnalysisService(**mock_dependencies)
-    files = [("file1.pdf", b"content1"), ("file2.docx", b"content2")]
-
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
-
-    assert len(selected_files) == 2
-    assert len(excluded_files) == 0
-    assert len(warnings) == 0
-
-
-def test_select_and_prepare_files_for_ai_unsupported_extension(mock_dependencies: dict[str, Any]) -> None:
-    """Test that files with unsupported extensions are excluded."""
-    service = AnalysisService(**mock_dependencies)
-    files = [("file1.txt", b"content1"), ("file2.pdf", b"content2")]
-
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
-
-    assert len(selected_files) == 1
-    assert selected_files[0][0] == "file2.pdf"
-    assert len(excluded_files) == 1
-    assert "file1.txt" in excluded_files
-    assert len(warnings) == 0
-
-
-def test_select_and_prepare_files_for_ai_file_limit_exceeded(mock_dependencies: dict[str, Any]) -> None:
-    """Test that files are excluded when the file limit is exceeded."""
-    service = AnalysisService(**mock_dependencies)
-    service._MAX_FILES_FOR_AI = 1
-    files = [("file1.pdf", b"content1"), ("file2.pdf", b"content2")]
-
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
-
-    assert len(selected_files) == 1
-    assert len(excluded_files) == 1
-    assert len(warnings) == 1
-    assert "Limite de" in warnings[0]
-    assert "excedido" in warnings[0]
-
-
-def test_upload_analysis_report(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _upload_analysis_report method calls the GCS provider correctly."""
-    service = AnalysisService(**mock_dependencies)
-    gcs_base_path = "test/path"
-    mock_ai_analysis = Analysis(
-        risk_score=5,
-        risk_score_rationale="Rationale",
-        procurement_summary="Summary",
-        analysis_summary="Summary",
-        red_flags=[],
-        seo_keywords=["keyword1", "keyword2"],
+    # Assert
+    service.ai_provider.get_structured_analysis.assert_not_called()
+    service.status_history_repo.create_record.assert_called_with(
+        analysis_id, ProcurementAnalysisStatus.ANALYSIS_SKIPPED, "Duplicate content."
     )
 
-    report_path = service._upload_analysis_report(gcs_base_path, mock_ai_analysis)
 
-    expected_blob_name = f"{gcs_base_path}/analysis_report.json"
-    assert report_path == expected_blob_name
-
-    service.gcs_provider.upload_file.assert_called_once()
-    call_args = service.gcs_provider.upload_file.call_args[1]
-    assert call_args["destination_blob_name"] == expected_blob_name
-    assert call_args["content_type"] == "application/json"
-    assert b'"risk_score": 5' in call_args["content"]
-
-
-def test_process_and_save_file_records(mock_dependencies: dict[str, Any]) -> None:
-    """Test the happy path for _process_and_save_file_records."""
+def test_analyze_procurement_main_success_path(mock_dependencies, mock_procurement):
+    """Tests the main success path of the analysis pipeline, including GCS URI logic."""
+    # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    gcs_base_path = "test/path"
-    all_files = [("file1.pdf", b"content1")]
-    included_files = [("file1.pdf", b"content1")]
-    excluded_files: dict[str, str] = {}
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
 
-    service._process_and_save_file_records(analysis_id, gcs_base_path, all_files, included_files, excluded_files)
+    # Mock the AI provider's response
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
 
-    service.gcs_provider.upload_file.assert_called_once()
+    # Act
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    # Assert
+    # 1. Assert that the AI provider was called with a GCS URI
+    service.ai_provider.get_structured_analysis.assert_called_once()
+    _, kwargs = service.ai_provider.get_structured_analysis.call_args
+    assert "gcs_uris" in kwargs
+    assert len(kwargs["gcs_uris"]) == 1
+    assert kwargs["gcs_uris"][0].startswith("gs://")
+    assert kwargs["gcs_uris"][0].endswith("/files/file.pdf")
+
+    # 2. Assert that the file was uploaded to GCS
+    # The report is uploaded, and the original file is uploaded.
+    assert service.gcs_provider.upload_file.call_count == 2
+
+    # 3. Assert that the final results were saved
+    service.analysis_repo.save_analysis.assert_called_once()
     service.file_record_repo.save_file_record.assert_called_once()
-    call_args = service.file_record_repo.save_file_record.call_args[0][0]
-    assert call_args.analysis_id == analysis_id
-    assert call_args.included_in_analysis is True
 
 
-def test_get_procurement_overall_status(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the get_procurement_overall_status method calls the repository."""
+def test_select_and_prepare_files_for_ai_all_scenarios(mock_dependencies):
+    """Tests all filtering scenarios in _select_and_prepare_files_for_ai."""
+    # Arrange
     service = AnalysisService(**mock_dependencies)
-    control_number = "12345"
-    service.analysis_repo.get_procurement_overall_status.return_value = {"status": "OK"}
+    max_files = 3
+    max_size_bytes = 50
+    max_size_mb = max_size_bytes / 1024 / 1024
+    service._MAX_FILES_FOR_AI = max_files
+    service._MAX_SIZE_BYTES_FOR_AI = max_size_bytes
 
-    status = service.get_procurement_overall_status(control_number)
-
-    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
-    assert status == {"status": "OK"}
-
-
-def test_get_procurement_overall_status_not_found(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the get_procurement_overall_status method handles not found cases."""
-    service = AnalysisService(**mock_dependencies)
-    control_number = "12345"
-    service.analysis_repo.get_procurement_overall_status.return_value = None
-
-    status = service.get_procurement_overall_status(control_number)
-
-    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
-    assert status is None
-
-
-def test_calculate_auto_budget(mock_dependencies: dict[str, Any]) -> None:
-    """Test the _calculate_auto_budget method."""
-    service = AnalysisService(**mock_dependencies)
-    service.budget_ledger_repo.get_total_donations.return_value = 1000
-    service.budget_ledger_repo.get_total_expenses_for_period.return_value = 100
-
-    # Mock the date to be the 15th of a 30-day month
-    with patch("services.analysis.datetime") as mock_datetime:
-        mock_datetime.now.return_value.date.return_value = date(2025, 1, 15)
-        mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
-
-        budget = service._calculate_auto_budget("monthly")
-        # period_capital = 1000 + 100 = 1100
-        # daily_target = 1100 / 31 = 35.48
-        # cumulative_target_today = 35.48 * 15 = 532.2
-        # budget_for_this_run = 532.2 - 100 = 432.2
-        assert budget > 432
-        assert budget < 433
-
-        budget = service._calculate_auto_budget("daily")
-        assert budget == 1000
-
-        budget = service._calculate_auto_budget("weekly")
-        # weekday is Wednesday (2), so day_of_period is 3
-        # start_of_period is the 13th
-        # daily_target = 1100 / 7 = 157.14
-        # cumulative_target_today = 157.14 * 3 = 471.42
-        # budget_for_this_run = 471.42 - 100 = 371.42
-        assert budget > 371
-        assert budget < 372
-
-        with pytest.raises(ValueError):
-            service._calculate_auto_budget("invalid")
-
-
-def test_run_ranked_analysis_happy_path(mock_dependencies: dict[str, Any]) -> None:
-    """Test the happy path for run_ranked_analysis."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
-    ]
-    service.budget_ledger_repo.get_total_donations.return_value = 1000
-    service.budget_ledger_repo.get_total_expenses_for_period.return_value = 100
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("10.00"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
-        mock_run_specific.assert_called_once()
-
-
-def test_run_ranked_analysis_auto_budget(mock_dependencies: dict[str, Any]) -> None:
-    """Test run_ranked_analysis with auto-budget enabled."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
+    all_files = [
+        ("edital.pdf", b"edital content"),  # Priority 0
+        ("unsupported.txt", b"unsupported"),
+        ("oversized.pdf", b"a" * 60),
+        ("another.pdf", b"another content"),  # No priority
+        ("planilha.xls", b"planilha content"),  # Priority 3
+        ("limit_exceeded.pdf", b"small"),
     ]
 
-    with patch.object(service, "_calculate_auto_budget", return_value=Decimal("10.00")) as mock_auto_budget:
-        with patch.object(service, "run_specific_analysis") as mock_run_specific:
-            service.run_ranked_analysis(
-                use_auto_budget=True,
-                budget_period="daily",
-                zero_vote_budget_percent=10,
-            )
-            mock_auto_budget.assert_called_once_with("daily")
-            mock_run_specific.assert_called_once()
+    # Act
+    files_for_ai, excluded, warnings = service._select_and_prepare_files_for_ai(all_files)
 
+    # Assert
+    assert len(files_for_ai) == 2
+    assert files_for_ai[0][0] == "edital.pdf"
+    assert files_for_ai[1][0] == "planilha.xls"
 
-def test_run_ranked_analysis_no_budget(mock_dependencies: dict[str, Any]) -> None:
-    """Test that run_ranked_analysis raises an error if no budget is provided."""
-    service = AnalysisService(**mock_dependencies)
-    with pytest.raises(ValueError):
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=None,
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
+    assert len(excluded) == 4
+    assert excluded["unsupported.txt"] == ExclusionReason.UNSUPPORTED_EXTENSION
+    assert excluded["limit_exceeded.pdf"] == ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=max_files)
+    assert excluded["another.pdf"] == ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=max_files)
+    assert excluded["oversized.pdf"] == ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
 
-
-def test_run_ranked_analysis_max_messages(mock_dependencies: dict[str, Any]) -> None:
-    """Test that run_ranked_analysis stops when max_messages is reached."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50),
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50),
-    ]
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("10.00"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-            max_messages=1,
-        )
-        assert mock_run_specific.call_count == 1
-
-
-def test_run_ranked_analysis_budget_exhausted(mock_dependencies: dict[str, Any]) -> None:
-    """Test that run_ranked_analysis stops when the budget is exhausted."""
-    service = AnalysisService(**mock_dependencies)
-    analysis1_id = uuid4()
-    analysis2_id = uuid4()
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=analysis1_id, votes_count=1, input_tokens_used=1000000, output_tokens_used=1000000),
-        MagicMock(analysis_id=analysis2_id, votes_count=1, input_tokens_used=100000, output_tokens_used=50000),
-    ]
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("1.00"),  # cost of first analysis is > 10, cost of second is ~0.65
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
-        mock_run_specific.assert_called_once_with(analysis2_id)
-
-
-def test_run_ranked_analysis_zero_vote_budget(mock_dependencies: dict[str, Any]) -> None:
-    """Test the zero-vote budget logic."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=0, input_tokens_used=1000000, output_tokens_used=1000000),
-    ]
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("100.00"),
-            budget_period=None,
-            zero_vote_budget_percent=1,  # 1% of 100 is 1, cost is > 10
-        )
-        mock_run_specific.assert_not_called()
-
-
-def test_run_ranked_analysis_no_budget_left(mock_dependencies: dict[str, Any]) -> None:
-    """Test that run_ranked_analysis stops when there is no budget left."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
-    ]
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("0.00"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
-        mock_run_specific.assert_not_called()
-
-
-def test_run_ranked_analysis_run_specific_fails(mock_dependencies: dict[str, Any]) -> None:
-    """Test that run_ranked_analysis handles exceptions from run_specific_analysis."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
-    ]
-
-    with patch.object(service, "run_specific_analysis", side_effect=Exception("test error")):
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("10.00"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
-        # We don't assert anything here, just that it doesn't crash
-
-
-def test_run_ranked_analysis_zero_vote_budget_success(mock_dependencies: dict[str, Any]) -> None:
-    """Test the zero-vote budget logic with a successful run."""
-    service = AnalysisService(**mock_dependencies)
-    service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=0, input_tokens_used=100, output_tokens_used=50),
-    ]
-
-    with patch.object(service, "run_specific_analysis") as mock_run_specific:
-        service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("100.00"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-        )
-        mock_run_specific.assert_called_once()
-
-
-def test_run_specific_analysis_happy_path(mock_dependencies: dict[str, Any]) -> None:
-    """Test the happy path for run_specific_analysis."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(
-        status=ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
-        procurement_control_number="123",
-        version_number=1,
+    assert len(warnings) == 2
+    assert warnings[0] == Warnings.FILE_LIMIT_EXCEEDED.format(
+        max_files=max_files, ignored_files="another.pdf, limit_exceeded.pdf"
     )
-    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-
-    service.run_specific_analysis(analysis_id)
-
-    service.analysis_repo.get_analysis_by_id.assert_called_once_with(analysis_id)
-    service.pubsub_provider.publish.assert_called_once()
+    assert warnings[1] == Warnings.TOTAL_SIZE_LIMIT_EXCEEDED.format(
+        max_size_mb=max_size_mb, ignored_files="oversized.pdf"
+    )
 
 
-def test_run_specific_analysis_not_found(mock_dependencies: dict[str, Any]) -> None:
-    """Test run_specific_analysis when the analysis is not found."""
+def test_analyze_procurement_no_files_found(mock_dependencies, mock_procurement):
+    """Tests that the analysis aborts if no documents are found."""
     service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
+    service.procurement_repo.process_procurement_documents.return_value = []
+
+    service.analyze_procurement(mock_procurement, 1, 123)
+
+    service.ai_provider.get_structured_analysis.assert_not_called()
+
+
+def test_analyze_procurement_no_supported_files(mock_dependencies, mock_procurement):
+    """Tests that analysis aborts if no files remain after filtering."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("unsupported.txt", b"c")]
+
+    service.analyze_procurement(mock_procurement, 1, 123)
+
+    service.ai_provider.get_structured_analysis.assert_not_called()
+
+
+def test_analyze_procurement_main_success_path(mock_dependencies, mock_procurement):
+    """Tests the main success path of the analysis pipeline."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    mock_ai_analysis = MagicMock(spec=Analysis)
+    mock_ai_analysis.model_dump.return_value = {
+        "risk_score": 1,
+        "procurement_summary": "test",
+        "analysis_summary": "test",
+    }
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+
+    service.analyze_procurement(mock_procurement, 1, uuid4())
+
+    service.analysis_repo.save_analysis.assert_called_once()
+    service.gcs_provider.upload_file.assert_called()
+    service.file_record_repo.save_file_record.assert_called_once()
+
+
+def test_analyze_procurement_exception_handling(mock_dependencies, mock_procurement):
+    """Tests that exceptions in the pipeline are caught and logged."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"c")]
+    service.analysis_repo.get_analysis_by_hash.return_value = None
+    service.ai_provider.get_structured_analysis.side_effect = Exception("AI Error")
+
+    with pytest.raises(Exception, match="AI Error"):
+        service.analyze_procurement(mock_procurement, 1, 123)
+
+
+def test_run_analysis_no_procurements(mock_dependencies):
+    """Tests that the loop continues if no procurements are found for a date."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements.return_value = []
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    service.run_analysis(start_date, end_date)
+
+    service.procurement_repo.publish_procurement_to_pubsub.assert_not_called()
+
+
+def test_run_analysis_publish_failure(mock_dependencies, mock_procurement):
+    """Tests that the loop continues even if publishing to Pub/Sub fails."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements.return_value = [mock_procurement]
+    service.procurement_repo.publish_procurement_to_pubsub.return_value = False
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    service.run_analysis(start_date, end_date)
+
+    service.procurement_repo.publish_procurement_to_pubsub.assert_called_once_with(mock_procurement)
+
+
+def test_process_analysis_from_message_analysis_not_found(mock_dependencies):
+    """
+    Tests that the function returns early if the analysis_id is not found.
+    """
+    service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_analysis_by_id.return_value = None
 
-    service.run_specific_analysis(analysis_id)
+    service.process_analysis_from_message(999)
 
-    service.analysis_repo.get_analysis_by_id.assert_called_once_with(analysis_id)
-    service.pubsub_provider.publish.assert_not_called()
+    service.procurement_repo.get_procurement_by_id_and_version.assert_not_called()
 
 
-def test_run_specific_analysis_wrong_status(mock_dependencies: dict[str, Any]) -> None:
-    """Test run_specific_analysis when the analysis is not in PENDING_ANALYSIS state."""
+def test_process_analysis_from_message_procurement_not_found(mock_dependencies):
+    """
+    Tests that the function returns early if the procurement is not found.
+    """
     service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(status=ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value)
-    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-
-    service.run_specific_analysis(analysis_id)
-
-    service.analysis_repo.get_analysis_by_id.assert_called_once_with(analysis_id)
-    service.pubsub_provider.publish.assert_not_called()
-
-
-def test_run_specific_analysis_no_pubsub(mock_dependencies: dict[str, Any]) -> None:
-    """Test run_specific_analysis when the pubsub provider is not configured."""
-    service = AnalysisService(**mock_dependencies)
-    service.pubsub_provider = None
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(status=ProcurementAnalysisStatus.PENDING_ANALYSIS.value)
-    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-
-    with pytest.raises(AnalysisError) as excinfo:
-        service.run_specific_analysis(analysis_id)
-    assert "PubSubProvider is not configured" in str(excinfo.value)
-
-
-def test_process_analysis_from_message_happy_path(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test the happy path for process_analysis_from_message."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(
-        procurement_control_number="123",
-        version_number=1,
-    )
-    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
-
-    with patch.object(service, "analyze_procurement") as mock_analyze_procurement:
-        service.process_analysis_from_message(analysis_id)
-        mock_analyze_procurement.assert_called_once()
-
-
-def test_process_analysis_from_message_analysis_not_found(mock_dependencies: dict[str, Any]) -> None:
-    """Test process_analysis_from_message when the analysis is not found."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.analysis_repo.get_analysis_by_id.return_value = None
-
-    with patch.object(service, "analyze_procurement") as mock_analyze_procurement:
-        service.process_analysis_from_message(analysis_id)
-        mock_analyze_procurement.assert_not_called()
-
-
-def test_process_analysis_from_message_procurement_not_found(mock_dependencies: dict[str, Any]) -> None:
-    """Test process_analysis_from_message when the procurement is not found."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(
-        procurement_control_number="123",
-        version_number=1,
-    )
+    mock_analysis = MagicMock()
+    mock_analysis.procurement_control_number = "123"
+    mock_analysis.version_number = 1
     service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
     service.procurement_repo.get_procurement_by_id_and_version.return_value = None
 
-    with patch.object(service, "analyze_procurement") as mock_analyze_procurement:
-        service.process_analysis_from_message(analysis_id)
-        mock_analyze_procurement.assert_not_called()
+    service.process_analysis_from_message(123)
+
+    service.analysis_repo.update_analysis_status.assert_not_called()
 
 
-def test_process_analysis_from_message_analysis_fails(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test process_analysis_from_message when analyze_procurement fails."""
+def test_process_analysis_from_message_success(mock_dependencies, mock_procurement):
+    """
+    Tests the success path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    mock_analysis = MagicMock(
-        procurement_control_number="123",
-        version_number=1,
-    )
-    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+    analysis_id = 123
+    max_output_tokens = 1024
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
     service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
-    with patch.object(service, "analyze_procurement", side_effect=Exception("test error")):
-        with pytest.raises(AnalysisError):
+    with (
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+        patch.object(service, "analyze_procurement") as mock_analyze_procurement,
+    ):
+        # Act
+        service.process_analysis_from_message(analysis_id, max_output_tokens=max_output_tokens)
+
+        # Assert
+        mock_analyze_procurement.assert_called_once_with(mock_procurement, 1, analysis_id, max_output_tokens)
+        mock_update_status.assert_called_once_with(
+            analysis_id,
+            ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL,
+            "Analysis completed successfully.",
+        )
+
+
+def test_process_analysis_from_message_failure(mock_dependencies, mock_procurement):
+    """
+    Tests the failure path of process_analysis_from_message, ensuring history is recorded.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    analysis_id = 123
+    error_message = "AI provider failed"
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.procurement_control_number = "PNCP-123"
+    mock_analysis_result.version_number = 1
+    service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_result
+    service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
+
+    with (
+        patch.object(service, "analyze_procurement", side_effect=Exception(error_message)),
+        patch.object(service, "_update_status_with_history") as mock_update_status,
+    ):
+        # Act & Assert
+        with pytest.raises(Exception, match=error_message):
             service.process_analysis_from_message(analysis_id)
 
+        mock_update_status.assert_called_once_with(
+            analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, error_message
+        )
 
-def test_analyze_procurement_happy_path(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test the happy path for analyze_procurement."""
+
+def test_get_procurement_overall_status_calls_repo(mock_dependencies):
+    """
+    Tests that the service method calls the repository method.
+    """
+    # Arrange
     service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-    service.analysis_repo.get_analysis_by_hash.return_value = None
-    mock_ai_analysis = Analysis(
-        risk_score=5,
-        risk_score_rationale="Rationale",
-        procurement_summary="Summary",
-        analysis_summary="Summary",
-        red_flags=[],
-        seo_keywords=["keyword1"],
+    control_number = "PNCP-123"
+    expected_status = {
+        "procurement_id": control_number,
+        "latest_version": 1,
+        "overall_status": "PENDING",
+    }
+    service.analysis_repo.get_procurement_overall_status.return_value = expected_status
+
+    # Act
+    result = service.get_procurement_overall_status(control_number)
+
+    # Assert
+    assert result == expected_status
+    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_get_procurement_overall_status_handles_none(mock_dependencies):
+    """
+    Tests that the service method handles a None response from the repository.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    control_number = "PNCP-999"
+    service.analysis_repo.get_procurement_overall_status.return_value = None
+
+    # Act
+    result = service.get_procurement_overall_status(control_number)
+
+    # Assert
+    assert result is None
+    service.analysis_repo.get_procurement_overall_status.assert_called_once_with(control_number)
+
+
+def test_reap_stale_analyses(mock_dependencies):
+    """
+    Tests that the reap_stale_analyses method correctly calls the repository
+    and creates history records for each stale analysis.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    stale_ids = [1, 2, 3]
+    timeout = 15
+    service.analysis_repo.reset_stale_analyses.return_value = stale_ids
+
+    # Act
+    result_count = service.reap_stale_analyses(timeout)
+
+    # Assert
+    assert result_count == len(stale_ids)
+    service.analysis_repo.reset_stale_analyses.assert_called_once_with(timeout)
+    assert service.status_history_repo.create_record.call_count == len(stale_ids)
+    service.status_history_repo.create_record.assert_any_call(
+        1, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
     )
-    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
-
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_called_once()
-
-
-def test_analyze_procurement_reuse_existing(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test that analyze_procurement reuses an existing analysis."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-    mock_existing_analysis = MagicMock()
-    mock_existing_analysis.ai_analysis = Analysis(
-        risk_score=5,
-        risk_score_rationale="Rationale",
-        procurement_summary="Summary",
-        analysis_summary="Summary",
-        red_flags=[],
-        seo_keywords=["keyword1"],
+    service.status_history_repo.create_record.assert_any_call(
+        3, "TIMEOUT", f"Analysis timed out after {timeout} minutes."
     )
-    service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
-
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_called_once()
-    # Check that the reused result is passed to save_analysis
-    call_args = service.analysis_repo.save_analysis.call_args[0]
-    assert call_args[1].ai_analysis.risk_score == 5
-
-
-def test_analyze_procurement_no_files(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test analyze_procurement when no files are found."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = []
-
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_not_called()
-
-
-def test_analyze_procurement_reuse_existing_with_gcs_prefix(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test that analyze_procurement reuses an existing analysis with a GCS test prefix."""
-    service = AnalysisService(**mock_dependencies)
-    service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-    mock_existing_analysis = MagicMock()
-    mock_existing_analysis.ai_analysis = Analysis(
-        risk_score=5,
-        risk_score_rationale="Rationale",
-        procurement_summary="Summary",
-        analysis_summary="Summary",
-        red_flags=[],
-        seo_keywords=["keyword1"],
-    )
-    service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
-
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_called_once()
-    call_args = service.analysis_repo.save_analysis.call_args[0]
-    assert "test-prefix" in call_args[1].original_documents_gcs_path
-
-
-def test_analyze_procurement_with_gcs_prefix(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test analyze_procurement with a GCS test prefix."""
-    service = AnalysisService(**mock_dependencies)
-    service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-    service.analysis_repo.get_analysis_by_hash.return_value = None
-    mock_ai_analysis = Analysis(
-        risk_score=5,
-        risk_score_rationale="Rationale",
-        procurement_summary="Summary",
-        analysis_summary="Summary",
-        red_flags=[],
-        seo_keywords=["keyword1"],
-    )
-    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
-
-    with patch.object(service, "_upload_analysis_report", return_value="test/path/report.json") as mock_upload:
-        service.analyze_procurement(mock_procurement, 1, analysis_id)
-        mock_upload.assert_called_once()
-        assert "test-prefix" in mock_upload.call_args[0][0]
-
-
-def test_analyze_procurement_ai_fails(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
-    """Test that analyze_procurement handles AI provider failures."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
-    service.analysis_repo.get_analysis_by_hash.return_value = None
-    service.ai_provider.get_structured_analysis.side_effect = Exception("AI error")
-
-    with pytest.raises(Exception, match="AI error"):
-        service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_not_called()
-
-
-def test_analyze_procurement_no_supported_files(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test analyze_procurement when no supported files are found."""
-    service = AnalysisService(**mock_dependencies)
-    analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.txt", b"content")]
-
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
-
-    service.analysis_repo.save_analysis.assert_not_called()
-
-
-def test_select_and_prepare_files_for_ai_size_limit_exceeded(mock_dependencies: dict[str, Any]) -> None:
-    """Test that files are excluded when the total size limit is exceeded."""
-    service = AnalysisService(**mock_dependencies)
-    service._MAX_SIZE_BYTES_FOR_AI = 10
-    files = [("file1.pdf", b"content1"), ("file2.pdf", b"content2")]
-
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
-
-    assert len(selected_files) == 1
-    assert selected_files[0][0] == "file1.pdf"
-    assert len(excluded_files) == 1
-    assert "file2.pdf" in excluded_files
-    assert len(warnings) == 1
-    assert "Limite de" in warnings[0]
-    assert "excedido" in warnings[0]

@@ -1,14 +1,11 @@
 import pytest
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
 
 
 @pytest.mark.timeout(180)
-def test_all_primary_keys_are_uuid(db_session: Engine) -> None:
-    """Tests that all primary keys in the database are of type UUID.
-
-    Args:
-        db_session: The SQLAlchemy engine instance from the db_session fixture.
+def test_all_primary_keys_are_uuid(db_session):
+    """
+    Tests that all primary keys in the database are of type UUID.
     """
     with db_session.connect() as connection:
         # Get all tables in the current schema

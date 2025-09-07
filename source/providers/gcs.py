@@ -30,12 +30,6 @@ class GcsProvider:
     config: Config
 
     def __init__(self) -> None:
-        """Initializes the GcsProvider.
-
-        This constructor sets up the logger, loads the application
-        configuration, and initializes a thread-safe lock for client
-        creation.
-        """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self._client_creation_lock = threading.Lock()

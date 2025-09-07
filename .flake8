@@ -4,8 +4,6 @@ max-complexity = 12
 per-file-ignores =
     migrations/*.py:E501
     source/*.py:C901
-    tests/*.py:DAR
-    source/migrations/*.py:DAR
 exclude =
     .git,
     .venv,
@@ -14,4 +12,4 @@ exclude =
     old,
     build,
     dist,
-ignore = E203, W503, DAR401, DAR402
+ignore = E203, W503

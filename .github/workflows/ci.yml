@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - '.github/badges/**'
+      - '.github/badges/coverage.svg'
   pull_request:
     branches:
       - main
@@ -23,14 +23,6 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
-
-      - name: Configure Git for SSH
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          git remote set-url origin git@github.com:${{ github.repository }}.git
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
       - name: Set up Python
         uses: actions/setup-python@v4
@@ -127,31 +119,25 @@ jobs:
         with:
           pytest-coverage-path: pytest-coverage.txt
           junitxml-path: junit.xml
-          title: Code Coverage
+          title: Test Coverage
           badge-title: Coverage
           hide-badge: false
           hide-report: false
           create-new-comment: false
           hide-comment: false
 
-      - name: Generate code coverage badge
+      - name: Generate coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: tj-actions/coverage-badge-py@v2
         with:
-          output: .github/badges/code-coverage.svg
+          output: .github/badges/coverage.svg
 
-      - name: Generate docstring coverage badge
+      - name: Commit and push coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          poetry run interrogate --generate-badge .github/badges/docstring-coverage.svg --badge-format svg
-
-      - name: Commit and push coverage badges
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          git add .github/badges/
-          if git diff --staged --quiet; then
-            echo "No changes to commit for coverage badges."
-          else
-            git commit -m "chore: update coverage badges"
-            git push
-          fi
+        uses: stefanzweifel/git-auto-commit-action@v5
+        with:
+          commit_message: "chore: update coverage badge"
+          file_pattern: .github/badges/coverage.svg
+          commit_user_name: GitHub Actions
+          commit_user_email: actions@github.com
+          commit_author: GitHub Actions <actions@github.com>

@@ -6,7 +6,7 @@ from providers.gcs import GcsProvider
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_with_emulator() -> None:
+def test_get_or_create_client_with_emulator():
     """
     Should create a GCS client with AnonymousCredentials when GCP_GCS_HOST is set.
     """
@@ -34,7 +34,7 @@ def test_get_or_create_client_with_emulator() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_for_production() -> None:
+def test_get_or_create_client_for_production():
     """
     Should create a GCS client with default credentials when GCP_GCS_HOST is not set.
     """
@@ -59,7 +59,7 @@ def test_get_or_create_client_for_production() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_get_or_create_client_caches_instance() -> None:
+def test_get_or_create_client_caches_instance():
     """
     Should create a GCS client only once and then cache it.
     """
@@ -85,7 +85,7 @@ def test_get_or_create_client_caches_instance() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_upload_file_success() -> None:
+def test_upload_file_success():
     """
     Should upload a file successfully and return its public URL.
     """
@@ -112,7 +112,7 @@ def test_upload_file_success() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
-def test_upload_file_failure() -> None:
+def test_upload_file_failure():
     """
     Should raise an exception when the upload fails.
     """

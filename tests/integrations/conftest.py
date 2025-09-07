@@ -2,18 +2,18 @@ import os
 import time
 import uuid
 import zipfile
-from collections.abc import Generator
 from pathlib import Path
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
+
+from source.providers.config import ConfigProvider
 
 
 @pytest.fixture(scope="function")
-def db_session() -> Generator:
+def db_session():
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():
@@ -35,10 +35,10 @@ def db_session() -> Generator:
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
         f"{host}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
-    engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
+    engine = create_engine(db_url)
 
     # Wait for the database to be ready before proceeding
-    for _ in range(30):
+    for _ in range(15):
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))

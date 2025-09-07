@@ -6,35 +6,22 @@ from repositories.status_history import StatusHistoryRepository
 
 
 @pytest.fixture
-def mock_engine() -> MagicMock:
-    """Fixture for a mocked database engine.
-
-    Returns:
-        A MagicMock object.
-    """
+def mock_engine():
+    """Fixture for a mocked database engine."""
     return MagicMock()
 
 
 @pytest.fixture
-def status_history_repository(mock_engine: MagicMock) -> StatusHistoryRepository:
+def status_history_repository(mock_engine):
     """
     Fixture to create a StatusHistoryRepository with a mocked database engine.
-
-    Args:
-        mock_engine: The mocked database engine.
-
-    Returns:
-        An instance of StatusHistoryRepository.
     """
     return StatusHistoryRepository(engine=mock_engine)
 
 
-def test_create_history_record_executes_insert(status_history_repository: StatusHistoryRepository) -> None:
+def test_create_history_record_executes_insert(status_history_repository):
     """
     Should execute an INSERT statement with the correct parameters.
-
-    Args:
-        status_history_repository: The StatusHistoryRepository instance.
     """
     # Arrange
     mock_conn = MagicMock()

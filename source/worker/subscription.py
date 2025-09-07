@@ -10,16 +10,13 @@ debugging.
 import json
 import threading
 import uuid
-from collections.abc import Generator
-from concurrent.futures import TimeoutError
 from contextlib import contextmanager
 
-from exceptions.analysis import AnalysisError
 from google.api_core.exceptions import GoogleAPICallError
-from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from models.analyses import Analysis
 from providers.ai import AiProvider
+from providers.ai_mock import MockAiProvider
 from providers.config import Config, ConfigProvider
 from providers.database import DatabaseManager
 from providers.gcs import GcsProvider
@@ -27,7 +24,6 @@ from providers.logging import Logger, LoggingProvider
 from providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
 from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
@@ -35,9 +31,9 @@ from services.analysis import AnalysisService
 
 
 class Subscription:
-    """Encapsulates a Google Cloud Pub/Sub worker.
+    """Encapsulates a Google Cloud Pub/Sub worker that consumes, validates,
+    and processes procurement messages.
 
-    This worker consumes, validates, and processes procurement messages.
     Its primary role is to act as the entry point for asynchronous processing,
     delegating the core business logic to the AnalysisService and ensuring
     robust message lifecycle management.
@@ -52,28 +48,16 @@ class Subscription:
     streaming_pull_future: StreamingPullFuture | None
     pubsub_provider: PubSubProvider
     _stop_event: threading.Event
-    _processing_complete_event: threading.Event | None
 
-    def __init__(
-        self,
-        analysis_service: AnalysisService | None = None,
-        processing_complete_event: threading.Event | None = None,
-    ):
+    def __init__(self, analysis_service: AnalysisService | None = None):
         """Initializes the worker, loading configuration and services.
 
         This constructor acts as the Composition Root for the worker application.
         It instantiates and wires together all the necessary dependencies.
-
-        Args:
-            analysis_service: An optional instance of the AnalysisService.
-                If not provided, it will be created internally.
-            processing_complete_event: An optional event to signal when a
-                message has been fully processed.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
         self.pubsub_provider = PubSubProvider()
-        self._processing_complete_event = processing_complete_event
 
         if analysis_service:
             self.analysis_service = analysis_service
@@ -81,20 +65,22 @@ class Subscription:
         else:
             db_engine = DatabaseManager.get_engine()
             gcs_provider = GcsProvider()
-            ai_provider = AiProvider(Analysis)
+            if self.config.USE_AI_MOCK:
+                self.logger.warning("Using Mock AI Provider")
+                ai_provider = MockAiProvider(Analysis)
+            else:
+                ai_provider = AiProvider(Analysis)
 
             analysis_repo = AnalysisRepository(engine=db_engine)
             file_record_repo = FileRecordsRepository(engine=db_engine)
             self.procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
 
             status_history_repo = StatusHistoryRepository(engine=db_engine)
-            budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
             self.analysis_service = AnalysisService(
                 procurement_repo=self.procurement_repo,
                 analysis_repo=analysis_repo,
                 file_record_repo=file_record_repo,
                 status_history_repo=status_history_repo,
-                budget_ledger_repo=budget_ledger_repo,
                 ai_provider=ai_provider,
                 gcs_provider=gcs_provider,
             )
@@ -105,7 +91,7 @@ class Subscription:
         self._lock = threading.Lock()
 
     @contextmanager
-    def _debug_context(self, message: Message) -> Generator[None, None, None]:
+    def _debug_context(self, message: Message):
         """Serializes processing and extends ack deadline when in debug mode.
 
         Args:
@@ -119,7 +105,7 @@ class Subscription:
             self._extend_ack_deadline(message, 600)
             yield
 
-    def _extend_ack_deadline(self, message: Message, seconds: int) -> None:
+    def _extend_ack_deadline(self, message: Message, seconds: int):
         """Attempts to extend the message ack deadline for safer debugging.
 
         Args:
@@ -143,13 +129,8 @@ class Subscription:
         except EOFError:
             self.logger.debug("No TTY available; skipping pause.")
 
-    def _process_message(self, message: Message, max_output_tokens: int | None = None) -> None:
-        """Decodes, validates, analyzes the message, and manages ACK/NACK.
-
-        Args:
-            message: The Pub/Sub message to process.
-            max_output_tokens: An optional token limit for the AI analysis.
-        """
+    def _process_message(self, message: Message, max_output_tokens: int | None = None):
+        """Decodes, validates, analyzes the message, and manages ACK/NACK."""
         message_id = message.message_id
         try:
             data_str = message.data.decode()
@@ -184,28 +165,14 @@ class Subscription:
                 exc_info=True,
             )
             message.nack()
-        except AnalysisError as e:
-            self.logger.error(
-                f"Analysis service error processing message {message_id}: {e}",
-                exc_info=True,
-            )
-            message.nack()
         except Exception as e:
-            self.logger.critical(
-                f"Critical unexpected error processing message {message_id}: {e}",
+            self.logger.error(
+                f"Unexpected error processing message {message_id}: {e}",
                 exc_info=True,
             )
             message.nack()
-        finally:
-            if self._processing_complete_event:
-                self._processing_complete_event.set()
 
-    def _message_callback(
-        self,
-        message: Message,
-        max_messages: int | None,
-        max_output_tokens: int | None = None,
-    ) -> None:
+    def _message_callback(self, message: Message, max_messages: int | None, max_output_tokens: int | None = None):
         """Entry-point callback invoked by Pub/Sub upon message delivery.
 
         Applies a debug-only context (single-flight + extended deadline) and
@@ -218,8 +185,9 @@ class Subscription:
         """
         with self._lock:
             if self._stop_event.is_set():
-                message.nack()
                 return
+
+            self._process_message(message, max_output_tokens)
 
             self.processed_messages_count += 1
             if max_messages and self.processed_messages_count >= max_messages:
@@ -228,14 +196,12 @@ class Subscription:
                 if self.streaming_pull_future:
                     self.streaming_pull_future.cancel()
 
-        self._process_message(message, max_output_tokens)
-
     def run(
         self,
         max_messages: int | None = None,
         timeout: int | None = None,
         max_output_tokens: int | None = None,
-    ) -> None:
+    ):
         """Starts the worker's message consumption loop.
 
         This method initiates the subscription to the configured Pub/Sub topic
@@ -243,34 +209,19 @@ class Subscription:
         shutdown upon interruption or timeout.
 
         Args:
-            max_messages: Max messages to process before stopping.
-            timeout: Max time in seconds to wait for a new message.
-            max_output_tokens: Token limit for the AI analysis.
+            max_messages: The maximum number of messages to process before stopping.
+            timeout: The maximum time in seconds to wait for messages.
         """
         subscription_name = self.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS
         if not subscription_name:
             self.logger.critical("Subscription name not configured. Worker cannot start.")
             return
 
-        def callback(message: Message) -> None:
-            """Wrapper callback to pass extra arguments.
+        def callback(message: Message):
+            self._message_callback(message, max_messages)
 
-            Args:
-                message: The Pub/Sub message received from the subscription.
-            """
-            self._message_callback(message, max_messages, max_output_tokens)
-
-        flow_control = pubsub_v1.types.FlowControl(
-            max_messages=self.config.WORKER_MAX_CONCURRENCY,
-        )
-
-        self.streaming_pull_future = self.pubsub_provider.subscribe(
-            subscription_name, callback, flow_control=flow_control
-        )
-        self.logger.info(
-            f"Worker is now running, waiting for messages "
-            f"(max_concurrency: {self.config.WORKER_MAX_CONCURRENCY}, timeout: {timeout}s)..."
-        )
+        self.streaming_pull_future = self.pubsub_provider.subscribe(subscription_name, callback)
+        self.logger.info(f"Worker is now running and waiting for messages (timeout: {timeout}s)...")
 
         try:
             self.streaming_pull_future.result(timeout=timeout)

@@ -3,15 +3,13 @@ import json
 import os
 import threading
 import uuid
-from collections.abc import Generator
 from contextlib import redirect_stdout
 from datetime import date
-from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+from uuid import uuid4
 
 import pytest
 import requests
-from cli.__main__ import cli
 from click.testing import CliRunner
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
@@ -24,18 +22,18 @@ from providers.gcs import GcsProvider
 from providers.logging import LoggingProvider
 from providers.pubsub import PubSubProvider
 from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
 from repositories.file_records import FileRecordsRepository
 from repositories.procurements import ProcurementsRepository
 from repositories.status_history import StatusHistoryRepository
 from services.analysis import AnalysisService
 from sqlalchemy import text
-from sqlalchemy.engine import Engine
-from worker.subscription import Subscription
+
+from source.cli.__main__ import cli as cli_main
+from source.worker.subscription import Subscription
 
 
 @pytest.fixture(scope="function")
-def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  # noqa: F841
+def integration_test_setup(db_session):  # noqa: F841
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
@@ -83,18 +81,18 @@ def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  
             connection.commit()
 
 
-def load_fixture(path: str) -> Any:
+def load_fixture(path):
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
 
-def load_binary_fixture(path: str) -> bytes:
+def load_binary_fixture(path):
     with open(path, "rb") as f:
         return f.read()
 
 
 @pytest.mark.timeout(180)
-def test_full_flow_integration(integration_test_setup: None, db_session: Engine) -> None:  # noqa: F841
+def test_full_flow_integration(integration_test_setup, db_session):  # noqa: F841
     # ... setup fixtures ...
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
@@ -114,13 +112,11 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
-    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
-        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -149,35 +145,25 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
     with patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)):
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
             runner = CliRunner()
-            result = runner.invoke(cli, ["analyze", f"--analysis-id={analysis_id}"])
+            result = runner.invoke(cli_main, ["analyze", f"--analysis-id={analysis_id}"])
             assert result.exit_code == 0, f"CLI command failed: {result.output}"
             assert "Analysis triggered successfully!" in result.output
 
             # 3. Run worker
             log_capture_stream = io.StringIO()
-            processing_complete_event = threading.Event()
-            subscription = Subscription(
-                analysis_service=analysis_service,
-                processing_complete_event=processing_complete_event,
-            )
+            subscription = Subscription(analysis_service=analysis_service)
             subscription.config.IS_DEBUG_MODE = False
 
-            def worker_target() -> None:
+            def worker_target():
                 with redirect_stdout(log_capture_stream):
                     subscription.run(max_messages=1)
 
             worker_thread = threading.Thread(target=worker_target, daemon=True)
             worker_thread.start()
+            worker_thread.join(timeout=60)
 
-            event_was_set = processing_complete_event.wait(timeout=60)
-            if not event_was_set:
-                pytest.fail(
-                    "Worker thread timed out waiting for message processing to complete.\n"
-                    f"Logs:\n{log_capture_stream.getvalue()}"
-                )
-            worker_thread.join(timeout=5)  # Give the thread a moment to shut down
             if worker_thread.is_alive():
-                pytest.fail("Worker thread did not shut down gracefully after processing.")
+                pytest.fail("Worker thread got stuck")
 
     # 4. Check results
     with db_engine.connect() as connection:
@@ -201,7 +187,7 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
 
 
 @pytest.mark.timeout(180)
-def test_pre_analysis_flow_integration(integration_test_setup: None, db_session: Engine) -> None:  # noqa: F841
+def test_pre_analysis_flow_integration(integration_test_setup, db_session):  # noqa: F841
     ibge_code = "3304557"
     target_date_str = "2025-08-23"
     fixture_base_path = f"tests/fixtures/{ibge_code}/{target_date_str}"
@@ -209,21 +195,21 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
     document_list_fixture = load_fixture(f"{fixture_base_path}/pncp_document_list.json")
     attachments_fixture = load_binary_fixture(f"{fixture_base_path}/Anexos.zip")
 
-    def mock_requests_get(url: str, **kwargs: Any) -> requests.Response:  # noqa: F841
-        mock_response = MagicMock(spec=requests.Response)
+    def mock_requests_get(url, **kwargs):  # noqa: F841
+        mock_response = requests.Response()
         mock_response.status_code = 200
         if "contratacoes/atualizacao" in url:
-            mock_response.json.return_value = {
+            mock_response.json = lambda: {
                 "data": procurement_list_fixture,
                 "totalPaginas": 1,
                 "totalRegistros": len(procurement_list_fixture),
                 "numeroPagina": 1,
             }
         elif url.endswith("/arquivos"):
-            mock_response.json.return_value = document_list_fixture
+            mock_response.json = lambda: document_list_fixture
         elif "/arquivos/" in url:
-            mock_response.content = attachments_fixture
-            mock_response.headers = {"Content-Disposition": 'attachment; filename="Anexos.zip"'}
+            mock_response._content = attachments_fixture
+            mock_response.headers["Content-Disposition"] = 'attachment; filename="Anexos.zip"'
         else:
             mock_response.status_code = 404
         return mock_response
@@ -236,13 +222,11 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
-    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     analysis_service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
-        budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
@@ -283,3 +267,66 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
         assert status == "PENDING_ANALYSIS"
         assert input_tokens_used == 1000
         assert output_tokens_used == 0
+
+
+@pytest.mark.timeout(180)
+def test_reaper_flow_integration(integration_test_setup, db_session):  # noqa: F841
+    """
+    Tests that the reaper command correctly identifies and resets a stale task.
+    """
+    # 1. Manually insert a procurement and a stale analysis record
+    analysis_id = uuid4()
+    control_number = "stale_control"
+    with db_session.connect() as connection:
+        # Insert a dummy procurement to satisfy the foreign key constraint
+        connection.execute(
+            text(
+                """
+                INSERT INTO procurements (
+                    pncp_control_number, version_number, object_description, procurement_year,
+                    procurement_sequence, pncp_publication_date, last_update_date,
+                    modality_id, procurement_status_id, is_srp, raw_data
+                ) VALUES (:pcn, 1, 'dummy', 2025, 1, NOW(), NOW(), 1, 1, false, '{}');
+                """
+            ),
+            {"pcn": control_number},
+        )
+        connection.execute(
+            text(
+                """
+                INSERT INTO procurement_analyses (
+                    analysis_id,
+                    procurement_control_number,
+                    version_number,
+                    status,
+                    updated_at
+                )
+                VALUES (:id, :pcn, 1, 'ANALYSIS_IN_PROGRESS', NOW() - INTERVAL '20 minutes');
+                """
+            ),
+            {"id": analysis_id, "pcn": control_number},
+        )
+        connection.commit()
+
+    # 2. Run the reaper command
+    with patch("source.cli.commands.DatabaseManager.get_engine", return_value=db_session):
+        runner = CliRunner()
+        result = runner.invoke(cli_main, ["reap-stale-tasks", "--timeout-minutes", "15"])
+        assert result.exit_code == 0, f"CLI command failed: {result.output}"
+        assert "Successfully reset 1 stale tasks" in result.output
+
+    # 3. Check the status in the database
+    with db_session.connect() as connection:
+        status_query = text("SELECT status FROM procurement_analyses WHERE analysis_id = :id")
+        new_status = connection.execute(status_query, {"id": analysis_id}).scalar_one()
+        assert new_status == "TIMEOUT"
+
+        # 4. Check that a history record was created
+        history_query = text(
+            "SELECT status, details FROM " "procurement_analysis_status_history " "WHERE analysis_id = :id"
+        )
+        history_record = connection.execute(history_query, {"id": analysis_id}).fetchone()
+        assert history_record is not None
+        status, details = history_record
+        assert status == "TIMEOUT"
+        assert "timed out after 15 minutes" in details

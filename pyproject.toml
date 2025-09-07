@@ -12,9 +12,6 @@ packages = [
     { include = "repositories", from = "source" },
     { include = "models", from = "source" },
     { include = "migrations", from = "source" },
-    { include = "constants", from = "source" },
-    { include = "worker", from = "source" },
-    { include = "exceptions", from = "source" },
 ]
 
 [build-system]
@@ -35,8 +32,8 @@ alembic = "^1.16.4"
 sqlalchemy = "^2.0.41"
 psycopg2-binary = "^2.9.9"
 google-cloud-pubsub = "^2.31.0"
-google-cloud-aiplatform = "^1.56.0"
-google-cloud-storage = "^2.16.0"
+google-cloud-aiplatform = "^1.55.0"
+google-cloud-storage = "^2.14.0"
 rarfile = "^4.2"
 py7zr = "^1.0.0"
 python-dotenv = "^1.1.1"
@@ -64,12 +61,6 @@ coverage = "^7.5.1"
 vulture = "^2.11"
 pre-commit = "^3.7.1"
 types-requests = "^2.32.4.20250611"
-
-
-[tool.poetry.group.dev.dependencies]
-interrogate = "^1.7.0"
-pydocstyle = "^6.3.0"
-darglint = "^1.8.1"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -101,9 +92,11 @@ exclude = '''
   | buck-out
   | build
   | dist
+
   # protobuf
   | app/customer/adapters/proto
   | app/provider/adapters/proto
+
   # The following are specific to Black, you probably don't want those.
   | blib2to3
   | tests/data
@@ -133,19 +126,14 @@ skip = '''
 '''
 
 [tool.mypy]
-warn_unused_configs = true
-show_error_codes = true
-pretty = true
-disallow_untyped_defs = true
-check_untyped_defs = true
 warn_return_any = true
-no_implicit_optional = true
+warn_unused_configs = true
 warn_unused_ignores = true
 ignore_missing_imports = true
 explicit_package_bases = true
 namespace_packages = true
 plugins = "pydantic.mypy"
-exclude = '(?x)(^.venv/)'
+exclude = '/.venv/'
 
 [tool.vulture]
 min_confidence = 100

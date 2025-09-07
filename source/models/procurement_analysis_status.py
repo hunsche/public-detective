@@ -17,3 +17,9 @@ class ProcurementAnalysisStatus(StrEnum):
 
     ANALYSIS_FAILED = "ANALYSIS_FAILED"
     """The analysis could not be completed due to a critical error."""
+
+    TIMEOUT = "TIMEOUT"
+    """The analysis was marked as timed out after running for too long."""
+
+    ANALYSIS_SKIPPED = "ANALYSIS_SKIPPED"
+    """The analysis was skipped, typically because it was a duplicate."""

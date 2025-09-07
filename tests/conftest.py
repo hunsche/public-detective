@@ -1,13 +1,7 @@
 import pytest
-from _pytest.nodes import Item
 
 
-def pytest_collection_modifyitems(items: list[Item]) -> None:
-    """Dynamically adds markers to tests based on their file path.
-
-    Args:
-        items: A list of test items collected by pytest.
-    """
+def pytest_collection_modifyitems(items):
     for item in items:
         if "units" in item.path.parts:
             item.add_marker(pytest.mark.unit)
