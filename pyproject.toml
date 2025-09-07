@@ -79,7 +79,7 @@ branch = true
 source = ["source/"]
 
 [tool.coverage.report]
-fail_under = 85
+fail_under = 95
 ignore_errors = false
 omit = [
     ".venv/**",
