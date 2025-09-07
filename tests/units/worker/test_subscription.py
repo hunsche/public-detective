@@ -238,3 +238,37 @@ def test_run_worker_finally_block_exception(subscription: Subscription) -> None:
 
     future.cancel.assert_called_once()
     assert future.result.call_count == 2
+
+
+def test_process_message_analysis_not_found(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests that a message is NACKed if the analysis is not found."""
+    subscription.analysis_service.analysis_repo.get_analysis_by_id.return_value = None
+
+    subscription._process_message(mock_message, max_output_tokens=None)
+
+    mock_message.nack.assert_called_once()
+    mock_message.ack.assert_not_called()
+
+
+def test_process_message_analysis_error(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests that an AnalysisError results in a NACK."""
+    from exceptions.analysis import AnalysisError
+
+    subscription.analysis_service.process_analysis_from_message.side_effect = AnalysisError("Analysis failed")
+
+    subscription._process_message(mock_message, max_output_tokens=None)
+
+    mock_message.nack.assert_called_once()
+    mock_message.ack.assert_not_called()
+
+
+def test_run_worker_cancelled_error(subscription: Subscription) -> None:
+    """Tests that a 'cancelled' error in the future result is handled gracefully."""
+    future = MagicMock()
+    future.result.side_effect = Exception("cancelled")
+    subscription.pubsub_provider.subscribe.return_value = future
+    subscription.logger = MagicMock()
+
+    subscription.run()
+
+    subscription.logger.critical.assert_not_called()

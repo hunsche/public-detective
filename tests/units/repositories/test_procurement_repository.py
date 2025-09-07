@@ -299,6 +299,58 @@ def test_get_updated_procurements_with_raw_data_request_error(
     assert procurements == []
 
 
+def test_get_procurement_by_id_and_version(repo: ProcurementsRepository, mock_engine: MagicMock) -> None:
+    """
+    Tests retrieving a specific version of a procurement.
+    """
+    conn_mock = mock_engine.connect().__enter__()
+    raw_data = _get_mock_procurement_data("PNCP-123")
+    conn_mock.execute.return_value.scalar_one_or_none.return_value = raw_data
+
+    procurement = repo.get_procurement_by_id_and_version("PNCP-123", 1)
+
+    assert procurement is not None
+    assert procurement.pncp_control_number == "PNCP-123"
+
+
+@patch("requests.get")
+def test_get_updated_procurements_no_data(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """
+    Tests that the loop breaks if no data is returned.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": []}
+    mock_get.return_value = mock_response
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements(target_date)
+
+    assert procurements == []
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_no_data(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """
+    Tests that the loop breaks if no data is returned for raw data fetching.
+    """
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {"data": []}
+    mock_get.return_value = mock_response
+
+    target_date = date(2025, 1, 1)
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurements = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert procurements == []
+
+
 @patch("requests.head")
 def test_determine_original_filename_success(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
     """Tests successful determination of filename from Content-Disposition header.

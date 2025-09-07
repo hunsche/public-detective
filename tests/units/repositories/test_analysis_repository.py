@@ -1,5 +1,6 @@
 import json
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from models.analyses import AnalysisResult, RedFlag, RedFlagCategory
@@ -441,6 +442,31 @@ def test_get_analyses_to_retry_not_found(analysis_repository: AnalysisRepository
 
     # Assert
     assert result == []
+
+
+def test_update_analysis_status(analysis_repository: AnalysisRepository) -> None:
+    """
+    Should execute an UPDATE statement to change the status of an analysis.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+    from models.procurement_analysis_status import ProcurementAnalysisStatus
+
+    analysis_id = uuid4()
+    new_status = ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS
+
+    # Act
+    analysis_repository.update_analysis_status(analysis_id, new_status)
+
+    # Assert
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["analysis_id"] == analysis_id
+    assert params["status"] == new_status.value
+    mock_conn.execute.assert_called_once()
+
     mock_conn.execute.assert_called_once()
 
 
@@ -473,3 +499,96 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
     # Assert
     assert result is not None
     assert result.warnings == ["Warning 1", "Warning 2"]
+
+
+def test_get_analyses_to_retry_found(analysis_repository: AnalysisRepository) -> None:
+    """
+    Should return a list of analyses when records are found to retry.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_row = MagicMock()
+    mock_row._fields = ["procurement_control_number"]
+    mock_result_proxy.fetchall.return_value = [mock_row]
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    with patch.object(
+        analysis_repository, "_parse_row_to_model", return_value=MagicMock(spec=AnalysisResult)
+    ) as mock_parse:
+        result = analysis_repository.get_analyses_to_retry(3, 1)
+
+    assert result is not None
+    assert len(result) == 1
+    mock_parse.assert_called_once()
+
+
+def test_save_retry_analysis(analysis_repository: AnalysisRepository) -> None:
+    """
+    Should execute an INSERT statement for a retry analysis.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.scalar_one.return_value = 789
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    returned_id = analysis_repository.save_retry_analysis(
+        procurement_control_number="PNCP-789",
+        version_number=2,
+        document_hash="retry-hash",
+        input_tokens_used=250,
+        output_tokens_used=150,
+        retry_count=1,
+    )
+
+    # Assert
+    assert returned_id == 789
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["retry_count"] == 1
+
+
+def test_get_pending_analyses_ranked_found(analysis_repository: AnalysisRepository) -> None:
+    """
+    Should return a list of ranked pending analyses.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_row = MagicMock()
+    mock_row._fields = ["procurement_control_number"]
+    mock_result_proxy.fetchall.return_value = [mock_row]
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    with patch.object(
+        analysis_repository, "_parse_row_to_model", return_value=MagicMock(spec=AnalysisResult)
+    ) as mock_parse:
+        result = analysis_repository.get_pending_analyses_ranked()
+
+    assert result is not None
+    assert len(result) == 1
+    mock_parse.assert_called_once()
+
+
+def test_get_pending_analyses_ranked_not_found(analysis_repository: AnalysisRepository) -> None:
+    """
+    Should return an empty list when no pending analyses are found.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_result_proxy.fetchall.return_value = []
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    # Act
+    result = analysis_repository.get_pending_analyses_ranked()
+
+    # Assert
+    assert result == []

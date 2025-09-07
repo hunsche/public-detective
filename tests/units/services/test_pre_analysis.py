@@ -115,3 +115,40 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procu
     service.procurement_repo.get_latest_version.assert_not_called()
     service.procurement_repo.save_procurement_version.assert_not_called()
     service.analysis_repo.save_pre_analysis.assert_not_called()
+
+
+def test_run_pre_analysis_with_max_messages(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """
+    Tests that the pre-analysis job stops after reaching max_messages.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [
+        (mock_procurement, {}),
+        (mock_procurement, {}),
+    ]
+    start_date = date(2025, 1, 1)
+    end_date = date(2025, 1, 1)
+
+    # Act
+    with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
+        service.run_pre_analysis(start_date, end_date, batch_size=10, sleep_seconds=0, max_messages=1)
+
+    # Assert
+    mock_pre_analyze.assert_called_once()
+
+
+def test_pre_analyze_procurement_no_files(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """
+    Tests that _pre_analyze_procurement handles cases with no files.
+    """
+    # Arrange
+    service = AnalysisService(**mock_dependencies)
+    raw_data = {"key": "value"}
+    service.procurement_repo.process_procurement_documents.return_value = []
+
+    # Act
+    service._pre_analyze_procurement(mock_procurement, raw_data)
+
+    # Assert
+    service.procurement_repo.save_procurement_version.assert_not_called()
