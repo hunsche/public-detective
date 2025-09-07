@@ -39,10 +39,12 @@ class Config(BaseSettings):
         3550308,  # São Paulo
     ]
 
-    GCP_PROJECT: str = "public-detective"
+    GCP_PROJECT: str = "total-entity-463718-k1"
+    GCP_LOCATION: str = "us-central1"
     GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
     GCP_GCS_HOST: str | None = None
     GCP_GCS_TEST_PREFIX: str | None = None
+    GCP_VERTEX_AI_BUCKET: str = "vertex-ai-test-files"
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None

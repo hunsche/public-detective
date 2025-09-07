@@ -4,7 +4,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 from models.analyses import Analysis
 from providers.ai import AiProvider
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from vertexai.generative_models import Part, GenerationConfig
 
 
 class MockOutputSchema(BaseModel):
@@ -12,413 +13,192 @@ class MockOutputSchema(BaseModel):
     summary: str
 
 
-@patch("google.generativeai.GenerativeModel")
-@patch("google.generativeai.configure")
-def test_get_structured_analysis_with_max_tokens(
-    mock_configure: MagicMock, mock_gen_model: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Should include max_output_tokens in the generation_config when provided.
-
-    Args:
-        mock_configure: Mock for google.generativeai.configure.
-        mock_gen_model: Mock for google.generativeai.GenerativeModel.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    # Arrange
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "fake-api-key")
-    monkeypatch.setenv("GCP_GEMINI_MODEL", "gemini-test")
-
-    mock_model_instance = MagicMock()
-    mock_response = MagicMock()
-    mock_function_call = MagicMock()
-    mock_function_call.args = {"risk_score": 8, "summary": "Test summary"}
-    mock_response.candidates = [MagicMock()]
-    mock_response.candidates[0].content.parts = [MagicMock()]
-    mock_response.candidates[0].content.parts[0].function_call = mock_function_call
-    mock_model_instance.generate_content.return_value = mock_response
-    mock_gen_model.return_value = mock_model_instance
-
-    ai_provider = AiProvider(output_schema=MockOutputSchema)
-
-    # Act
-    ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
-
-    # Assert
-    mock_configure.assert_called_once_with(api_key="fake-api-key")
-    mock_model_instance.generate_content.assert_called_once()
-    _, kwargs = mock_model_instance.generate_content.call_args
-    generation_config = kwargs.get("generation_config")
-    assert generation_config is not None
-    assert generation_config.max_output_tokens == 500
-
-
-@patch("google.generativeai.GenerativeModel")
-@patch("google.generativeai.configure")
-def test_get_structured_analysis_uses_valid_schema(
-    mock_configure: MagicMock, mock_gen_model: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:  # noqa: F841
-    """
-    Should generate content with a response schema compatible with the Gemini API,
-    ensuring Pydantic validation fields like 'ge' and 'le' are not present.
-
-    Args:
-        mock_configure: Mock for google.generativeai.configure.
-        mock_gen_model: Mock for google.generativeai.GenerativeModel.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    # Arrange
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "fake-api-key")
-    monkeypatch.setenv("GCP_GEMINI_MODEL", "gemini-test")
-
-    # Mock the model's response to simulate a function call
-    mock_model_instance = MagicMock()
-    mock_response = MagicMock()
-    mock_function_call = MagicMock()
-    mock_function_call.args = {
-        "risk_score": 8,
-        "risk_score_rationale": "High risk",
-        "summary": "Test summary",
-        "red_flags": [],
-    }
-    # This simulates the nested structure response.candidates[0].content.parts[0].function_call
-    mock_response.candidates = [MagicMock()]
-    mock_response.candidates[0].content.parts = [MagicMock()]
-    mock_response.candidates[0].content.parts[0].function_call = mock_function_call
-    mock_model_instance.generate_content.return_value = mock_response
-    mock_gen_model.return_value = mock_model_instance
-
-    ai_provider = AiProvider(output_schema=Analysis)
-
-    # Act
-    ai_provider.get_structured_analysis(prompt="test prompt", files=[])
-
-    # Assert
-    mock_model_instance.generate_content.assert_called_once()
-    _, kwargs = mock_model_instance.generate_content.call_args
-
-    # Check the generation_config for the response_schema
-    generation_config = kwargs.get("generation_config")
-    assert generation_config is not None
-    response_schema = generation_config.response_schema
-
-    assert response_schema is not None
-
-    # The core of the test: ensure no invalid fields like 'ge' or 'le' are in the schema
-    # We inspect the 'risk_score' property in the schema definition.
-    schema_dict = response_schema.model_json_schema()
-    risk_score_properties = schema_dict["properties"]["risk_score"]
-    assert "ge" not in risk_score_properties
-    assert "le" not in risk_score_properties
+class AnalysisWithValidation(BaseModel):
+    risk_score: int = Field(..., ge=0, le=10)
+    risk_score_rationale: str
+    summary: str
+    red_flags: list[str]
+    seo_keywords: list[str]
 
 
 @pytest.fixture
-def mock_gemini_client(monkeypatch: pytest.MonkeyPatch) -> Generator[MagicMock, None, None]:
-    """Fixture to mock the Gemini client.
+def mock_ai_provider(monkeypatch):
+    monkeypatch.setenv("GCP_PROJECT", "test-project")
+    monkeypatch.setenv("GCP_LOCATION", "us-central1")
 
-    Args:
-        monkeypatch: Pytest fixture for mocking.
+    with patch("providers.ai.vertexai.init"), \
+         patch("providers.ai.aiplatform.init"), \
+         patch("providers.ai.GenerativeModel") as mock_gen_model, \
+         patch("providers.ai.GcsProvider") as mock_gcs_provider, \
+         patch("providers.ai.ConfigProvider") as mock_config_provider:
 
-    Yields:
-        A mock for the GenerativeModel.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    with patch("google.generativeai.GenerativeModel") as mock_gen_model:
-        yield mock_gen_model
+        mock_model_instance = MagicMock()
+        mock_gcs_instance = MagicMock()
+        mock_config_instance = MagicMock()
 
+        mock_gen_model.return_value = mock_model_instance
+        mock_gcs_provider.return_value = mock_gcs_instance
+        mock_config_provider.get_config.return_value = mock_config_instance
 
-@pytest.mark.usefixtures("mock_gemini_client")
-def test_ai_provider_instantiation(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that the AiProvider can be instantiated correctly.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
-    assert provider is not None
+        mock_config_instance.GCP_VERTEX_AI_BUCKET = "test-bucket"
+        mock_config_instance.GCP_PROJECT = "test-project"
+        mock_config_instance.GCP_LOCATION = "us-central1"
+        mock_config_instance.GCP_GEMINI_MODEL = "gemini-test"
 
 
-def test_ai_provider_missing_api_key(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that AiProvider raises ValueError if the API key is missing.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "")
-    with pytest.raises(ValueError, match="GCP_GEMINI_API_KEY must be configured"):
-        AiProvider(MockOutputSchema)
+        yield mock_model_instance, mock_gcs_instance, mock_config_instance
 
 
-@patch("google.generativeai.delete_file")
-@patch("google.generativeai.upload_file")
-@patch("google.generativeai.get_file")
-def test_get_structured_analysis_cleans_up_files(
-    mock_get_file: MagicMock,
-    mock_upload_file: MagicMock,
-    mock_delete_file: MagicMock,
-    mock_gemini_client: MagicMock,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    """Tests that uploaded files are deleted even if analysis fails.
+def test_get_structured_analysis(mock_ai_provider):
+    mock_model_instance, mock_gcs_instance, _ = mock_ai_provider
 
-    Args:
-        mock_get_file: Mock for google.generativeai.get_file.
-        mock_upload_file: Mock for google.generativeai.upload_file.
-        mock_delete_file: Mock for google.generativeai.delete_file.
-        mock_gemini_client: Mock for the Gemini client.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    mock_model_instance = MagicMock()
-    mock_model_instance.generate_content.side_effect = Exception("API failure")
-    mock_gemini_client.return_value = mock_model_instance
+    mock_response = MagicMock()
+    mock_response.text = '''{"risk_score": 8, "summary": "Test summary"}'''
+    mock_response.usage_metadata.prompt_token_count = 10
+    mock_response.usage_metadata.candidates_token_count = 20
+    mock_model_instance.generate_content.return_value = mock_response
 
-    mock_uploaded_file = MagicMock()
-    mock_uploaded_file.name = "uploaded-file-name"
-    mock_uploaded_file.state.name = "ACTIVE"
-    mock_upload_file.return_value = mock_uploaded_file
-    mock_get_file.return_value = mock_uploaded_file
+    mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/file1.pdf"
 
-    provider = AiProvider(MockOutputSchema)
-    files_to_upload = [("file1.pdf", b"content1")]
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+    result, input_tokens, output_tokens = ai_provider.get_structured_analysis(
+        prompt="test prompt", files=[("file1.pdf", b"content")]
+    )
 
-    with pytest.raises(Exception, match="API failure"):
-        provider.get_structured_analysis(prompt="test", files=files_to_upload)
-
-    mock_upload_file.assert_called_once()
-    mock_delete_file.assert_called_once_with("uploaded-file-name")
+    assert isinstance(result, MockOutputSchema)
+    assert result.risk_score == 8
+    assert input_tokens == 10
+    assert output_tokens == 20
+    mock_gcs_instance.upload_file.assert_called_once()
+    mock_model_instance.generate_content.assert_called_once()
 
 
-@patch("google.generativeai.upload_file")
-@patch("google.generativeai.get_file")
-def test_upload_file_to_gemini_waits_for_active(
-    mock_get_file: MagicMock, mock_upload_file: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Tests that the upload method waits for the file to become active.
+def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
+    mock_model_instance, _, _ = mock_ai_provider
 
-    Args:
-        mock_get_file: Mock for google.generativeai.get_file.
-        mock_upload_file: Mock for google.generativeai.upload_file.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
+    # We need to return a mock from the generate_content call
+    mock_response = MagicMock()
+    mock_response.text = '''{"risk_score": 8, "summary": "Test summary"}'''
+    mock_response.usage_metadata.prompt_token_count = 0
+    mock_response.usage_metadata.candidates_token_count = 0
+    mock_model_instance.generate_content.return_value = mock_response
 
-    processing_file = MagicMock()
-    processing_file.name = "file-id"
-    processing_file.state.name = "PROCESSING"
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+    ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
 
-    active_file = MagicMock()
-    active_file.name = "file-id"
-    active_file.state.name = "ACTIVE"
-
-    mock_upload_file.return_value = processing_file
-    mock_get_file.side_effect = [processing_file, active_file]
-
-    provider = AiProvider(MockOutputSchema)
-    with patch("time.sleep"):  # Avoid actual sleeping
-        result = provider._upload_file_to_gemini(b"content", "test.pdf")
-
-    assert result == active_file
-    assert mock_get_file.call_count == 2
+    _, kwargs = mock_model_instance.generate_content.call_args
+    generation_config = kwargs.get("generation_config")
+    assert generation_config._raw_generation_config.max_output_tokens == 500
 
 
-def test_parse_response_blocked(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that a ValueError is raised if the response is blocked.
+def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
+    mock_model_instance, _, _ = mock_ai_provider
+    mock_model_instance.generate_content.return_value = MagicMock(
+        text='''{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", "red_flags": [], "seo_keywords": []}''',
+        usage_metadata=MagicMock(prompt_token_count=0, candidates_token_count=0),
+    )
 
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
+    # Using the simplified schema for the test
+    ai_provider = AiProvider(output_schema=AnalysisWithValidation)
+    ai_provider.get_structured_analysis(prompt="test prompt", files=[])
+
+    _, kwargs = mock_model_instance.generate_content.call_args
+    generation_config = kwargs.get("generation_config")
+    response_schema = generation_config._raw_generation_config.response_schema
+
+    assert response_schema is not None
+    risk_score_properties = response_schema.properties["risk_score"]
+    with pytest.raises(AttributeError):
+        _ = risk_score_properties.ge
+    with pytest.raises(AttributeError):
+        _ = risk_score_properties.le
+
+
+def test_parse_response_blocked(mock_ai_provider):
+    _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
     mock_response.candidates = []
     mock_response.prompt_feedback.block_reason.name = "SAFETY"
 
     with pytest.raises(ValueError, match="AI model blocked the response"):
-        provider._parse_and_validate_response(mock_response)
+        ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_empty(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that a ValueError is raised if the response has no candidates.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
+def test_parse_response_empty(mock_ai_provider):
+    _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
     mock_response.candidates = []
     mock_response.prompt_feedback = None
 
     with pytest.raises(ValueError, match="AI model returned an empty response"):
-        provider._parse_and_validate_response(mock_response)
+        ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_from_text(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests parsing a valid response from the text field.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
+def test_parse_response_from_text(mock_ai_provider):
+    _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
-    mock_response.candidates[0].content.parts[0].function_call = None
-    mock_response.text = '```json\n{"risk_score": 5, "summary": "text summary"}\n```'
+    mock_response.text = '''{"risk_score": 5, "summary": "text summary"}'''
 
-    result = provider._parse_and_validate_response(mock_response)
+    result = ai_provider._parse_and_validate_response(mock_response)
 
     assert isinstance(result, MockOutputSchema)
     assert result.risk_score == 5
     assert result.summary == "text summary"
 
 
-def test_parse_response_with_seo_keywords(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests parsing a valid response that includes SEO keywords.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(Analysis)
+def test_parse_response_with_markdown_in_text(mock_ai_provider):
+    _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
-    mock_response.candidates[0].content.parts[0].function_call = None
-    mock_response.text = """{
-        "risk_score": 5,
-        "summary": "text summary",
-        "risk_score_rationale": "test rationale",
-        "red_flags": [],
-        "seo_keywords": ["licitação", "pilhas", "CETESB"]
-    }"""
+    mock_response.text = '''```json
+{"risk_score": 5, "summary": "text summary"}
+```'''
 
-    result = provider._parse_and_validate_response(mock_response)
-
-    assert isinstance(result, Analysis)
-    assert result.risk_score == 5
-    assert result.seo_keywords == ["licitação", "pilhas", "CETESB"]
+    result = ai_provider._parse_and_validate_response(mock_response)
+    assert isinstance(result, MockOutputSchema)
 
 
-def test_parse_response_parsing_error(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that a ValueError is raised if the response cannot be parsed.
-
-    Args:
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
+def test_parse_response_parsing_error(mock_ai_provider):
+    _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
-    mock_response.candidates[0].content.parts[0].function_call = None
     mock_response.text = "this is not json"
 
     with pytest.raises(ValueError, match="could not be parsed"):
-        provider._parse_and_validate_response(mock_response)
+        ai_provider._parse_and_validate_response(mock_response)
 
 
-@patch("google.generativeai.upload_file", side_effect=Exception("Upload failed"))
-def test_upload_file_to_gemini_upload_error(mock_upload_file: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
-    """Tests that an exception during upload is caught and re-raised.
+def test_upload_file_to_gcs(mock_ai_provider):
+    _, mock_gcs_instance, _ = mock_ai_provider
+    mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/test.pdf"
 
-    Args:
-        mock_upload_file: Mock for google.generativeai.upload_file.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    provider = AiProvider(MockOutputSchema)
+    ai_provider = AiProvider(MockOutputSchema)
+    gcs_uri = ai_provider._upload_file_to_gcs(b"content", "test.pdf")
 
-    with pytest.raises(Exception, match="Upload failed"):
-        provider._upload_file_to_gemini(b"content", "test.pdf")
+    assert "gs://test-bucket/ai-uploads/" in gcs_uri
+    assert gcs_uri.endswith("/test.pdf")
+    mock_gcs_instance.upload_file.assert_called_once()
 
 
-@patch("google.generativeai.upload_file")
-@patch("google.generativeai.get_file")
-def test_upload_file_to_gemini_processing_failed(
-    mock_get_file: MagicMock, mock_upload_file: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Tests that an exception is raised if the file processing fails.
+def test_count_tokens_for_analysis(mock_ai_provider):
+    mock_model_instance, _, _ = mock_ai_provider
+    mock_model_instance.count_tokens.return_value = MagicMock(total_tokens=123)
 
-    Args:
-        mock_get_file: Mock for google.generativeai.get_file.
-        mock_upload_file: Mock for google.generativeai.upload_file.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-
-    failed_file = MagicMock()
-    failed_file.name = "file-id"
-    failed_file.state.name = "FAILED"
-
-    mock_upload_file.return_value = failed_file
-
-    provider = AiProvider(MockOutputSchema)
-    with pytest.raises(Exception, match="failed processing"):
-        provider._upload_file_to_gemini(b"content", "test.pdf")
-
-
-def test_count_tokens_for_analysis(mock_gemini_client: MagicMock, monkeypatch: pytest.MonkeyPatch) -> None:
-    """
-    Tests that count_tokens_for_analysis correctly formats the request
-    and returns the token count.
-
-    Args:
-        mock_gemini_client: Mock for the Gemini client.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    # Arrange
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    mock_model_instance = MagicMock()
-    mock_response = MagicMock()
-    mock_response.total_tokens = 123
-    mock_model_instance.count_tokens.return_value = mock_response
-    mock_gemini_client.return_value = mock_model_instance
-
-    provider = AiProvider(MockOutputSchema)
+    ai_provider = AiProvider(MockOutputSchema)
     prompt = "test prompt"
     files = [("file1.pdf", b"content1"), ("file2.txt", b"content2")]
 
-    # Act
-    token_count = provider.count_tokens_for_analysis(prompt, files)
+    token_count, _ = ai_provider.count_tokens_for_analysis(prompt, files)
 
-    # Assert
-    assert token_count == (123, 0)
+    assert token_count == 123
     mock_model_instance.count_tokens.assert_called_once()
     args, _ = mock_model_instance.count_tokens.call_args
     contents = args[0]
-    assert len(contents) == 3  # prompt + 2 files
+    assert len(contents) == 3
     assert contents[0] == prompt
-    assert contents[1]["mime_type"] == "application/pdf"
-    assert contents[1]["data"] == b"content1"
-    assert contents[2]["mime_type"] == "text/plain"
-    assert contents[2]["data"] == b"content2"
-
-
-def test_count_tokens_for_analysis_unknown_mime_type(
-    mock_gemini_client: MagicMock, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """
-    Tests that count_tokens_for_analysis uses a default mime type if one
-    cannot be guessed.
-
-    Args:
-        mock_gemini_client: Mock for the Gemini client.
-        monkeypatch: Pytest fixture for mocking.
-    """
-    # Arrange
-    monkeypatch.setenv("GCP_GEMINI_API_KEY", "test-key")
-    mock_model_instance = MagicMock()
-    mock_response = MagicMock()
-    mock_response.total_tokens = 123
-    mock_model_instance.count_tokens.return_value = mock_response
-    mock_gemini_client.return_value = mock_model_instance
-
-    provider = AiProvider(MockOutputSchema)
-    prompt = "test prompt"
-    files = [("file_without_extension", b"content")]
-
-    # Act
-    provider.count_tokens_for_analysis(prompt, files)
-
-    # Assert
-    mock_model_instance.count_tokens.assert_called_once()
-    args, _ = mock_model_instance.count_tokens.call_args
-    contents = args[0]
-    assert contents[1]["mime_type"] == "application/octet-stream"
+    assert isinstance(contents[1], Part)
+    assert contents[1]._raw_part.inline_data.mime_type == "application/pdf"
+    assert contents[2]._raw_part.inline_data.mime_type == "text/plain"

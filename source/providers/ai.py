@@ -6,17 +6,24 @@ manages API configuration, file uploads, prompt execution, and robust parsing
 of the AI's response.
 """
 
-import io
 import json
-import time
 from mimetypes import guess_type
 from typing import Generic, TypeVar
+from uuid import uuid4
 
-import google.generativeai as genai
-from google.generativeai.types import File
+import vertexai
+from google.cloud import aiplatform
 from providers.config import Config, ConfigProvider
+from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
+from vertexai.generative_models import (
+    Content,
+    GenerationConfig,
+    GenerationResponse,
+    GenerativeModel,
+    Part,
+)
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
@@ -29,7 +36,8 @@ class AiProvider(Generic[PydanticModel]):
 
     logger: Logger
     config: Config
-    model: genai.GenerativeModel
+    model: GenerativeModel
+    gcs_provider: GcsProvider
     output_schema: type[PydanticModel]
 
     def __init__(self, output_schema: type[PydanticModel]):
@@ -47,14 +55,18 @@ class AiProvider(Generic[PydanticModel]):
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
+        self.gcs_provider = GcsProvider()
 
-        if not self.config.GCP_GEMINI_API_KEY:
-            self.logger.error("GCP_GEMINI_API_KEY is missing. The AI provider cannot be initialized.")
-            raise ValueError("GCP_GEMINI_API_KEY must be configured to use the AI provider.")
+        aiplatform.init(
+            project=self.config.GCP_PROJECT,
+            location=self.config.GCP_LOCATION,
+        )
+        vertexai.init(project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
 
-        genai.configure(api_key=self.config.GCP_GEMINI_API_KEY)
-        self.model = genai.GenerativeModel(self.config.GCP_GEMINI_MODEL)
-        self.logger.info("Google Gemini client configured successfully for schema " f"'{self.output_schema.__name__}'.")
+        self.model = GenerativeModel(self.config.GCP_GEMINI_MODEL)
+        self.logger.info(
+            "Google Vertex AI client configured successfully for schema " f"'{self.output_schema.__name__}'."
+        )
 
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
@@ -63,7 +75,6 @@ class AiProvider(Generic[PydanticModel]):
 
         This method is designed to be highly robust, handling cases where the AI
         response might be empty, blocked by safety settings, or returned in
-        an unexpected format.
 
         Args:
             prompt: The instructional prompt for the AI model.
@@ -80,42 +91,28 @@ class AiProvider(Generic[PydanticModel]):
             - The number of input tokens used.
             - The number of output tokens used.
         """
-        uploaded_files = []
-        for file in files:
-            file_display_name = file[0]
-            file_content = file[1]
-            self.logger.info(f"Sending request to Gemini API for '{file_display_name}'.")
-            uploaded_files.append(self._upload_file_to_gemini(file_content, file_display_name))
+        file_parts = []
+        for file_display_name, file_content in files:
+            self.logger.info(f"Uploading '{file_display_name}' to GCS.")
+            gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
+            mime_type = guess_type(file_display_name)[0]
+            file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
-        try:
-            contents = [prompt, *uploaded_files]
-            if max_output_tokens is not None:
-                self.logger.info(f"Using max_output_tokens: {max_output_tokens}")
-                generation_config = genai.types.GenerationConfig(
-                    response_schema=self.output_schema,
-                    response_mime_type="application/json",
-                    max_output_tokens=max_output_tokens,
-                )
-            else:
-                self.logger.info("max_output_tokens is None, so no limit will be applied.")
-                generation_config = genai.types.GenerationConfig(
-                    response_schema=self.output_schema,
-                    response_mime_type="application/json",
-                )
+        contents = [prompt, *file_parts]
+        generation_config = GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=max_output_tokens,
+            response_schema=self.output_schema.model_json_schema(),
+        )
 
-            response = self.model.generate_content(contents, generation_config=generation_config)
-            self.logger.debug("Successfully received response from Gemini API.")
+        response = self.model.generate_content(contents, generation_config=generation_config)
+        self.logger.debug("Successfully received response from Vertex AI API.")
 
-            validated_response = self._parse_and_validate_response(response)
-            input_tokens = response.usage_metadata.prompt_token_count
-            output_tokens = response.usage_metadata.candidates_token_count
+        validated_response = self._parse_and_validate_response(response)
+        input_tokens = response.usage_metadata.prompt_token_count
+        output_tokens = response.usage_metadata.candidates_token_count
 
-            return validated_response, input_tokens, output_tokens
-
-        finally:
-            for uploaded_file in uploaded_files:
-                self.logger.info(f"Deleting uploaded file: {uploaded_file.name}")
-                genai.delete_file(uploaded_file.name)
+        return validated_response, input_tokens, output_tokens
 
     def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
         """Calculates the number of tokens for a given prompt and files.
@@ -130,19 +127,20 @@ class AiProvider(Generic[PydanticModel]):
             A tuple containing the total number of input tokens and 0 for output tokens.
         """
         self.logger.info("Counting tokens for analysis...")
-        parts: list[str | dict] = [prompt]
-        for file_path, file_content in files:
-            mime_type = guess_type(file_path)[0]
+        file_parts = []
+        for file_display_name, file_content in files:
+            mime_type = guess_type(file_display_name)[0]
             if not mime_type:
                 mime_type = "application/octet-stream"
-            parts.append({"mime_type": mime_type, "data": file_content})
+            file_parts.append(Part.from_data(file_content, mime_type=mime_type))
 
-        response = self.model.count_tokens(parts)
+        contents = [prompt, *file_parts]
+        response = self.model.count_tokens(contents)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
         return token_count, 0
 
-    def _parse_and_validate_response(self, response: genai.types.GenerateContentResponse) -> PydanticModel:
+    def _parse_and_validate_response(self, response: GenerationResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.
 
         This method provides a robust, multi-step process to extract and validate
@@ -160,81 +158,53 @@ class AiProvider(Generic[PydanticModel]):
         if not response.candidates:
             if response.prompt_feedback and response.prompt_feedback.block_reason:
                 block_reason = response.prompt_feedback.block_reason.name
-                self.logger.error(f"Gemini API blocked the prompt. Reason: {block_reason}")
+                self.logger.error(f"Vertex AI API blocked the prompt. Reason: {block_reason}")
                 raise ValueError(f"AI model blocked the response due to: {block_reason}")
 
-            self.logger.error(f"Gemini API returned no candidates. Full response: {response}")
+            self.logger.error(f"Vertex AI API returned no candidates. Full response: {response}")
             raise ValueError("AI model returned an empty response.")
 
         try:
-            function_call = response.candidates[0].content.parts[0].function_call
-            if function_call and function_call.args:
-                self.logger.info("Successfully found structured data in function_call.")
-                return self.output_schema.model_validate(function_call.args)
-
-            self.logger.info("No direct function_call found, attempting to parse from text response.")
-            text_content = response.text
-            self.logger.debug(f"Received text response from Gemini: {text_content}")
-            if text_content.strip().startswith("```json"):
-                text_content = text_content.strip()[7:-3]
-
-            json_data = json.loads(text_content)
+            # In Vertex AI, the structured response is directly in the .text attribute
+            # when a schema is provided.
+            response_text = response.text
+            self.logger.debug(f"Received text response from Vertex AI: {response_text}")
+            if response_text.strip().startswith("```json"):
+                response_text = response_text.strip()[7:-3]
+            json_data = json.loads(response_text)
             self.logger.info("Successfully parsed JSON data from text response.")
             return self.output_schema.model_validate(json_data)
 
-        except (
-            AttributeError,
-            IndexError,
-            json.JSONDecodeError,
-            ValidationError,
-        ) as e:
+        except (json.JSONDecodeError, ValidationError) as e:
             self.logger.error(f"Failed to parse or validate the AI's response: {e}")
             self.logger.error(f"Full API Response: {response}")
             raise ValueError(
                 "AI model returned a response that could not be parsed into the " "expected structure."
             ) from e
 
-    def _upload_file_to_gemini(self, content: bytes, display_name: str) -> File:
-        """Uploads file content to the Gemini File API and waits for it to become active.
-
-        This method handles the conversion of in-memory byte content to a
-        file-like object, uploads it, and then polls the API until the file's
-        status is 'ACTIVE', ensuring it is ready for use in a generation
-        request.
+    def _upload_file_to_gcs(self, content: bytes, display_name: str) -> str:
+        """Uploads file content to GCS and returns the GCS URI.
 
         Args:
             content: The raw byte content of the file to be uploaded.
-            display_name: The name to assign to the file in the API, which
-                          helps in identifying the artifact.
+            display_name: The name of the file, used to determine content type
+                          and the object name in GCS.
 
         Returns:
-            The file object representing the uploaded and successfully
-            processed file.
-
-        Raises:
-            Exception: If the file fails to become active after the upload
-                       or if any other API error occurs.
+            The GCS URI of the uploaded file (e.g., gs://bucket-name/object-name).
         """
-        self.logger.info(f"Uploading file '{display_name}' to Gemini File API...")
-        try:
-            file_stream = io.BytesIO(content)
+        bucket_name = self.config.GCP_VERTEX_AI_BUCKET
+        # Create a unique name for the object in GCS
+        object_name = f"ai-uploads/{uuid4()}/{display_name}"
+        content_type = guess_type(display_name)[0] or "application/octet-stream"
 
-            mime_type = guess_type(display_name)[0]
+        self.gcs_provider.upload_file(
+            bucket_name=bucket_name,
+            destination_blob_name=object_name,
+            content=content,
+            content_type=content_type,
+        )
 
-            uploaded_file = genai.upload_file(path=file_stream, display_name=display_name, mime_type=mime_type)
-            self.logger.info(f"File uploaded successfully: {uploaded_file.name}")
-
-            # Actively wait for the file to be processed by the API.
-            while uploaded_file.state.name == "PROCESSING":
-                time.sleep(2)
-                uploaded_file = genai.get_file(uploaded_file.name)
-                self.logger.debug(f"File status: {uploaded_file.state.name}")
-
-            if uploaded_file.state.name != "ACTIVE":
-                raise Exception(
-                    f"File '{uploaded_file.name}' failed processing. " f"Final state: {uploaded_file.state.name}"
-                )
-            return uploaded_file
-        except Exception as e:
-            self.logger.error(f"Failed to upload or process file for Gemini API: {e}")
-            raise
+        gcs_uri = f"gs://{bucket_name}/{object_name}"
+        self.logger.info(f"File uploaded to {gcs_uri}")
+        return gcs_uri
