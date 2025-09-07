@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import sys
 import threading
+from collections.abc import Generator
 from contextlib import contextmanager
 from logging import Filter, Formatter, Logger, LogRecord, StreamHandler, _nameToLevel, getLogger
 
@@ -22,36 +23,48 @@ class ContextualFilter(Filter):
     """A logging filter that makes a correlation ID available to the log formatter."""
 
     def filter(self, record: LogRecord) -> bool:
-        """Adds the correlation ID to the log record from thread-local context."""
+        """Adds the correlation ID to the log record from thread-local context.
+
+        Args:
+            record: The log record to be filtered.
+
+        Returns:
+            Always True to ensure the log record is processed.
+        """
         record.correlation_id = getattr(_log_context, "correlation_id", "-")
         return True
 
 
 class LoggingProvider:
-    """
-    Provides a configured logger instance for the application using a
-    Singleton pattern.
+    """Provides a configured logger instance for the application.
 
-    This ensures that there is only one instance of the logger throughout the
-    application's lifecycle, configured once based on settings from the config provider.
+    This class uses a Singleton pattern to ensure that there is only one
+    instance of the logger throughout the application's lifecycle, configured
+    once based on settings from the config provider.
     """
 
     _instance: LoggingProvider | None = None
     _logger: Logger | None = None
     _is_configured: bool = False
 
-    def __new__(cls):
-        """
-        Implements the Singleton pattern. If an instance does not exist, it creates one.
-        Otherwise, it returns the existing instance.
+    def __new__(cls) -> LoggingProvider:
+        """Implements the Singleton pattern.
+
+        If an instance does not exist, it creates one. Otherwise, it returns
+        the existing instance.
+
+        Returns:
+            The singleton instance of the LoggingProvider.
         """
         if not cls._instance:  # pragma: no cover
             cls._instance = super().__new__(cls)
         return cls._instance
 
     def _configure_logger(self) -> Logger:
-        """
-        Private method to configure the logger. This is called only once.
+        """Private method to configure the logger. This is called only once.
+
+        Returns:
+            The configured logger instance.
         """
         logger = getLogger("public_detective")
 
@@ -78,21 +91,30 @@ class LoggingProvider:
         return logger
 
     def get_logger(self) -> Logger:
-        """
-        Returns the configured logger instance.
+        """Returns the configured logger instance.
 
         If the logger has not been configured yet, this method will trigger
         the configuration. This lazy initialization ensures that the logger is
         only set up when it's first needed, preventing issues in test setups
         or module imports.
+
+        Returns:
+            The configured logger instance.
         """
         if not self._logger:
             self._logger = self._configure_logger()
         return self._logger
 
     @contextmanager
-    def set_correlation_id(self, correlation_id: str):
-        """A context manager to set and automatically clear the correlation ID."""
+    def set_correlation_id(self, correlation_id: str) -> Generator[None, None, None]:
+        """A context manager to set and automatically clear the correlation ID.
+
+        Args:
+            correlation_id: The correlation ID to set for the context.
+
+        Yields:
+            None.
+        """
         try:
             _log_context.correlation_id = correlation_id
             yield

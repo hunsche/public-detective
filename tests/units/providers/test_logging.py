@@ -5,7 +5,7 @@ Unit tests for the LoggingProvider.
 from providers.logging import LoggingProvider
 
 
-def test_logging_provider_is_singleton():
+def test_logging_provider_is_singleton() -> None:
     """
     Tests that the LoggingProvider follows the Singleton pattern.
     """
@@ -14,7 +14,7 @@ def test_logging_provider_is_singleton():
     assert instance1 is instance2
 
 
-def test_correlation_id_context_manager():
+def test_correlation_id_context_manager() -> None:
     """
     Tests that the correlation ID is correctly set and cleared.
     """

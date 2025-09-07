@@ -9,60 +9,41 @@ of the AI's response.
 import json
 from mimetypes import guess_type
 from typing import Generic, TypeVar
+from uuid import uuid4
 
 import vertexai
+from google.cloud import aiplatform
+from providers.config import Config, ConfigProvider
+from providers.gcs import GcsProvider
+from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
-from source.providers.config import Config, ConfigProvider
-from source.providers.logging import Logger, LoggingProvider
 from vertexai.generative_models import (
-    FunctionDeclaration,
+    Content,
     GenerationConfig,
+    GenerationResponse,
     GenerativeModel,
     Part,
-    Tool,
 )
-
-
-def _clean_schema_for_vertex_ai(schema: dict) -> dict:
-    """
-    Recursively cleans a Pydantic JSON schema to make it compatible with
-    Vertex AI's function calling, which does not support 'anyOf' with 'null' type.
-    """
-    if isinstance(schema, dict):
-        # Remove 'anyOf' with 'null' for optional fields
-        if "anyOf" in schema:
-            schema["anyOf"] = [s for s in schema["anyOf"] if s.get("type") != "null"]
-            if len(schema["anyOf"]) == 1:
-                return _clean_schema_for_vertex_ai(schema["anyOf"][0])
-
-        # Recurse into nested schemas
-        for key, value in schema.items():
-            schema[key] = _clean_schema_for_vertex_ai(value)
-
-    elif isinstance(schema, list):
-        return [_clean_schema_for_vertex_ai(item) for item in schema]
-
-    return schema
-
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
 
 class AiProvider(Generic[PydanticModel]):
-    """
-    Provides a generic interface to interact with the Google Vertex AI model,
-    specialized for a specific Pydantic output model.
+    """Provides a generic interface to interact with the Google Gemini AI model.
+
+    This class is specialized for a specific Pydantic output model.
     """
 
     logger: Logger
     config: Config
     model: GenerativeModel
+    gcs_provider: GcsProvider
     output_schema: type[PydanticModel]
 
     def __init__(self, output_schema: type[PydanticModel]):
-        """
-        Initializes the AiProvider, configuring the Vertex AI client for a specific
-        output schema.
+        """Initializes the AiProvider.
+
+        This method configures the Gemini client for a specific output schema.
 
         Args:
             output_schema: The Pydantic model class that this provider instance
@@ -71,11 +52,14 @@ class AiProvider(Generic[PydanticModel]):
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
+        self.gcs_provider = GcsProvider()
 
-        if not self.config.GCP_PROJECT:
-            raise ValueError("GCP_PROJECT must be configured to use the AI provider.")
+        aiplatform.init(
+            project=self.config.GCP_PROJECT,
+            location=self.config.GCP_LOCATION,
+        )
+        vertexai.init(project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
 
-        vertexai.init(project=self.config.GCP_PROJECT)
         self.model = GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info(
             "Google Vertex AI client configured successfully for schema " f"'{self.output_schema.__name__}'."
@@ -84,86 +68,140 @@ class AiProvider(Generic[PydanticModel]):
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
     ) -> tuple[PydanticModel, int, int]:
-        """
-        Sends a prompt with files for analysis and parses the structured response
-        into the Pydantic model instance defined for this provider.
+        """Uploads a file, sends it for analysis, and parses the response.
+
+        This method is designed to be highly robust, handling cases where the AI
+        response might be empty, blocked by safety settings, or returned in
 
         Args:
             prompt: The instructional prompt for the AI model.
-            files: A list of tuples, where each tuple contains the file path and its byte content.
+            files: A list of tuples:
+                - A list of tuples with file paths and their byte content.
+                - A list of descriptive names for the uploaded files.
             max_output_tokens: An optional integer to set the token limit.
+                If `None`, no limit is applied.
 
         Returns:
-            A tuple containing the Pydantic model instance, input tokens, and output tokens.
+            A tuple containing:
+            - An instance of the Pydantic model associated with this provider,
+              populated with the AI's response.
+            - The number of input tokens used.
+            - The number of output tokens used.
         """
-        self.logger.info(f"Sending request to Vertex AI for {len(files)} files.")
-        parts = [prompt]
-        for file_path, file_content in files:
-            mime_type = guess_type(file_path)[0] or "application/octet-stream"
-            parts.append(Part.from_data(data=file_content, mime_type=mime_type))
+        file_parts = []
+        for file_display_name, file_content in files:
+            self.logger.info(f"Uploading '{file_display_name}' to GCS.")
+            gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
+            mime_type = guess_type(file_display_name)[0]
+            file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
-        # Count input tokens before making the call
-        input_tokens = self.model.count_tokens(parts).total_tokens
-
-        cleaned_schema = _clean_schema_for_vertex_ai(self.output_schema.model_json_schema())
-        tool = Tool(
-            function_declarations=[
-                FunctionDeclaration(
-                    name="structured_analysis_output",
-                    description="Outputs the structured analysis of the procurement documents.",
-                    parameters=cleaned_schema,
-                )
-            ]
+        contents = [prompt, *file_parts]
+        generation_config = GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=max_output_tokens,
+            response_schema=self.output_schema.model_json_schema(),
         )
-        response = self._generate_content_with_structured_output(parts, tool, max_output_tokens)
-        validated_response = self._parse_and_validate_response(response)
 
-        # Count output tokens after getting the response
-        output_tokens = self.model.count_tokens(response.candidates[0].content).total_tokens
+        response = self.model.generate_content(contents, generation_config=generation_config)
+        self.logger.debug("Successfully received response from Vertex AI API.")
+
+        validated_response = self._parse_and_validate_response(response)
+        input_tokens = response.usage_metadata.prompt_token_count
+        output_tokens = response.usage_metadata.candidates_token_count
 
         return validated_response, input_tokens, output_tokens
 
     def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
-        """
-        Calculates the number of tokens for a given prompt and list of files.
+        """Calculates the number of tokens for a given prompt and files.
+
+        Args:
+            prompt: The instructional prompt for the AI model.
+            files: A list of tuples, where each tuple contains:
+                - The file path (for display name and mime type guessing).
+                - The byte content of the file.
+
+        Returns:
+            A tuple containing the total number of input tokens and 0 for output tokens.
         """
         self.logger.info("Counting tokens for analysis...")
-        parts = [prompt]
-        for file_path, file_content in files:
-            mime_type = guess_type(file_path)[0] or "application/octet-stream"
-            parts.append(Part.from_data(data=file_content, mime_type=mime_type))
+        file_parts = []
+        for file_display_name, file_content in files:
+            mime_type = guess_type(file_display_name)[0]
+            if not mime_type:
+                mime_type = "application/octet-stream"
+            file_parts.append(Part.from_data(file_content, mime_type=mime_type))
 
-        token_count = self.model.count_tokens(parts).total_tokens
+        contents = [prompt, *file_parts]
+        response = self.model.count_tokens(contents)
+        token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
         return token_count, 0
 
-    def _generate_content_with_structured_output(
-        self, parts: list, tool: Tool, max_output_tokens: int | None
-    ) -> "GenerationResponse":
-        self.logger.info("Sending request to Vertex AI API with function calling.")
-        generation_config = GenerationConfig(max_output_tokens=max_output_tokens) if max_output_tokens else None
+    def _parse_and_validate_response(self, response: GenerationResponse) -> PydanticModel:
+        """Parses the AI's response, handling multiple potential formats and errors.
 
-        response = self.model.generate_content(
-            parts,
-            tools=[tool],
-            generation_config=generation_config,
-        )
-        self.logger.debug(f"Successfully received response from Vertex AI API: {response}")
-        return response
+        This method provides a robust, multi-step process to extract and validate
+        the structured data from the model's response.
 
-    def _parse_and_validate_response(self, response: "GenerationResponse") -> PydanticModel:
+        Args:
+            response: The complete response object from the `generate_content` call.
+
+        Returns:
+            A validated Pydantic model instance.
+
+        Raises:
+            ValueError: If the response is empty, blocked, or unparsable.
         """
-        Parses the AI's response, expecting a function call with the structured data.
-        """
+        if not response.candidates:
+            if response.prompt_feedback and response.prompt_feedback.block_reason:
+                block_reason = response.prompt_feedback.block_reason.name
+                self.logger.error(f"Vertex AI API blocked the prompt. Reason: {block_reason}")
+                raise ValueError(f"AI model blocked the response due to: {block_reason}")
+
+            self.logger.error(f"Vertex AI API returned no candidates. Full response: {response}")
+            raise ValueError("AI model returned an empty response.")
+
         try:
-            function_call = response.candidates[0].content.parts[0].function_call
-            if not function_call or not function_call.args:
-                raise ValueError("Model did not return a function call with arguments.")
+            # In Vertex AI, the structured response is directly in the .text attribute
+            # when a schema is provided.
+            response_text = response.text
+            self.logger.debug(f"Received text response from Vertex AI: {response_text}")
+            if response_text.strip().startswith("```json"):
+                response_text = response_text.strip()[7:-3]
+            json_data = json.loads(response_text)
+            self.logger.info("Successfully parsed JSON data from text response.")
+            return self.output_schema.model_validate(json_data)
 
-            self.logger.info("Successfully found structured data in function_call.")
-            return self.output_schema.model_validate(function_call.args)
-
-        except (AttributeError, IndexError, ValidationError) as e:
+        except (json.JSONDecodeError, ValidationError) as e:
             self.logger.error(f"Failed to parse or validate the AI's response: {e}")
             self.logger.error(f"Full API Response: {response}")
-            raise ValueError("AI model returned a response that could not be parsed.") from e
+            raise ValueError(
+                "AI model returned a response that could not be parsed into the " "expected structure."
+            ) from e
+
+    def _upload_file_to_gcs(self, content: bytes, display_name: str) -> str:
+        """Uploads file content to GCS and returns the GCS URI.
+
+        Args:
+            content: The raw byte content of the file to be uploaded.
+            display_name: The name of the file, used to determine content type
+                          and the object name in GCS.
+
+        Returns:
+            The GCS URI of the uploaded file (e.g., gs://bucket-name/object-name).
+        """
+        bucket_name = self.config.GCP_VERTEX_AI_BUCKET
+        # Create a unique name for the object in GCS
+        object_name = f"ai-uploads/{uuid4()}/{display_name}"
+        content_type = guess_type(display_name)[0] or "application/octet-stream"
+
+        self.gcs_provider.upload_file(
+            bucket_name=bucket_name,
+            destination_blob_name=object_name,
+            content=content,
+            content_type=content_type,
+        )
+
+        gcs_uri = f"gs://{bucket_name}/{object_name}"
+        self.logger.info(f"File uploaded to {gcs_uri}")
+        return gcs_uri

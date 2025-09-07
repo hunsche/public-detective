@@ -28,7 +28,9 @@ Key architectural features:
               return result
       ```
 
-- **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E2E tests.
+- **Avoid `SELECT *`:** Always specify the exact columns you need in your `SELECT` statements. This makes queries more readable, prevents pulling unnecessary data, and makes the code more resilient to changes in the database schema. The only exception for this rule is for E-to-E tests.
+
+- **No Abbreviations in SQL:** All table names, column names, and aliases in SQL queries must be fully spelled out and descriptive. Avoid abbreviations (e.g., use `users` instead of `u`, `user_id` instead of `uid`) to maximize readability and maintainability.
 
 - **Idempotency:** Analysis of the same set of documents is skipped by checking a SHA-256 hash of the content.
 - **Archiving:** Both original and processed documents are saved as zip archives to Google Cloud Storage for traceability.
@@ -117,6 +119,16 @@ This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS
 
 ## 4. Running Tests
 
+### 4.1. Test Writing Style (`pytest` only)
+
+To maintain consistency and leverage the best features available, all tests in this project **must** be written using the modern `pytest` style. The use of the legacy `unittest` framework is prohibited for any new or modified tests.
+
+-   **Use Plain `assert`**: All assertions should use Python's built-in `assert` statement. Do not use `unittest.TestCase` methods like `self.assertEqual()` or `self.assertTrue()`.
+-   **Use `pytest` Fixtures**: For test setup and teardown, use `@pytest.fixture` decorators. Do not use `unittest`'s class-based `setUp()` and `tearDown()` methods.
+-   **Write Functional Tests**: Tests should be simple functions (e.g., `def test_something():`). Do not use `class TestSomething(unittest.TestCase):` inheritance.
+
+This rule is enforced to ensure all tests are clean, readable, and consistent with modern Python best practices.
+
 ### Unit Tests
 These do not require any external services.
 ```bash
@@ -197,6 +209,7 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
     ```
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
+- **Exception Handling:** Service layer methods (`source/services/`) must catch generic exceptions and re-raise them as specific, custom exceptions from the `source/exceptions/` package (e.g., `AnalysisError`). The presentation layers (`cli`, `worker`) are responsible for catching these specific exceptions and handling user-facing feedback (e.g., logging, raising `click.Abort()`).
 
 ## 6. Database Migrations
 
@@ -215,24 +228,105 @@ def downgrade() -> None:
 ### C. Table Naming Conventions
 All database tables must be named using the plural form of the entity they represent. For example, the table for users is named `users`, not `user`.
 
-## 7. Pre-commit Hooks
+### D. Indexing Strategy
+**To ensure optimal query performance, every column that is used in a `WHERE` clause, `JOIN` condition, or `ORDER BY` clause must have an index.**
 
-This project uses pre-commit hooks to enforce code quality and consistency. You **must** ensure your code passes these checks before submitting.
+-   **Single-Column Indexes:** Create a standard index for columns used in simple filters.
+-   **Composite Indexes:** Create composite (multi-column) indexes for columns that are frequently queried together in the same `WHERE` clause. The order of columns in the index should match the query's selectivity (most selective column first).
+-   **Index Naming:** Use the convention `idx_table_name_column_names`.
 
-### A. Installation
-First, install the hooks so they run automatically before each commit:
-```bash
-poetry run pre-commit install
-```
+Before adding a new query to a repository, verify that all columns in the filter and sort clauses are properly indexed in the database migrations.
 
-### B. Usage and Troubleshooting
-The hooks will run on changed files when you run `git commit`. However, the CI pipeline runs the checks on **all files**. This can cause the pipeline to fail even if your local commit succeeds.
+## 7. Code Style and Quality Enforcement
 
-To avoid this, it is **highly recommended** to occasionally run the checks on all files locally:
-```bash
-poetry run pre-commit run --all-files
-```
+This project enforces a strict set of code style and quality rules to ensure consistency, readability, and maintainability. All code is automatically checked and formatted using pre-commit hooks. You **must** ensure your code passes these checks before submitting.
 
-This command simulates the CI environment and helps you find and fix issues in files you didn't directly modify.
+### A. How to Use
+1.  **Install the hooks:** This command sets up the hooks to run automatically before each commit.
+    ```bash
+    poetry run pre-commit install
+    ```
+
+2.  **Run checks manually (Recommended):** The CI pipeline runs checks on **all files**, while a local commit only checks the files you've changed. This can cause the CI to fail even if your local commit succeeds. To avoid this, run the checks on all files locally before pushing:
+    ```bash
+    poetry run pre-commit run --all-files
+    ```
+
+### B. Key Tools and Standards
+
+The pre-commit pipeline enforces the following standards:
+
+-   **Formatting (Black):** All code is automatically formatted by the [Black](https://github.com/psf/black) code formatter.
+-   **Import Sorting (isort):** All imports are automatically sorted and grouped by [isort](https://pycqa.github.io/isort/), ensuring a consistent and readable module structure.
+-   **Linting (Flake8):** We use [Flake8](https://flake8.pycqa.org/en/latest/) for linting, enhanced with several plugins to enforce a higher standard of code quality:
+    -   `flake8-bugbear`: Finds likely bugs and design problems.
+    -   `flake8-comprehensions`: Helps write better and more idiomatic comprehensions.
+    -   `flake8-todos`: Ensures that temporary code markers like `TODO` are addressed.
+    -   The configuration also explicitly enables `E266` to enforce the **No Inline Comments** rule.
+-   **Security (Bandit):** The [Bandit](https://github.com/PyCQA/bandit) tool is used to find common security issues in Python code.
+-   **Static Typing (MyPy):** All code must pass strict static type analysis using [MyPy](http://mypy-lang.org/). Our configuration enforces:
+    -   **Full Annotation Coverage:** All function definitions must have type annotations (`disallow_untyped_defs`).
+    -   **Explicit Optionals:** Values that can be `None` must be explicitly typed with `Optional` (`no_implicit_optional`).
+    -   **No `Any` Returns:** Functions are not allowed to implicitly return the `Any` type (`warn_return_any`).
+-   **Docstring Standards (Interrogate, pydocstyle, darglint):** We enforce comprehensive and consistent docstrings.
+    -   **Coverage:** At least 95% of the codebase must be documented (`interrogate`).
+    -   **Style:** All docstrings must follow the [Google Python Style Guide](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) (`pydocstyle`).
+    -   **Correctness:** Docstrings must be synchronized with function signatures (`darglint`).
+-   **Test Coverage:** All contributions must maintain or increase the project's test coverage. The test suite will fail if the coverage drops below the threshold defined in `pyproject.toml`.
+
+### C. Guiding Principles
+
+In addition to the automated checks, we follow these principles:
+
+-   **Zero-Warning Policy:** Warnings are treated as errors. Code that produces warnings during linting, static analysis, or testing is considered incomplete. All warnings must be resolved before a contribution is considered finished.
+-   **Self-Documenting Code:** We prioritize clear, descriptive variable and method names over inline comments. Use docstrings for public classes and methods to explain the *why*, not the *what*. Avoid `#` comments unless absolutely necessary for complex logic.
+-   **English Language:** All code, docstrings, and documentation must be in **English**. The only exception is text that is user-facing or part of an AI prompt, which should be in **Portuguese (pt-br)**.
+-   **Structured Logging:** Do not use `print()` in the application code. Always use the `LoggingProvider` to ensure all output is structured and controllable.
 
 Thank you for your contribution!
+
+## 8. Import and Packaging Philosophy
+
+This project uses a specific package structure where each component in the `source` directory (e.g., `cli`, `services`) is treated as a distinct top-level package. This has important implications for imports and testing.
+
+### A. The "No `source` Prefix" Rule
+
+**All internal imports must be absolute from the component's root.** The `source` directory is **not** a package and must never be used as a prefix.
+
+-   **Correct:** `from cli.commands import analyze`
+-   **Incorrect:** `from source.cli.commands import analyze`
+
+This structure is defined in `pyproject.toml`. If you encounter import-related errors with tooling, do not add the `source.` prefix. The solution will likely involve adjusting the tool's configuration.
+
+### B. Mocking and Patching in Tests
+
+This rule is critical for tests. The path provided to a patch decorator must exactly match the import path used by the module under test.
+
+-   **Code:** `from cli.commands import DatabaseManager`
+-   **Test Patch:** `@patch("cli.commands.DatabaseManager")`
+
+Using an incorrect path (e.g., with a `source.` prefix) will cause mocks to fail silently and tests to hit real resources.
+
+## 9. Exception Handling and Linter Configuration
+
+This project follows a specific philosophy for handling exceptions to ensure robustness and clarity, which also impacts our linter configuration.
+
+### A. Exception Handling Philosophy
+
+1.  **Custom Service Exceptions:** The Service layer (`source/services/`) is the core of the business logic. When a method in a service encounters an error (e.g., a database error, an API failure, or unexpected data), it **must** catch the generic exception and re-raise it as a specific, custom exception from the `source/exceptions/` package (e.g., `AnalysisError`). This encapsulates the implementation detail of the error and provides a clear, domain-specific error to the calling layer.
+
+2.  **Presentation Layer Handles Custom Exceptions:** The presentation layers (e.g., the `cli` or the `worker`) are responsible for calling the services. They should **never** handle generic `Exception` types. Instead, they must catch the specific custom exceptions raised by the service (e.g., `except AnalysisError as e:`).
+
+3.  **User-Facing Feedback:** After catching a custom exception, the presentation layer is responsible for providing appropriate user feedback. For the CLI, this means printing a user-friendly error message and exiting with a non-zero status code, typically by raising `click.Abort()`. For the worker, this means logging the error and NACK-ing the Pub/Sub message so it can be retried or sent to a dead-letter queue.
+
+This pattern creates a clean separation of concerns: the service layer signals *what* went wrong in business terms, and the presentation layer decides *how* to report that failure to the user or the infrastructure.
+
+### B. Darglint Configuration (`DAR401`/`DAR402`)
+
+The docstring linter `darglint` has a known issue where it cannot correctly parse the common pattern used in `click` applications: catching a custom exception and then raising `click.Abort()`. This leads to a conflicting pair of errors: `DAR401` (Missing exception) and `DAR402` (Excess exception).
+
+After extensive testing, it was confirmed that this is a limitation of the linter when faced with this specific, idiomatic code pattern. Refactoring the code to satisfy the linter would result in a less clear, non-standard implementation.
+
+Therefore, the project has made the pragmatic decision to **globally disable these two specific darglint rules** in the `.flake8` configuration file.
+
+**Trade-off:** By disabling these rules, we lose the automated check that ensures `Raises` sections in docstrings are perfectly synchronized with the code. This means all developers and agents **must be extra diligent** to manually update the `Raises` section of a function's docstring whenever they add or remove a `raise` statement.

@@ -1,6 +1,4 @@
-"""
-This module defines the Pydantic models for the analysis data structures.
-"""
+"""This module defines the Pydantic models for the analysis data structures."""
 
 from datetime import datetime
 from enum import StrEnum
@@ -18,9 +16,7 @@ class RedFlagCategory(StrEnum):
 
 
 class RedFlag(BaseModel):
-    """
-    Represents a single red flag identified during an audit.
-    """
+    """Represents a single red flag identified during an audit."""
 
     category: RedFlagCategory = Field(
         ...,
@@ -44,9 +40,7 @@ class RedFlag(BaseModel):
 
 
 class Analysis(BaseModel):
-    """
-    Defines the structured output of a procurement document analysis.
-    """
+    """Defines the structured output of a procurement document analysis."""
 
     risk_score: int | None = Field(
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
@@ -116,3 +110,4 @@ class AnalysisResult(BaseModel):
     processed_documents_gcs_path: str | None = None
     input_tokens_used: int | None = None
     output_tokens_used: int | None = None
+    votes_count: int | None = 0
