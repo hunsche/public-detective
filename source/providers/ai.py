@@ -7,6 +7,7 @@ of the AI's response.
 """
 
 import json
+import os
 from mimetypes import guess_type
 from typing import Generic, TypeVar
 from uuid import uuid4
@@ -43,7 +44,7 @@ class AiProvider(Generic[PydanticModel]):
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
 
-        
+
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -58,7 +59,7 @@ class AiProvider(Generic[PydanticModel]):
         if emulator_host:
             self.logger.info(f"AI client configured for emulator at {emulator_host}")
             # The aiplatform.init() function will automatically use this env var
-            os.environ["AIPLATFORM_EMULATOR_HOST"] = emulator_host
+            os.environ["AIPLATFORM_EMULATOR_HOST"] = str(emulator_host)
         # Priority 2: Use Service Account JSON from env var
         elif credentials_value:
             try:

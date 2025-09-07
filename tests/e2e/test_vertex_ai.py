@@ -9,53 +9,32 @@ from google.cloud import storage
 from vertexai.generative_models import GenerativeModel, Part
 
 
-@pytest.fixture(scope="module")
-def e2e_vertex_setup():
-    """Set up the environment for Vertex AI E2E tests."""
-    os.environ.pop("GCP_GCS_HOST", None)
-    os.environ.pop("GCP_AI_HOST", None)
-
-    project_id = "total-entity-463718-k1"
-    os.environ["GCP_PROJECT"] = project_id
-
-    credentials_path = os.path.expanduser("~/.gcp/credentials.json")
-    if not os.path.exists(credentials_path):
-        pytest.fail(f"Service account credentials not found at {credentials_path}")
-
-    # Set the file path for standard ADC used by libraries directly
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = credentials_path
-
-    yield
-
-    os.environ.pop("GCP_PROJECT", None)
-    os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
-
-
-@pytest.fixture(scope="module")
-def gcs_client(e2e_vertex_setup):
+@pytest.fixture(scope="function")
+def gcs_client(e2e_environment: None) -> storage.Client:
     """Initializes the GCS client using Application Default Credentials."""
     return storage.Client()
 
 
-@pytest.fixture(scope="module")
-def test_bucket(gcs_client):
+@pytest.fixture(scope="function")
+def test_bucket(gcs_client: storage.Client) -> storage.Bucket:
     """Ensures the hardcoded test bucket exists and provides it."""
-    bucket_name = "vertex-ai-test-files"
+    bucket_name = os.environ["GCP_VERTEX_AI_BUCKET"]
     bucket = gcs_client.bucket(bucket_name)
-    if not bucket.exists():
-        pytest.fail(f"The required GCS bucket '{bucket_name}' does not exist.")
+    assert bucket.exists(), f"The required GCS bucket '{bucket_name}' does not exist."
     return bucket
 
 
-@pytest.fixture(scope="module")
-def vertex_ai_model(e2e_vertex_setup):
+@pytest.fixture(scope="function")
+def vertex_ai_model(e2e_environment: None) -> GenerativeModel:
     """Initializes the Vertex AI Generative Model using ADC."""
     vertexai.init()
     return GenerativeModel("gemini-2.5-pro")
 
 
 @pytest.mark.timeout(60)
-def test_simple_vertex_ai_analysis(vertex_ai_model, test_bucket, tmp_path: Path):
+def test_simple_vertex_ai_analysis(
+    vertex_ai_model: GenerativeModel, test_bucket: storage.Bucket, tmp_path: Path
+) -> None:
     """
     Performs a simple E2E test to verify Vertex AI and GCS connectivity.
     It uploads a simple text file and asks the model to read it.

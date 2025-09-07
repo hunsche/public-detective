@@ -15,84 +15,10 @@ from sqlalchemy.engine import Engine
 from tests.e2e.conftest import run_command
 
 
-@pytest.fixture(scope="function")
-def worker_e2e_test_setup(db_session: Engine):
-    """Set up the environment for a single worker E2E test."""
-    # Ensure E2E tests for GCS and AI run against real GCP services,
-    # while Pub/Sub can still use an emulator.
-    os.environ.pop("GCP_GCS_HOST", None)
-    os.environ.pop("GCP_AI_HOST", None)
-
-    print("\n--- Setting up Worker E2E test environment ---")
-    project_id = "total-entity-463718-k1"
-    os.environ["GCP_PROJECT"] = project_id
-
-
-    run_id = uuid.uuid4().hex
-    topic_name = f"procurements-topic-worker-test-{run_id}"
-    subscription_name = f"procurements-subscription-worker-test-{run_id}"
-
-    # Use a pre-existing bucket for all GCS operations in the test
-    bucket_name = "vertex-ai-test-files"
-    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = bucket_name
-    os.environ["GCP_VERTEX_AI_BUCKET"] = bucket_name
-
-    publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
-    subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
-    topic_path = publisher.topic_path(project_id, topic_name)
-    subscription_path = subscriber.subscription_path(project_id, subscription_name)
-
-    gcs_credentials_path = os.path.expanduser("~/.gcp/credentials.json")
-    if not os.path.exists(gcs_credentials_path):
-        pytest.fail(f"Service account credentials not found at {gcs_credentials_path}")
-    with open(gcs_credentials_path, "r") as f:
-        gcs_credentials_json = f.read()
-
-    os.environ["GCP_SERVICE_ACCOUNT_CREDENTIALS"] = gcs_credentials_json
-
-    # This client is only for test setup/teardown, not for the application itself.
-    # It can use the standard ADC which will find the file via GOOGLE_APPLICATION_CREDENTIALS
-    # if it's set globally, or it can be initialized differently if needed.
-    # For the purpose of this test, we'll create a temporary client for bucket operations.
-    temp_gcs_client = storage.Client.from_service_account_json(gcs_credentials_path, project=project_id)
-    bucket = temp_gcs_client.bucket(bucket_name)
-    # In a real environment, the bucket should exist. We are not creating it anymore.
-    # try:
-    #     if not bucket.exists():
-    #         print(f"Creating GCS bucket: {bucket_name}")
-    #         gcs_client.create_bucket(bucket)
-
-    try:
-        print(f"Creating Pub/Sub topic: {topic_path}")
-        publisher.create_topic(request={"name": topic_path})
-
-        print(f"Creating Pub/Sub subscription: {subscription_path}")
-        subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
-
-        yield publisher, topic_path
-
-    finally:
-        print("\n--- Tearing down Worker E2E test environment ---")
-        try:
-            subscriber.delete_subscription(request={"subscription": subscription_path})
-        except exceptions.NotFound:
-            pass
-        try:
-            publisher.delete_topic(request={"topic": topic_path})
-        except exceptions.NotFound:
-            pass
-        try:
-            for blob in bucket.list_blobs():
-                blob.delete()
-            # bucket.delete() # Do not delete a pre-existing bucket
-        except exceptions.NotFound:
-            pass
-
-
 @pytest.mark.timeout(240)
-def test_worker_flow(worker_e2e_test_setup, db_session: Engine):
+def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
     """Tests the worker processing a single message."""
-    publisher, topic_path = worker_e2e_test_setup
+    publisher, topic_path = e2e_environment
     analysis_id = uuid.uuid4()
     procurement_control_number = "43776491000170-1-000251/2025"
     version_number = 1
@@ -161,9 +87,8 @@ def test_worker_flow(worker_e2e_test_setup, db_session: Engine):
 
     # Pass environment variables directly to the worker command to ensure it uses the unique
     # topic and subscription for this test run.
-    topic_name = topic_path.split("/")[-1]
-    run_id = topic_name.split("-")[-1]
-    subscription_name = f"procurements-subscription-worker-test-{run_id}"
+    topic_name = os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"]
+    subscription_name = os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"]
     env_vars = (
         f"GCP_PUBSUB_TOPIC_PROCUREMENTS='{topic_name}' "
         f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}' "
