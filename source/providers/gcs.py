@@ -1,11 +1,4 @@
-"""This module provides a thread-safe provider for Google Cloud Storage (GCS).
-
-It defines a `GcsProvider` class that abstracts the interaction with GCS,
-including client initialization (with support for the GCS emulator) and
-file uploads. The client is managed as a singleton to ensure efficient
-resource use.
-"""
-
+import json
 import os
 import threading
 from typing import cast
@@ -44,8 +37,11 @@ class GcsProvider:
         """Retrieves a singleton instance of the GCS Client.
 
         If a client instance does not exist, it creates a new one in a
-        thread-safe manner, caches it, and then returns it. It also handles
-        the setup for the GCS emulator.
+        thread-safe manner. The initialization priority is as follows:
+        1. GCS Emulator: If GCP_GCS_HOST is set, it will always be used.
+        2. Service Account JSON: If GCP_SERVICE_ACCOUNT_CREDENTIALS has JSON
+           content, it will be used.
+        3. Application Default Credentials (ADC): As a final fallback.
 
         Returns:
             A singleton instance of google.cloud.storage.Client.
@@ -55,7 +51,10 @@ class GcsProvider:
                 if self._client is None:
                     self.logger.info("GCS client not found in cache, creating new instance...")
 
+                    credentials_value = self.config.GCP_SERVICE_ACCOUNT_CREDENTIALS
                     emulator_host = self.config.GCP_GCS_HOST
+
+                    # Priority 1: Use Emulator if GCP_GCS_HOST is set
                     if emulator_host:
                         from google.auth.credentials import AnonymousCredentials
 
@@ -64,8 +63,27 @@ class GcsProvider:
                         self._client = storage.Client(
                             credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT
                         )
+                    # Priority 2: Use Service Account JSON from env var
+                    elif credentials_value:
+                        try:
+                            if credentials_value.strip().startswith("{"):
+                                self.logger.info("GCS client configured from Service Account JSON string.")
+                                credentials_info = json.loads(credentials_value)
+                                self._client = storage.Client.from_service_account_info(
+                                    credentials_info, project=self.config.GCP_PROJECT
+                                )
+                            else:
+                                raise ValueError(
+                                    "GCP_SERVICE_ACCOUNT_CREDENTIALS is set but does not appear to be a JSON object."
+                                )
+                        except json.JSONDecodeError as e:
+                            self.logger.error(f"Failed to parse GCP credentials JSON: {e}")
+                            raise ValueError("Invalid JSON in GCP_SERVICE_ACCOUNT_CREDENTIALS.") from e
+                    # Priority 3: Fallback to Application Default Credentials
                     else:
-                        self.logger.info("GCS client configured for Google Cloud production.")
+                        self.logger.info(
+                            "GCS client configured for Google Cloud production via Application Default Credentials."
+                        )
                         self._client = storage.Client(project=self.config.GCP_PROJECT)
 
                     self.logger.info("GCS client created successfully.")
