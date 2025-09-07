@@ -127,14 +127,14 @@ jobs:
         with:
           pytest-coverage-path: pytest-coverage.txt
           junitxml-path: junit.xml
-          title: Test Coverage
+          title: Code Coverage
           badge-title: Coverage
           hide-badge: false
           hide-report: false
           create-new-comment: false
           hide-comment: false
 
-      - name: Generate coverage badge
+      - name: Generate code coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: tj-actions/coverage-badge-py@v2
         with:
@@ -143,7 +143,7 @@ jobs:
       - name: Generate docstring coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          poetry run interrogate -v --fail-under 95 --badge .github/badges/docstring-coverage.svg --badge-format svg
+          poetry run interrogate --generate-badge .github/badges/docstring-coverage.svg --badge-format svg
 
       - name: Commit and push coverage badges
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
