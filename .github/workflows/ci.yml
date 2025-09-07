@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - '.github/badges/coverage.svg'
+      - '.github/badges/**'
   pull_request:
     branches:
       - main
@@ -138,15 +138,20 @@ jobs:
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: tj-actions/coverage-badge-py@v2
         with:
-          output: .github/badges/coverage.svg
+          output: .github/badges/code-coverage.svg
 
-      - name: Commit and push coverage badge
+      - name: Generate docstring coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          git add .github/badges/coverage.svg
+          poetry run interrogate -v --fail-under 95 --badge .github/badges/docstring-coverage.svg --badge-format svg
+
+      - name: Commit and push coverage badges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git add .github/badges/
           if git diff --staged --quiet; then
-            echo "No changes to commit for coverage badge."
+            echo "No changes to commit for coverage badges."
           else
-            git commit -m "chore: update coverage badge"
+            git commit -m "chore: update coverage badges"
             git push
           fi
