@@ -300,9 +300,25 @@ def test_trigger_ranked_analysis_auto_budget_no_period() -> None:
 
 
 @patch("cli.commands.DatabaseManager")
+@patch("cli.commands.PubSubProvider")
+@patch("cli.commands.GcsProvider")
+@patch("cli.commands.AiProvider")
+@patch("cli.commands.AnalysisRepository")
+@patch("cli.commands.FileRecordsRepository")
+@patch("cli.commands.ProcurementsRepository")
+@patch("cli.commands.StatusHistoryRepository")
+@patch("cli.commands.BudgetLedgerRepository")
 @patch("cli.commands.AnalysisService")
 def test_trigger_ranked_analysis_exception(
     mock_analysis_service: MagicMock,
+    mock_budget_ledger_repo: MagicMock,
+    mock_status_history_repo: MagicMock,
+    mock_procurement_repo: MagicMock,
+    mock_file_record_repo: MagicMock,
+    mock_analysis_repo: MagicMock,
+    mock_ai_provider: MagicMock,
+    mock_gcs_provider: MagicMock,
+    mock_pubsub_provider: MagicMock,
     mock_db_manager: MagicMock,
 ) -> None:
     """Test that the command handles exceptions gracefully."""
