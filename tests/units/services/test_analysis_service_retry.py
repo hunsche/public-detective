@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+from exceptions.analysis import AnalysisError
 from models.analyses import Analysis, AnalysisResult
 from repositories.analyses import AnalysisRepository
 from services.analysis import AnalysisService
@@ -136,4 +137,62 @@ def test_retry_analyses_skips_ineligible_analysis_due_to_backoff(analysis_servic
         assert result == 0
         analysis_repo.get_analyses_to_retry.assert_called_once_with(3, 1)
         analysis_repo.save_retry_analysis.assert_not_called()
+        mock_run_specific.assert_not_called()
+
+
+def test_retry_analyses_run_specific_fails(analysis_service_fixture: dict) -> None:
+    """
+    Tests that retry_analyses handles exceptions from run_specific_analysis.
+    """
+    analysis_repo = analysis_service_fixture["analysis_repo"]
+    service = analysis_service_fixture["service"]
+
+    analysis_id = uuid4()
+    now = datetime.now(timezone.utc)
+    eligible_analysis = MagicMock(
+        analysis_id=analysis_id,
+        procurement_control_number="123",
+        version_number=1,
+        document_hash="hash123",
+        input_tokens_used=100,
+        output_tokens_used=50,
+        retry_count=0,
+        updated_at=now - timedelta(hours=7),
+    )
+    analysis_repo.get_analyses_to_retry.return_value = [eligible_analysis]
+    analysis_repo.save_retry_analysis.return_value = uuid4()
+
+    with patch.object(service, "run_specific_analysis", side_effect=Exception("test error")):
+        with pytest.raises(AnalysisError):
+            service.retry_analyses(initial_backoff_hours=6, max_retries=3, timeout_hours=1)
+
+
+def test_retry_analyses_too_soon(analysis_service_fixture: dict) -> None:
+    """
+    Tests that retry_analyses skips an analysis if the backoff period has not passed.
+    """
+    analysis_repo = analysis_service_fixture["analysis_repo"]
+    service = analysis_service_fixture["service"]
+
+    analysis_id = uuid4()
+    now = datetime.now(timezone.utc)
+    eligible_analysis = AnalysisResult(
+        analysis_id=analysis_id,
+        procurement_control_number="123",
+        version_number=1,
+        status="ANALYSIS_FAILED",
+        retry_count=1,
+        updated_at=now - timedelta(hours=1),  # backoff is 6 * 2 = 12 hours
+        ai_analysis=Analysis(
+            risk_score=5,
+            risk_score_rationale="Rationale",
+            procurement_summary="Summary",
+            analysis_summary="Summary",
+            red_flags=[],
+        ),
+    )
+    analysis_repo.get_analyses_to_retry.return_value = [eligible_analysis]
+
+    with patch.object(service, "run_specific_analysis") as mock_run_specific:
+        service.retry_analyses(initial_backoff_hours=6, max_retries=3, timeout_hours=1)
         mock_run_specific.assert_not_called()
