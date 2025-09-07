@@ -1,6 +1,8 @@
-import pytest
-import imageio_ffmpeg
 import os
+
+import imageio_ffmpeg
+import pytest
+
 
 @pytest.fixture(scope="session", autouse=True)
 def download_ffmpeg():

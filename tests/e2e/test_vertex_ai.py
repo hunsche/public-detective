@@ -1,32 +1,34 @@
-import os
-import pytest
-import pathlib
 import json
-import uuid
 import logging
+import os
+import pathlib
 import time
+import uuid
+
+import pytest
 
 # Configure logging to see test progress
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger(__name__)
 
-# --- Step 1: Import all required libraries ---
-from PIL import Image, ImageDraw
-from reportlab.pdfgen import canvas
-from reportlab.lib.pagesizes import letter
 import docx
-import pptx
 import imageio
 import numpy as np
+import pptx
+import vertexai
+from google.api_core import exceptions
+from google.cloud import storage
+
+# --- Step 1: Import all required libraries ---
+from PIL import Image, ImageDraw
 from pydub import AudioSegment
 from pydub.generators import Sine
-from google.cloud import storage
-from google.api_core import exceptions
-import vertexai
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
 from vertexai.generative_models import GenerativeModel, Part
 
-
 # --- Step 2: Define Fixtures for File Generation and GCS Management ---
+
 
 @pytest.fixture(scope="session")
 def gcs_client():
@@ -34,13 +36,15 @@ def gcs_client():
     Initializes the Google Cloud Storage client.
     It automatically uses Application Default Credentials (from gcloud CLI).
     """
-    
-    
+
     try:
         # The client automatically discovers the project_id from the environment.
         return storage.Client()
     except Exception as e:
-        pytest.fail(f"Could not initialize GCS Client. Ensure you are authenticated with 'gcloud auth application-default login'. Error: {e}")
+        pytest.fail(
+            f"Could not initialize GCS Client. Ensure you are authenticated with 'gcloud auth application-default login'. Error: {e}"
+        )
+
 
 @pytest.fixture(scope="session")
 def test_bucket(gcs_client):
@@ -52,7 +56,7 @@ def test_bucket(gcs_client):
     bucket = gcs_client.bucket(bucket_name)
     if not bucket.exists():
         pytest.fail(f"The required GCS bucket '{bucket_name}' does not exist. Please create it manually.")
-    
+
     log.info(f"Using existing GCS test bucket: {bucket_name}")
     yield bucket
 
@@ -62,21 +66,24 @@ def test_bucket(gcs_client):
     # Only blobs with the 'test-run-' prefix are deleted for safety
     for blob in bucket.list_blobs(prefix="test-run-"):
         blobs_to_delete.append(blob.name)
-    
+
     if blobs_to_delete:
         try:
             # Use batch deletion for efficiency
             bucket.delete_blobs(blobs_to_delete)
             log.info(f"Deleted {len(blobs_to_delete)} test blobs.")
         except Exception as e:
-            log.error(f"Failed to clean up all blobs in {bucket_name}. You may need to delete them manually. Error: {e}")
+            log.error(
+                f"Failed to clean up all blobs in {bucket_name}. You may need to delete them manually. Error: {e}"
+            )
+
 
 @pytest.fixture(scope="session")
 def file_generator():
     """
     Returns a function that generates ALL file types in a project-local directory.
     """
-    
+
     output_dir = pathlib.Path("generated_test_files")
     output_dir.mkdir(exist_ok=True)
 
@@ -85,7 +92,7 @@ def file_generator():
         # and keep the output organized, mimicking the original safe behavior.
         file_specific_dir = output_dir / f"run-{uuid.uuid4().hex[:6]}"
         file_specific_dir.mkdir()
-        
+
         temp_dir = file_specific_dir
         # Handles complex mime types to extract a valid extension
         extension = mime_type.split("/")[-1].split(".")[-1].split("-")[-1]
@@ -93,13 +100,13 @@ def file_generator():
 
         # --- Generation logic for EACH file type ---
         if mime_type.startswith("image/"):
-            img = Image.new('RGB', (120, 80), color='blue')
+            img = Image.new("RGB", (120, 80), color="blue")
             d = ImageDraw.Draw(img)
             d.text((10, 10), f"{extension.upper()} Test", fill=(255, 255, 0))
             # HEIC/HEIF are not standard output formats, so we save as PNG.
             # The mime_type in the API call is what matters.
-            if extension in ['heic', 'heif']:
-                file_path = file_path.with_suffix('.png')
+            if extension in ["heic", "heif"]:
+                file_path = file_path.with_suffix(".png")
             img.save(file_path)
         elif mime_type.startswith("video/"):
             # Create a simple video with a few frames of solid color
@@ -131,7 +138,9 @@ def file_generator():
             # Generate a simple RTF
             file_path.write_text(r"{\rtf1\ansi\deff0 {\fonttbl{\f0 Arial;}}\f0\fs24 RTF content test.}")
         elif mime_type == "text/html":
-            file_path.write_text("<!DOCTYPE html><html><head><title>Test Title</title></head><body><p>Test paragraph.</p></body></html>")
+            file_path.write_text(
+                "<!DOCTYPE html><html><head><title>Test Title</title></head><body><p>Test paragraph.</p></body></html>"
+            )
         elif mime_type == "text/csv":
             file_path.write_text("id,name\n1,csv_test")
         elif mime_type == "application/json":
@@ -155,8 +164,7 @@ def vertex_ai_model():
     Initializes the Vertex AI Generative Model for the test module.
     It automatically discovers the project_id from the environment (gcloud CLI).
     """
-    
-    
+
     try:
         # project and location are discovered from the environment automatically
         vertexai.init()
@@ -164,6 +172,7 @@ def vertex_ai_model():
         return model
     except Exception as e:
         pytest.fail(f"Failed to initialize Vertex AI Model. Error: {e}")
+
 
 # --- Step 3: Define Test Cases and the Main Test Function ---
 
@@ -194,6 +203,7 @@ ALL_SUPPORTED_FORMATS = [
     ("text/plain", "What is this text file about?"),
 ]
 
+
 @pytest.mark.parametrize("mime_type, prompt", ALL_SUPPORTED_FORMATS)
 def test_real_analysis_of_all_formats(vertex_ai_model, test_bucket, file_generator, mime_type, prompt):
     """
@@ -201,7 +211,7 @@ def test_real_analysis_of_all_formats(vertex_ai_model, test_bucket, file_generat
     It generates a file, uploads it to a GCS bucket, and sends it to the Vertex AI API.
     """
     log.info(f"--- Starting test for MIME type: {mime_type} ---")
-    
+
     local_file_path = file_generator(mime_type)
     assert local_file_path.exists(), "File generator failed to create a file."
 
@@ -230,20 +240,22 @@ def test_real_analysis_of_all_formats(vertex_ai_model, test_bucket, file_generat
     if "error" in response_text.lower():
         log.error(f"Response for {mime_type} contains an error message: {response_text}")
         assert "error" not in response_text.lower()
-    
+
     # Simple content checks
     if mime_type.startswith("image"):
-        assert "blue" in response_text.lower() and ("yellow" in response_text.lower() or "white" in response_text.lower() or "black" in response_text.lower())
+        assert "blue" in response_text.lower() and (
+            "yellow" in response_text.lower() or "white" in response_text.lower() or "black" in response_text.lower()
+        )
     if mime_type.startswith("video"):
-         assert "red" in response_text.lower()
+        assert "red" in response_text.lower()
     if mime_type.startswith("audio"):
-         assert "sine wave" in response_text.lower() or "tone" in response_text.lower()
+        assert "sine wave" in response_text.lower() or "tone" in response_text.lower()
     if "json" in mime_type:
         assert "json_test" in response_text.lower() or "line2" in response_text.lower()
     if "xml" in mime_type:
         assert "xml_test" in response_text.lower()
 
     log.info(f"--- Test PASSED for MIME type: {mime_type} ---")
-    
+
     # API rate limiting to avoid "429 Resource exhausted" errors
-    time.sleep(5) # Increased to 5 seconds for more safety
+    time.sleep(5)  # Increased to 5 seconds for more safety
