@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -14,6 +15,7 @@ def test_get_or_create_client_with_emulator() -> None:
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = "http://localhost:8086"
     mock_config.GCP_PROJECT = "test-project"
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = None
 
     gcs_provider = GcsProvider()
     gcs_provider.config = mock_config
@@ -34,6 +36,37 @@ def test_get_or_create_client_with_emulator() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
+def test_get_or_create_client_emulator_priority() -> None:
+    """
+    Should prioritize the emulator even if service account credentials are provided.
+    """
+    # Arrange
+    mock_config = MagicMock()
+    mock_config.GCP_GCS_HOST = "http://localhost:8086"  # Emulator is set
+    mock_config.GCP_PROJECT = "test-project"
+    # Service account is also set, but should be ignored
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = '{"type": "service_account", ...}'
+
+    gcs_provider = GcsProvider()
+    gcs_provider.config = mock_config
+    gcs_provider.logger = MagicMock()
+    gcs_provider._client_creation_lock = MagicMock()
+    gcs_provider._client = None
+
+    with patch("google.cloud.storage.Client") as mock_storage_client:
+        # Act
+        gcs_provider._get_or_create_client()
+
+        # Assert
+        # Verify it was called with emulator credentials, not service account ones
+        mock_storage_client.assert_called_once()
+        _, kwargs = mock_storage_client.call_args
+        assert isinstance(kwargs["credentials"], AnonymousCredentials)
+        # Ensure from_service_account_info was NOT called
+        mock_storage_client.from_service_account_info.assert_not_called()
+
+
+@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
 def test_get_or_create_client_for_production() -> None:
     """
     Should create a GCS client with default credentials when GCP_GCS_HOST is not set.
@@ -42,6 +75,8 @@ def test_get_or_create_client_for_production() -> None:
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None  # Emulator is not set
     mock_config.GCP_PROJECT = "prod-project"
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = None
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = None
 
     gcs_provider = GcsProvider()
     gcs_provider.config = mock_config
@@ -59,6 +94,38 @@ def test_get_or_create_client_for_production() -> None:
 
 
 @patch("providers.gcs.GcsProvider.__init__", lambda x: None)
+def test_get_or_create_client_with_service_account_json() -> None:
+    """
+    Should create a GCS client from a service account JSON string.
+
+    This test verifies that when `GCP_SERVICE_ACCOUNT_CREDENTIALS` is a JSON
+    string, the provider correctly calls `from_service_account_info`.
+    """
+    # Arrange
+    mock_config = MagicMock()
+    mock_config.GCP_GCS_HOST = None
+    mock_config.GCP_PROJECT = "sa-project"
+    sa_json_string = '{"type": "service_account", "project_id": "sa-project"}'
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = sa_json_string
+
+    gcs_provider = GcsProvider()
+    gcs_provider.config = mock_config
+    gcs_provider.logger = MagicMock()
+    gcs_provider._client_creation_lock = MagicMock()
+    gcs_provider._client = None
+
+    with patch("google.cloud.storage.Client") as mock_storage_client:
+        # Act
+        client = gcs_provider._get_or_create_client()
+
+        # Assert
+        mock_storage_client.from_service_account_info.assert_called_once_with(
+            json.loads(sa_json_string), project="sa-project"
+        )
+        assert client is not None
+
+
+@patch("providers.gcs.GcsProvider.__init__", lambda x: None)
 def test_get_or_create_client_caches_instance() -> None:
     """
     Should create a GCS client only once and then cache it.
@@ -67,6 +134,7 @@ def test_get_or_create_client_caches_instance() -> None:
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None
     mock_config.GCP_PROJECT = "prod-project"
+    mock_config.GCP_SERVICE_ACCOUNT_CREDENTIALS = None
 
     gcs_provider = GcsProvider()
     gcs_provider.config = mock_config

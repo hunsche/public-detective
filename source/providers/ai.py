@@ -17,13 +17,7 @@ from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
-from vertexai.generative_models import (
-    Content,
-    GenerationConfig,
-    GenerationResponse,
-    GenerativeModel,
-    Part,
-)
+from vertexai.generative_models import Content, GenerationConfig, GenerationResponse, GenerativeModel, Part
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
@@ -49,19 +43,48 @@ class AiProvider(Generic[PydanticModel]):
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
 
-        Raises:
-            ValueError: If the GCP_GEMINI_API_KEY is not configured.
+        
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
 
+        emulator_host = self.config.GCP_AI_HOST
+        credentials_value = self.config.GCP_SERVICE_ACCOUNT_CREDENTIALS
+        credentials = None
+
+        # Priority 1: Use Emulator if GCP_AI_HOST is set
+        if emulator_host:
+            self.logger.info(f"AI client configured for emulator at {emulator_host}")
+            # The aiplatform.init() function will automatically use this env var
+            os.environ["AIPLATFORM_EMULATOR_HOST"] = emulator_host
+        # Priority 2: Use Service Account JSON from env var
+        elif credentials_value:
+            try:
+                if credentials_value.strip().startswith("{"):
+                    self.logger.info("AI client configured from Service Account JSON string.")
+                    credentials_info = json.loads(credentials_value)
+                    from google.oauth2 import service_account
+
+                    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                else:
+                    raise ValueError(
+                        "GCP_SERVICE_ACCOUNT_CREDENTIALS is set but does not appear to be a JSON object."
+                    )
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Failed to parse GCP credentials JSON: {e}")
+                raise ValueError("Invalid JSON in GCP_SERVICE_ACCOUNT_CREDENTIALS.") from e
+        # Priority 3: Fallback to Application Default Credentials (credentials=None)
+        else:
+            self.logger.info("AI client configured for Google Cloud production via Application Default Credentials.")
+
         aiplatform.init(
             project=self.config.GCP_PROJECT,
             location=self.config.GCP_LOCATION,
+            credentials=credentials,
         )
-        vertexai.init(project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
+        vertexai.init(project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION, credentials=credentials)
 
         self.model = GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info(
@@ -99,10 +122,45 @@ class AiProvider(Generic[PydanticModel]):
             file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
         contents = [prompt, *file_parts]
+        # The response schema is explicitly defined here to ensure all fields are
+        # treated as required by the AI model, avoiding potential issues with
+        # optional fields in the Pydantic model.
+        ai_schema = {
+            "type": "object",
+            "properties": {
+                "risk_score": {"type": "integer"},
+                "risk_score_rationale": {"type": "string"},
+                "procurement_summary": {"type": "string"},
+                "analysis_summary": {"type": "string"},
+                "red_flags": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {"type": "string"},
+                            "description": {"type": "string"},
+                            "evidence_quote": {"type": "string"},
+                            "auditor_reasoning": {"type": "string"},
+                        },
+                        "required": ["category", "description", "evidence_quote", "auditor_reasoning"],
+                    },
+                },
+                "seo_keywords": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [
+                "risk_score",
+                "risk_score_rationale",
+                "procurement_summary",
+                "analysis_summary",
+                "red_flags",
+                "seo_keywords",
+            ],
+        }
+
         generation_config = GenerationConfig(
             response_mime_type="application/json",
             max_output_tokens=max_output_tokens,
-            response_schema=self.output_schema.model_json_schema(),
+            response_schema=ai_schema,
         )
 
         response = self.model.generate_content(contents, generation_config=generation_config)

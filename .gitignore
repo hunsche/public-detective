@@ -124,4 +124,5 @@ tox.ini
 .mypy_cache
 .agents-scripts/
 
-generated_test_files/
+# Generated test files
+tests/.tmp

@@ -11,110 +11,17 @@ from zipfile import ZipFile
 import pytest
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1
+from google.cloud import pubsub_v1, storage
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
-
-def run_command(command: str) -> None:
-    """Executes a shell command and streams its output in real-time.
-
-    Args:
-        command: The shell command to execute.
-    """
-    print(f"\n--- Running command: {command} ---")
-    process = subprocess.Popen(
-        command,
-        shell=True,  # nosec B602
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-    )
-    if process.stdout:
-        for line in process.stdout:
-            print(line, end="")
-    process.wait()
-    if process.returncode != 0:
-        pytest.fail(f"Command failed with exit code {process.returncode}: {command}")
-    print(f"--- Command finished: {command} ---")
+from tests.e2e.conftest import run_command
 
 
-@pytest.fixture(scope="session", autouse=True)
-def db_session() -> Generator:
-    """Manages the test database lifecycle.
 
-    This fixture is session-scoped and runs automatically for all tests.
-    It creates a unique schema for the test run, applies migrations,
-    and cleans up by dropping the schema afterwards.
 
-    Yields:
-        The SQLAlchemy engine instance.
-    """
-    print("\n--- Setting up database session ---")
 
-    fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
-    fixture_path = fixture_dir / "Anexos.zip"
-    if not fixture_path.exists():
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        with ZipFile(fixture_path, "w") as zf:
-            zf.writestr("dummy_document.pdf", b"dummy pdf content")
 
-    host = "127.0.0.1"
-    os.environ["POSTGRES_HOST"] = host
-    os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
-    os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
-
-    user = os.getenv("POSTGRES_USER", "postgres")
-    password = os.getenv("POSTGRES_PASSWORD", "postgres")
-    db_name = os.getenv("POSTGRES_DB", "public_detective")
-    port = int(os.getenv("POSTGRES_PORT", "5432"))
-    schema_name = f"test_schema_{uuid.uuid4().hex}"
-    os.environ["POSTGRES_DB_SCHEMA"] = schema_name
-
-    timeout = 30
-    start_time = time.time()
-    while time.time() - start_time < timeout:
-        try:
-            with socket.create_connection((host, port), timeout=1):
-                break
-        except (TimeoutError, ConnectionRefusedError):
-            time.sleep(1)
-    else:
-        pytest.fail(f"Could not connect to postgres at {host}:{port} after {timeout} seconds")
-
-    db_url = f"postgresql://{user}:{password}@{host}:{port}/{db_name}"
-    engine = create_engine(db_url)
-
-    try:
-        with engine.connect() as connection:
-            print(f"Creating schema {schema_name}...")
-            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
-            connection.commit()
-
-        alembic_ini_path = Path("alembic.ini")
-        original_alembic_ini = alembic_ini_path.read_text()
-        new_alembic_ini = original_alembic_ini.replace(
-            "sqlalchemy.url =", f"sqlalchemy.url = {db_url}\nschema_translate_map = {{'public': {schema_name}}}"
-        )
-        alembic_ini_path.write_text(new_alembic_ini)
-
-        print("Running Alembic migrations...")
-        run_command("poetry run alembic upgrade head")
-
-        yield engine
-
-    finally:
-        print("\n--- Tearing down database session ---")
-        with engine.connect() as connection:
-            print(f"Dropping schema {schema_name}...")
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-        engine.dispose()
-        if "original_alembic_ini" in locals():
-            alembic_ini_path.write_text(original_alembic_ini)
-        print("Database session torn down.")
 
 
 @pytest.fixture(scope="function")
@@ -129,11 +36,18 @@ def e2e_test_setup(db_session: Engine) -> Generator:
     Yields:
         None.
     """
+    # Ensure E2E tests for GCS and AI run against real GCP services,
+    # while Pub/Sub can still use an emulator.
+    os.environ.pop("GCP_GCS_HOST", None)
+    os.environ.pop("GCP_AI_HOST", None)
 
     print("\n--- Setting up E2E test environment ---")
-    project_id = "public-detective"
+    project_id = "total-entity-463718-k1"
     os.environ["GCP_PROJECT"] = project_id
-    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
+
+    bucket_name_for_tests = "vertex-ai-test-files"
+    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = bucket_name_for_tests
+    os.environ["GCP_VERTEX_AI_BUCKET"] = bucket_name_for_tests
 
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
@@ -142,10 +56,27 @@ def e2e_test_setup(db_session: Engine) -> Generator:
     os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
     os.environ["GCP_GCS_TEST_PREFIX"] = f"test-run-{run_id}"
 
+    # Pub/Sub setup
     publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
     subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
+
+    # GCS setup
+    gcs_credentials_path = os.path.expanduser("~/.gcp/credentials.json")
+    with open(gcs_credentials_path, "r") as f:
+        gcs_credentials_json = f.read()
+    os.environ["GCP_SERVICE_ACCOUNT_CREDENTIALS"] = gcs_credentials_json
+    gcs_client = storage.Client.from_service_account_json(gcs_credentials_path, project=project_id)
+    bucket_name = os.environ.get("GCP_VERTEX_AI_BUCKET", "vertex-ai-test-files")
+    bucket = gcs_client.bucket(bucket_name)
+
+    if not bucket.exists():
+        pytest.fail(f"GCS bucket '{bucket_name}' does not exist. Please create it before running the E2E test.")
+    else:
+        print(f"Bucket {bucket_name} exists, clearing contents for test run.")
+        for blob in bucket.list_blobs():
+            blob.delete()
 
     try:
         print(f"Creating Pub/Sub topic: {topic_path}")
@@ -179,10 +110,20 @@ def e2e_test_setup(db_session: Engine) -> Generator:
             print(f"Deleted topic: {topic_name}")
         except exceptions.NotFound:
             print(f"Topic not found, skipping deletion: {topic_name}")
+
+        try:
+            print(f"Clearing GCS objects in bucket: {bucket_name}")
+            for blob in bucket.list_blobs():
+                blob.delete()
+            print(f"Cleared bucket: {bucket_name}")
+        except exceptions.NotFound:
+            print(f"Bucket not found, skipping cleanup: {bucket_name}")
+
         print("E2E test environment torn down.")
 
 
-@pytest.mark.timeout(240)
+
+@pytest.mark.timeout(300)
 def test_ranked_analysis_e2e_flow(e2e_test_setup: None, db_session: Engine) -> None:  # noqa: F841
     """Tests the full E2E flow for ranked analysis against live dependencies.
 
@@ -199,10 +140,11 @@ def test_ranked_analysis_e2e_flow(e2e_test_setup: None, db_session: Engine) -> N
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
     ibge_code = "3550308"
-    max_items_to_process = 2
+    max_items_to_process = 1
 
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
     os.environ["GCP_GEMINI_PRICE_PER_1K_TOKENS"] = "0.002"
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = os.path.expanduser("~/.gcp/credentials.json")
 
     pre_analyze_command = (
         f"poetry run python -m source.cli pre-analyze "

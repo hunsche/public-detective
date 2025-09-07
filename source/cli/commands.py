@@ -134,6 +134,15 @@ def pre_analyze(
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
+    import os
+    import google.auth
+    click.echo(f"GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
+    try:
+        credentials, project_id = google.auth.default()
+        click.echo(f"Default GCP Project: {project_id}")
+    except Exception as e:
+        click.echo(f"Could not get default GCP project: {e}")
+
     click.echo(
         f"Running pre-analysis from {start_date.strftime(DateProvider.DATE_FORMAT)} to "
         f"{end_date.strftime(DateProvider.DATE_FORMAT)}."

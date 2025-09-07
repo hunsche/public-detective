@@ -97,7 +97,7 @@ The project is standardized on **Python 3.12**.
 3.  **Set up environment variables:**
     Create a `.env` file in the project root for the Gemini API key:
     ```
-    GCP_GEMINI_API_KEY="your-gemini-api-key"
+    
     ```
 
 ## 3. Running the Application and Services
@@ -145,7 +145,7 @@ These require the Docker services to be running.
 
 ### End-to-End (E2E) Tests
 
-**Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment, including a valid `GCP_GEMINI_API_KEY`.
+**Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment.
 
 -   **Who Should Run This?** Agents working on the full application flow or making changes that could impact multiple components.
 -   **Purpose:** The E2E test (`tests/e2e/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.

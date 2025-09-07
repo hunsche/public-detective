@@ -5,7 +5,7 @@ import pytest
 from models.analyses import Analysis
 from providers.ai import AiProvider
 from pydantic import BaseModel, Field
-from vertexai.generative_models import Part, GenerationConfig
+from vertexai.generative_models import GenerationConfig, Part
 
 
 class MockOutputSchema(BaseModel):
@@ -26,11 +26,13 @@ def mock_ai_provider(monkeypatch):
     monkeypatch.setenv("GCP_PROJECT", "test-project")
     monkeypatch.setenv("GCP_LOCATION", "us-central1")
 
-    with patch("providers.ai.vertexai.init"), \
-         patch("providers.ai.aiplatform.init"), \
-         patch("providers.ai.GenerativeModel") as mock_gen_model, \
-         patch("providers.ai.GcsProvider") as mock_gcs_provider, \
-         patch("providers.ai.ConfigProvider") as mock_config_provider:
+    with (
+        patch("providers.ai.vertexai.init"),
+        patch("providers.ai.aiplatform.init"),
+        patch("providers.ai.GenerativeModel") as mock_gen_model,
+        patch("providers.ai.GcsProvider") as mock_gcs_provider,
+        patch("providers.ai.ConfigProvider") as mock_config_provider,
+    ):
 
         mock_model_instance = MagicMock()
         mock_gcs_instance = MagicMock()
@@ -45,7 +47,6 @@ def mock_ai_provider(monkeypatch):
         mock_config_instance.GCP_LOCATION = "us-central1"
         mock_config_instance.GCP_GEMINI_MODEL = "gemini-test"
 
-
         yield mock_model_instance, mock_gcs_instance, mock_config_instance
 
 
@@ -53,7 +54,7 @@ def test_get_structured_analysis(mock_ai_provider):
     mock_model_instance, mock_gcs_instance, _ = mock_ai_provider
 
     mock_response = MagicMock()
-    mock_response.text = '''{"risk_score": 8, "summary": "Test summary"}'''
+    mock_response.text = """{"risk_score": 8, "summary": "Test summary"}"""
     mock_response.usage_metadata.prompt_token_count = 10
     mock_response.usage_metadata.candidates_token_count = 20
     mock_model_instance.generate_content.return_value = mock_response
@@ -78,7 +79,7 @@ def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
 
     # We need to return a mock from the generate_content call
     mock_response = MagicMock()
-    mock_response.text = '''{"risk_score": 8, "summary": "Test summary"}'''
+    mock_response.text = """{"risk_score": 8, "summary": "Test summary"}"""
     mock_response.usage_metadata.prompt_token_count = 0
     mock_response.usage_metadata.candidates_token_count = 0
     mock_model_instance.generate_content.return_value = mock_response
@@ -94,7 +95,7 @@ def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
 def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
     mock_model_instance, _, _ = mock_ai_provider
     mock_model_instance.generate_content.return_value = MagicMock(
-        text='''{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", "red_flags": [], "seo_keywords": []}''',
+        text="""{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", "red_flags": [], "seo_keywords": []}""",
         usage_metadata=MagicMock(prompt_token_count=0, candidates_token_count=0),
     )
 
@@ -140,7 +141,7 @@ def test_parse_response_from_text(mock_ai_provider):
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
-    mock_response.text = '''{"risk_score": 5, "summary": "text summary"}'''
+    mock_response.text = """{"risk_score": 5, "summary": "text summary"}"""
 
     result = ai_provider._parse_and_validate_response(mock_response)
 
@@ -153,9 +154,9 @@ def test_parse_response_with_markdown_in_text(mock_ai_provider):
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
-    mock_response.text = '''```json
+    mock_response.text = """```json
 {"risk_score": 5, "summary": "text summary"}
-```'''
+```"""
 
     result = ai_provider._parse_and_validate_response(mock_response)
     assert isinstance(result, MockOutputSchema)
