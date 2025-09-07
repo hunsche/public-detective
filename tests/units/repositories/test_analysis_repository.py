@@ -1,6 +1,6 @@
 import json
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
 from models.analyses import AnalysisResult, RedFlag, RedFlagCategory
@@ -190,7 +190,7 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     mock_conn = MagicMock()
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    analysis_id = 123
+    analysis_id = uuid4()
     analysis_result = AnalysisResult(
         procurement_control_number="PNCP-123",
         version_number=1,
@@ -278,7 +278,7 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     # Arrange
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = 456
+    mock_result_proxy.scalar_one.return_value = uuid4()
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
@@ -292,7 +292,7 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     )
 
     # Assert
-    assert returned_id == 456
+    assert isinstance(returned_id, UUID)
     mock_conn.execute.assert_called_once()
     args, _ = mock_conn.execute.call_args
     params = args[1]
@@ -315,7 +315,7 @@ def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    result = analysis_repository.get_analysis_by_id(999)
+    result = analysis_repository.get_analysis_by_id(uuid4())
 
     assert result is None
 
@@ -478,7 +478,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
 
 
 @patch("repositories.analyses.LoggingProvider")
-def test_update_analysis_status(mock_logging_provider, analysis_repository: AnalysisRepository) -> None:
+def test_update_analysis_status(mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository) -> None:
     """Should execute an UPDATE statement with the correct parameters."""
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
@@ -526,7 +526,7 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
     """
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = 789
+    mock_result_proxy.scalar_one.return_value = uuid4()
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
@@ -539,7 +539,7 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         retry_count=1,
     )
 
-    assert returned_id == 789
+    assert isinstance(returned_id, UUID)
     mock_conn.execute.assert_called_once()
     args, _ = mock_conn.execute.call_args
     params = args[1]

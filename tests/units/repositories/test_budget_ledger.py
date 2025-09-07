@@ -2,7 +2,7 @@
 
 from datetime import date
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
@@ -10,7 +10,7 @@ from repositories.budget_ledger import BudgetLedgerRepository
 
 
 @pytest.fixture
-def mock_engine():
+def mock_engine() -> MagicMock:
     """Fixture to create a mock SQLAlchemy engine."""
     engine = MagicMock()
     conn = MagicMock()
@@ -18,7 +18,7 @@ def mock_engine():
     return engine
 
 
-def test_save_expense(mock_engine):
+def test_save_expense(mock_engine: MagicMock) -> None:
     """Test that the save_expense method executes the correct SQL."""
     repo = BudgetLedgerRepository(mock_engine)
     analysis_id = uuid4()
@@ -31,7 +31,7 @@ def test_save_expense(mock_engine):
     # Further assertions can be made on the SQL statement and parameters
 
 
-def test_get_total_donations(mock_engine):
+def test_get_total_donations(mock_engine: MagicMock) -> None:
     """Test that get_total_donations returns the correct sum."""
     conn = mock_engine.connect.return_value.__enter__.return_value
     conn.execute.return_value.scalar_one_or_none.return_value = Decimal("500.75")
@@ -43,7 +43,7 @@ def test_get_total_donations(mock_engine):
     conn.execute.assert_called_once()
 
 
-def test_get_total_donations_returns_zero_when_no_donations(mock_engine):
+def test_get_total_donations_returns_zero_when_no_donations(mock_engine: MagicMock) -> None:
     """Test that get_total_donations returns zero when there are no donations."""
     conn = mock_engine.connect.return_value.__enter__.return_value
     conn.execute.return_value.scalar_one_or_none.return_value = None
@@ -54,7 +54,7 @@ def test_get_total_donations_returns_zero_when_no_donations(mock_engine):
     assert total_donations == Decimal("0")
 
 
-def test_get_total_expenses_for_period(mock_engine):
+def test_get_total_expenses_for_period(mock_engine: MagicMock) -> None:
     """Test that get_total_expenses_for_period returns the correct sum."""
     conn = mock_engine.connect.return_value.__enter__.return_value
     conn.execute.return_value.scalar_one_or_none.return_value = Decimal("1234.56")
@@ -67,7 +67,7 @@ def test_get_total_expenses_for_period(mock_engine):
     conn.execute.assert_called_once()
 
 
-def test_get_total_expenses_for_period_returns_zero_when_no_expenses(mock_engine):
+def test_get_total_expenses_for_period_returns_zero_when_no_expenses(mock_engine: MagicMock) -> None:
     """Test that get_total_expenses_for_period returns zero when there are no expenses."""
     conn = mock_engine.connect.return_value.__enter__.return_value
     conn.execute.return_value.scalar_one_or_none.return_value = None

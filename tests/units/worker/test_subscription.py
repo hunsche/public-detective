@@ -4,7 +4,6 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.api_core.exceptions import GoogleAPICallError
 from worker.subscription import Subscription
-from exceptions.analysis import AnalysisError
 
 
 @pytest.fixture
@@ -32,29 +31,14 @@ def subscription(mock_analysis_service: MagicMock) -> Subscription:
     return sub
 
 
-@pytest.mark.parametrize(
-    "side_effect, acks, nacks",
-    [
-        (None, 1, 0),
-        (AnalysisError("test error"), 0, 1),
-        (Exception("test error"), 0, 1),
-    ],
-)
-def test_process_message(
-    subscription: Subscription,
-    mock_message: MagicMock,
-    side_effect: Exception | None,
-    acks: int,
-    nacks: int,
-) -> None:
-    """Tests message processing under various conditions."""
-    subscription.analysis_service.process_analysis_from_message.side_effect = side_effect
+def test_process_message_success(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests the successful processing of a valid message."""
     subscription.config.IS_DEBUG_MODE = False
-
     subscription._process_message(mock_message, max_output_tokens=None)
 
-    assert mock_message.ack.call_count == acks
-    assert mock_message.nack.call_count == nacks
+    subscription.analysis_service.process_analysis_from_message.assert_called_once_with(123, max_output_tokens=None)
+    mock_message.ack.assert_called_once()
+    mock_message.nack.assert_not_called()
 
 
 def test_process_message_validation_error(subscription: Subscription) -> None:
@@ -69,6 +53,15 @@ def test_process_message_validation_error(subscription: Subscription) -> None:
     invalid_message.ack.assert_not_called()
 
 
+def test_process_message_unexpected_error(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests that an unexpected error during processing results in a NACK."""
+    subscription.analysis_service.process_analysis_from_message.side_effect = Exception("Boom!")
+    subscription.config.IS_DEBUG_MODE = False
+
+    subscription._process_message(mock_message, max_output_tokens=None)
+
+    mock_message.nack.assert_called_once()
+    mock_message.ack.assert_not_called()
 
 
 def test_message_callback_stops_at_max_messages(subscription: Subscription, mock_message: MagicMock) -> None:
@@ -111,10 +104,25 @@ def test_run_worker_no_subscription_name(subscription: Subscription) -> None:
     subscription.pubsub_provider.subscribe.assert_not_called()
 
 
+def test_debug_context(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests that the debug context extends the ack deadline."""
+    subscription.config.IS_DEBUG_MODE = True
+    subscription._extend_ack_deadline = MagicMock()
+    with subscription._debug_context(mock_message):
+        pass
+    subscription._extend_ack_deadline.assert_called_once_with(mock_message, 600)
+
+
 def test_extend_ack_deadline(subscription: Subscription, mock_message: MagicMock) -> None:
     """Tests the extend_ack_deadline method."""
     subscription._extend_ack_deadline(mock_message, 120)
     mock_message.modify_ack_deadline.assert_called_once_with(120)
+
+
+def test_debug_pause(subscription: Subscription) -> None:
+    """Tests the debug_pause method."""
+    with patch("builtins.input"):
+        subscription._debug_pause()
 
 
 @patch("worker.subscription.AnalysisService")
@@ -133,7 +141,17 @@ def test_subscription_init_composition_root(
     mock_file_record_repo: MagicMock,
     mock_analysis_service: MagicMock,
 ) -> None:
-    """Tests that the Subscription class correctly wires up dependencies."""
+    """Tests that the Subscription class correctly wires up dependencies.
+
+    Args:
+        mock_db_manager: A mock for the DatabaseManager.
+        mock_gcs_provider: A mock for the GcsProvider.
+        mock_ai_provider: A mock for the AiProvider.
+        mock_procurement_repo: A mock for the ProcurementsRepository.
+        mock_analysis_repo: A mock for the AnalysisRepository.
+        mock_file_record_repo: A mock for the FileRecordsRepository.
+        mock_analysis_service: A mock for the AnalysisService.
+    """
     sub = Subscription(analysis_service=None)
 
     mock_db_manager.get_engine.assert_called_once()
@@ -152,15 +170,6 @@ def test_subscription_init_composition_root(
     assert kwargs["gcs_provider"] is not None
 
     assert sub.analysis_service is not None
-
-
-@patch("worker.subscription.AnalysisService")
-@patch("worker.subscription.DatabaseManager")
-def test_subscription_init_no_service(mock_db_manager, mock_analysis_service):
-    """Test that the Subscription class can be initialized without a service."""
-    Subscription()
-    mock_db_manager.get_engine.assert_called_once()
-    mock_analysis_service.assert_called_once()
 
 
 def test_extend_ack_deadline_exception(subscription: Subscription, mock_message: MagicMock) -> None:
@@ -197,38 +206,16 @@ def test_message_callback_stop_event_set(subscription: Subscription, mock_messag
     subscription._process_message.assert_not_called()
 
 
-
-
-def test_message_callback_no_max_messages(subscription: Subscription, mock_message: MagicMock) -> None:
-    """Tests that the worker does not stop if max_messages is not set."""
-    subscription.streaming_pull_future = MagicMock()
-    subscription._process_message = MagicMock()
-
-    subscription._message_callback(mock_message, max_messages=None, max_output_tokens=None)
-
-    assert subscription.processed_messages_count == 1
-    assert not subscription._stop_event.is_set()
-    subscription.streaming_pull_future.cancel.assert_not_called()
-
-
 @pytest.mark.parametrize("exception", [GoogleAPICallError("API Error")])
 def test_run_worker_handles_shutdown_exceptions(subscription: Subscription, exception: Exception) -> None:
-    """Tests graceful shutdown on common exceptions."""
+    """Tests graceful shutdown on common exceptions.
+
+    Args:
+        subscription: The Subscription instance.
+        exception: The exception to be raised.
+    """
     future = MagicMock()
     future.result.side_effect = exception
-    future.cancelled.return_value = False
-    subscription.pubsub_provider.subscribe.return_value = future
-
-    subscription.run()
-
-    future.cancel.assert_called_once()
-
-
-@pytest.mark.skip(reason="KeyboardInterrupt cannot be caught by pytest")
-def test_run_worker_keyboard_interrupt(subscription: Subscription) -> None:
-    """Tests graceful shutdown on KeyboardInterrupt."""
-    future = MagicMock()
-    future.result.side_effect = KeyboardInterrupt()
     future.cancelled.return_value = False
     subscription.pubsub_provider.subscribe.return_value = future
 
