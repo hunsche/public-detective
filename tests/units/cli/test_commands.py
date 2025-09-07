@@ -2,7 +2,7 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from cli.commands import analyze, pre_analyze, retry
+from cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
 from click.testing import CliRunner
 
 
@@ -196,6 +196,128 @@ def test_analyze_command_exception(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
+
+    assert "An error occurred: Test error" in result.output
+    assert result.exit_code != 0
+
+
+# --- Tests for 'trigger-ranked-analysis' command ---
+@patch("cli.commands.DatabaseManager")
+@patch("cli.commands.PubSubProvider")
+@patch("cli.commands.GcsProvider")
+@patch("cli.commands.AiProvider")
+@patch("cli.commands.AnalysisRepository")
+@patch("cli.commands.FileRecordsRepository")
+@patch("cli.commands.ProcurementsRepository")
+@patch("cli.commands.StatusHistoryRepository")
+@patch("cli.commands.BudgetLedgerRepository")
+@patch("cli.commands.AnalysisService")
+def test_trigger_ranked_analysis_manual_budget(
+    mock_analysis_service: MagicMock,
+    mock_budget_ledger_repo: MagicMock,
+    mock_status_history_repo: MagicMock,
+    mock_procurement_repo: MagicMock,
+    mock_file_record_repo: MagicMock,
+    mock_analysis_repo: MagicMock,
+    mock_ai_provider: MagicMock,
+    mock_gcs_provider: MagicMock,
+    mock_pubsub_provider: MagicMock,
+    mock_db_manager: MagicMock,
+) -> None:
+    """Test the trigger-ranked-analysis command with a manual budget."""
+    runner = CliRunner()
+    mock_service_instance = MagicMock()
+    mock_analysis_service.return_value = mock_service_instance
+
+    result = runner.invoke(
+        trigger_ranked_analysis,
+        [
+            "--budget",
+            "100.00",
+        ],
+    )
+
+    mock_service_instance.run_ranked_analysis.assert_called_once()
+    assert "Ranked analysis completed successfully!" in result.output
+    assert result.exit_code == 0
+
+
+@patch("cli.commands.DatabaseManager")
+@patch("cli.commands.PubSubProvider")
+@patch("cli.commands.GcsProvider")
+@patch("cli.commands.AiProvider")
+@patch("cli.commands.AnalysisRepository")
+@patch("cli.commands.FileRecordsRepository")
+@patch("cli.commands.ProcurementsRepository")
+@patch("cli.commands.StatusHistoryRepository")
+@patch("cli.commands.BudgetLedgerRepository")
+@patch("cli.commands.AnalysisService")
+def test_trigger_ranked_analysis_auto_budget(
+    mock_analysis_service: MagicMock,
+    mock_budget_ledger_repo: MagicMock,
+    mock_status_history_repo: MagicMock,
+    mock_procurement_repo: MagicMock,
+    mock_file_record_repo: MagicMock,
+    mock_analysis_repo: MagicMock,
+    mock_ai_provider: MagicMock,
+    mock_gcs_provider: MagicMock,
+    mock_pubsub_provider: MagicMock,
+    mock_db_manager: MagicMock,
+) -> None:
+    """Test the trigger-ranked-analysis command with auto-budget."""
+    runner = CliRunner()
+    mock_service_instance = MagicMock()
+    mock_analysis_service.return_value = mock_service_instance
+
+    result = runner.invoke(
+        trigger_ranked_analysis,
+        [
+            "--use-auto-budget",
+            "--budget-period",
+            "daily",
+        ],
+    )
+
+    mock_service_instance.run_ranked_analysis.assert_called_once()
+    assert "Ranked analysis completed successfully!" in result.output
+    assert result.exit_code == 0
+
+
+def test_trigger_ranked_analysis_no_budget() -> None:
+    """Test that the command fails if no budget option is provided."""
+    runner = CliRunner()
+    result = runner.invoke(trigger_ranked_analysis, [])
+    assert "Either --budget or --use-auto-budget must be provided" in result.output
+    assert result.exit_code != 0
+
+
+def test_trigger_ranked_analysis_auto_budget_no_period() -> None:
+    """Test that the command fails if auto-budget is used without a period."""
+    runner = CliRunner()
+    result = runner.invoke(trigger_ranked_analysis, ["--use-auto-budget"])
+    assert "--budget-period is required" in result.output
+    assert result.exit_code != 0
+
+
+@patch("cli.commands.DatabaseManager")
+@patch("cli.commands.AnalysisService")
+def test_trigger_ranked_analysis_exception(
+    mock_analysis_service: MagicMock,
+    mock_db_manager: MagicMock,
+) -> None:
+    """Test that the command handles exceptions gracefully."""
+    runner = CliRunner()
+    mock_service_instance = MagicMock()
+    mock_service_instance.run_ranked_analysis.side_effect = Exception("Test error")
+    mock_analysis_service.return_value = mock_service_instance
+
+    result = runner.invoke(
+        trigger_ranked_analysis,
+        [
+            "--budget",
+            "100.00",
+        ],
+    )
 
     assert "An error occurred: Test error" in result.output
     assert result.exit_code != 0

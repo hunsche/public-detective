@@ -29,47 +29,6 @@ def mock_dependencies() -> dict:
     }
 
 
-@pytest.fixture
-def mock_procurement() -> Procurement:
-    """Fixture to create a standard procurement object for tests.
-
-    Returns:
-        A Procurement object.
-    """
-    procurement_data = {
-        "processo": "123",
-        "objetoCompra": "Test Object",
-        "amparoLegal": {"codigo": 1, "nome": "Test", "descricao": "Test"},
-        "srp": False,
-        "orgaoEntidade": {
-            "cnpj": "00000000000191",
-            "razaoSocial": "Test Entity",
-            "poderId": "E",
-            "esferaId": "F",
-        },
-        "anoCompra": 2025,
-        "sequencialCompra": 1,
-        "dataPublicacaoPncp": "2025-01-01T12:00:00",
-        "dataAtualizacao": "2025-01-01T12:00:00",
-        "numeroCompra": "1",
-        "unidadeOrgao": {
-            "ufNome": "Test",
-            "codigoUnidade": "1",
-            "nomeUnidade": "Test",
-            "ufSigla": "TE",
-            "municipioNome": "Test",
-            "codigoIbge": "1",
-        },
-        "modalidadeId": 8,
-        "numeroControlePNCP": "123",
-        "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
-        "modoDisputaId": 5,
-        "situacaoCompraId": 1,
-        "usuarioNome": "Test User",
-    }
-    return Procurement.model_validate(procurement_data)
-
-
 def test_run_pre_analysis_no_procurements_found(mock_dependencies: dict) -> None:
     """Tests that the pre-analysis job handles dates with no procurements.
 
@@ -114,4 +73,72 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procu
     # Assert
     service.procurement_repo.get_latest_version.assert_not_called()
     service.procurement_repo.save_procurement_version.assert_not_called()
+
+
+def test_pre_analyze_procurement_hash_exists_with_files(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test _pre_analyze_procurement when hash exists but files are processed."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
+    service.procurement_repo.get_procurement_by_hash.return_value = mock_procurement
+
+    service._pre_analyze_procurement(mock_procurement, {})
+
+    service.procurement_repo.save_procurement_version.assert_not_called()
+
+
+def test_pre_analyze_procurement_no_supported_files(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test _pre_analyze_procurement when no supported files are found."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = [("file.txt", b"content")]
+
+    service._pre_analyze_procurement(mock_procurement, {})
+
+    service.procurement_repo.save_procurement_version.assert_not_called()
     service.analysis_repo.save_pre_analysis.assert_not_called()
+
+
+def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test the happy path for run_pre_analysis."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(mock_procurement, {})]
+
+    with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
+        service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 0)
+        mock_pre_analyze.assert_called_once_with(mock_procurement, {})
+
+
+def test_run_pre_analysis_max_messages(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test that run_pre_analysis stops when max_messages is reached."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [
+        (mock_procurement, {}),
+        (mock_procurement, {}),
+    ]
+
+    with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
+        service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 0, max_messages=1)
+        assert mock_pre_analyze.call_count == 1
+
+
+def test_pre_analyze_procurement_happy_path(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test the happy path for _pre_analyze_procurement."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.get_procurement_by_hash.return_value = None
+    service.procurement_repo.get_latest_version.return_value = 1
+    service.ai_provider.count_tokens_for_analysis.return_value = (100, 50)
+
+    service._pre_analyze_procurement(mock_procurement, {})
+
+    service.procurement_repo.save_procurement_version.assert_called_once()
+    service.analysis_repo.save_pre_analysis.assert_called_once()
+    service.status_history_repo.create_record.assert_called_once()
+
+
+def test_pre_analyze_procurement_no_files(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Test _pre_analyze_procurement when no files are found."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = []
+
+    service._pre_analyze_procurement(mock_procurement, {})
+
+    service.procurement_repo.save_procurement_version.assert_not_called()
