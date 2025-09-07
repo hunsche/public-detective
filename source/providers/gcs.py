@@ -101,35 +101,3 @@ class GcsProvider:
         except Exception as e:
             self.logger.error(f"Failed to upload file to GCS bucket '{bucket_name}': {e}")
             raise
-
-    def download_file(self, bucket_name: str, source_blob_name: str) -> bytes | None:
-        """Downloads a file from a specified GCS bucket.
-
-        Args:
-            bucket_name: The name of the GCS bucket.
-            source_blob_name: The name of the object to download.
-
-        Returns:
-            The content of the file as bytes, or None if the file is empty.
-
-        Raises:
-            Exception: If the download process fails.
-        """
-        try:
-            client = self._get_or_create_client()
-            bucket = client.bucket(bucket_name)
-            blob = bucket.blob(source_blob_name)
-
-            self.logger.info(f"Downloading file from GCS: gs://{bucket_name}/{source_blob_name}")
-
-            content = blob.download_as_bytes()
-
-            if not content:
-                self.logger.warning(f"File gs://{bucket_name}/{source_blob_name} is empty.")
-                return None
-
-            self.logger.info("File downloaded successfully.")
-            return content
-        except Exception as e:
-            self.logger.error(f"Failed to download file from GCS bucket '{bucket_name}': {e}")
-            raise
