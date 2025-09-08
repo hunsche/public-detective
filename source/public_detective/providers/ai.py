@@ -89,10 +89,16 @@ class AiProvider(Generic[PydanticModel]):
             self.logger.info(f"Uploading '{file_display_name}' to GCS.")
             gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
             mime_type = guess_type(file_display_name)[0]
-            file_parts.append(types.Part(file_data=types.FileData(file_uri=gcs_uri, mime_type=mime_type)))
+            file_parts.append({"file_data": {"file_uri": gcs_uri, "mime_type": mime_type}})
 
         contents = [prompt, *file_parts]
         ai_schema = self.output_schema.model_json_schema()
+        if "$defs" in ai_schema:
+            for prop, schema in ai_schema["properties"].items():
+                if "items" in schema and "$ref" in schema["items"]:
+                    ref = schema["items"]["$ref"].split("/")[-1]
+                    schema["items"] = ai_schema["$defs"][ref]
+            del ai_schema["$defs"]
 
         generation_config = types.GenerationConfig(
             response_mime_type="application/json",
@@ -100,7 +106,9 @@ class AiProvider(Generic[PydanticModel]):
             response_schema=ai_schema,
         )
 
-        response = self.model.generate_content(contents, generation_config=generation_config)
+        response = self.model.generate_content(
+            contents, generation_config=generation_config.model_dump(exclude_none=True)
+        )
         self.logger.debug("Successfully received response from Generative AI API.")
 
         validated_response = self._parse_and_validate_response(response)
@@ -127,7 +135,7 @@ class AiProvider(Generic[PydanticModel]):
             mime_type = guess_type(file_display_name)[0]
             if not mime_type:
                 mime_type = "application/octet-stream"
-            file_parts.append(types.Part.from_bytes(data=file_content, mime_type=mime_type))
+            file_parts.append({"inline_data": {"data": file_content, "mime_type": mime_type}})
 
         contents = [prompt, *file_parts]
         response = self.model.count_tokens(contents)
