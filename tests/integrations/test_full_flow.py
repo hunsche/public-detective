@@ -39,7 +39,7 @@ def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
-    
+
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
     subscription_name = f"procurements-subscription-{run_id}"

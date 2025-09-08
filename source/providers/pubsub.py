@@ -11,10 +11,11 @@ from collections.abc import Callable
 from typing import cast
 
 from google.api_core.client_options import ClientOptions
-from google.cloud import pubsub_v1
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.pubsub_v1.publisher.futures import Future
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from google.cloud.pubsub_v1.subscriber.message import Message
+from google.cloud.pubsub_v1.types import FlowControl
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 
@@ -28,7 +29,7 @@ class PubSubProvider:
     publishing and subscribing to topics.
     """
 
-    _clients: dict[str, pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient]
+    _clients: dict[str, SubscriberClient | PublisherClient]
     _client_creation_lock: threading.Lock
     logger: Logger
     config: Config
@@ -47,8 +48,8 @@ class PubSubProvider:
 
     def _create_client_instance(
         self,
-        client_class: type[pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient],
-    ) -> pubsub_v1.SubscriberClient | pubsub_v1.PublisherClient:
+        client_class: type[SubscriberClient | PublisherClient],
+    ) -> SubscriberClient | PublisherClient:
         """Internal helper to create a new GCP client instance.
 
         This method handles emulator setup.
@@ -77,7 +78,7 @@ class PubSubProvider:
             self.logger.info(f"{class_name} instance created for Google Cloud")
         return client
 
-    def _get_or_create_publisher_client(self) -> pubsub_v1.PublisherClient:
+    def _get_or_create_publisher_client(self) -> PublisherClient:
         """Retrieves a singleton instance of the Pub/Sub PublisherClient.
 
         If a PublisherClient instance does not exist in the cache, it creates
@@ -86,16 +87,16 @@ class PubSubProvider:
         Returns:
             A singleton instance of google.cloud.pubsub_v1.PublisherClient.
         """
-        client_key = pubsub_v1.PublisherClient.__name__
+        client_key = PublisherClient.__name__
 
         if client_key not in self._clients:
             with self._client_creation_lock:
                 if client_key not in self._clients:
-                    client = self._create_client_instance(pubsub_v1.PublisherClient)
+                    client = self._create_client_instance(PublisherClient)
                     self._clients[client_key] = client
-        return cast(pubsub_v1.PublisherClient, self._clients[client_key])
+        return cast(PublisherClient, self._clients[client_key])
 
-    def _get_or_create_subscriber_client(self) -> pubsub_v1.SubscriberClient:
+    def _get_or_create_subscriber_client(self) -> SubscriberClient:
         """Retrieves a singleton instance of the Pub/Sub SubscriberClient.
 
         If a SubscriberClient instance does not exist in the cache, it creates
@@ -104,14 +105,14 @@ class PubSubProvider:
         Returns:
             A singleton instance of google.cloud.pubsub_v1.SubscriberClient.
         """
-        client_key = pubsub_v1.SubscriberClient.__name__
+        client_key = SubscriberClient.__name__
 
         if client_key not in self._clients:
             with self._client_creation_lock:
                 if client_key not in self._clients:
-                    client = self._create_client_instance(pubsub_v1.SubscriberClient)
+                    client = self._create_client_instance(SubscriberClient)
                     self._clients[client_key] = client
-        return cast(pubsub_v1.SubscriberClient, self._clients[client_key])
+        return cast(SubscriberClient, self._clients[client_key])
 
     def publish(self, topic_id: str, data: bytes, timeout_seconds: int = 15) -> str:
         """Publishes a message to a specific Pub/Sub topic.
@@ -153,7 +154,7 @@ class PubSubProvider:
         self,
         subscription_id: str,
         callback: Callable[[Message], None],
-        flow_control: pubsub_v1.types.FlowControl | None = None,
+        flow_control: FlowControl | None = None,
     ) -> StreamingPullFuture:
         """Starts listening to a Pub/Sub subscription and executes a callback for each message.
 

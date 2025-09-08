@@ -1,6 +1,5 @@
 import os
-import socket
-import subprocess
+import subprocess  # nosec B404
 import time
 import uuid
 import zipfile

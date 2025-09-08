@@ -2,10 +2,9 @@ from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from models.analyses import Analysis
 from providers.ai import AiProvider
 from pydantic import BaseModel, Field
-from vertexai.generative_models import GenerationConfig, Part
+from vertexai.generative_models import Part
 
 
 class MockOutputSchema(BaseModel):
@@ -22,7 +21,7 @@ class AnalysisWithValidation(BaseModel):
 
 
 @pytest.fixture
-def mock_ai_provider(monkeypatch):
+def mock_ai_provider(monkeypatch: pytest.MonkeyPatch) -> Generator:
     monkeypatch.setenv("GCP_PROJECT", "test-project")
     monkeypatch.setenv("GCP_LOCATION", "us-central1")
 
@@ -50,7 +49,7 @@ def mock_ai_provider(monkeypatch):
         yield mock_model_instance, mock_gcs_instance, mock_config_instance
 
 
-def test_get_structured_analysis(mock_ai_provider):
+def test_get_structured_analysis(mock_ai_provider: tuple) -> None:
     mock_model_instance, mock_gcs_instance, _ = mock_ai_provider
 
     mock_response = MagicMock()
@@ -74,7 +73,7 @@ def test_get_structured_analysis(mock_ai_provider):
     mock_model_instance.generate_content.assert_called_once()
 
 
-def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
+def test_get_structured_analysis_with_max_tokens(mock_ai_provider: tuple) -> None:
     mock_model_instance, _, _ = mock_ai_provider
 
     # We need to return a mock from the generate_content call
@@ -92,10 +91,13 @@ def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
     assert generation_config._raw_generation_config.max_output_tokens == 500
 
 
-def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
+def test_get_structured_analysis_uses_valid_schema(mock_ai_provider: tuple) -> None:
     mock_model_instance, _, _ = mock_ai_provider
     mock_model_instance.generate_content.return_value = MagicMock(
-        text="""{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", "red_flags": [], "seo_keywords": []}""",
+        text=(
+            '{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", '
+            '"red_flags": [], "seo_keywords": []}'
+        ),
         usage_metadata=MagicMock(prompt_token_count=0, candidates_token_count=0),
     )
 
@@ -115,7 +117,7 @@ def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
         _ = risk_score_properties.le
 
 
-def test_parse_response_blocked(mock_ai_provider):
+def test_parse_response_blocked(mock_ai_provider: tuple) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
@@ -126,7 +128,7 @@ def test_parse_response_blocked(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_empty(mock_ai_provider):
+def test_parse_response_empty(mock_ai_provider: tuple) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
@@ -137,7 +139,7 @@ def test_parse_response_empty(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_from_text(mock_ai_provider):
+def test_parse_response_from_text(mock_ai_provider: tuple) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
@@ -150,7 +152,7 @@ def test_parse_response_from_text(mock_ai_provider):
     assert result.summary == "text summary"
 
 
-def test_parse_response_with_markdown_in_text(mock_ai_provider):
+def test_parse_response_with_markdown_in_text(mock_ai_provider: tuple) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
@@ -162,7 +164,7 @@ def test_parse_response_with_markdown_in_text(mock_ai_provider):
     assert isinstance(result, MockOutputSchema)
 
 
-def test_parse_response_parsing_error(mock_ai_provider):
+def test_parse_response_parsing_error(mock_ai_provider: tuple) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = MagicMock()
@@ -172,7 +174,7 @@ def test_parse_response_parsing_error(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_upload_file_to_gcs(mock_ai_provider):
+def test_upload_file_to_gcs(mock_ai_provider: tuple) -> None:
     _, mock_gcs_instance, _ = mock_ai_provider
     mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/test.pdf"
 
@@ -184,7 +186,7 @@ def test_upload_file_to_gcs(mock_ai_provider):
     mock_gcs_instance.upload_file.assert_called_once()
 
 
-def test_count_tokens_for_analysis(mock_ai_provider):
+def test_count_tokens_for_analysis(mock_ai_provider: tuple) -> None:
     mock_model_instance, _, _ = mock_ai_provider
     mock_model_instance.count_tokens.return_value = MagicMock(total_tokens=123)
 

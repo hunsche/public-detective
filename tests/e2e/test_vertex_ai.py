@@ -5,18 +5,18 @@ from pathlib import Path
 
 import pytest
 import vertexai
-from google.cloud import storage
+from google.cloud.storage import Bucket, Client
 from vertexai.generative_models import GenerativeModel, Part
 
 
 @pytest.fixture(scope="function")
-def gcs_client(e2e_environment: None) -> storage.Client:
+def gcs_client(e2e_environment: None) -> Client:
     """Initializes the GCS client using Application Default Credentials."""
-    return storage.Client()
+    return Client()
 
 
 @pytest.fixture(scope="function")
-def test_bucket(gcs_client: storage.Client) -> storage.Bucket:
+def test_bucket(gcs_client: Client) -> Bucket:
     """Ensures the hardcoded test bucket exists and provides it."""
     bucket_name = os.environ["GCP_VERTEX_AI_BUCKET"]
     bucket = gcs_client.bucket(bucket_name)
@@ -32,9 +32,7 @@ def vertex_ai_model(e2e_environment: None) -> GenerativeModel:
 
 
 @pytest.mark.timeout(60)
-def test_simple_vertex_ai_analysis(
-    vertex_ai_model: GenerativeModel, test_bucket: storage.Bucket, tmp_path: Path
-) -> None:
+def test_simple_vertex_ai_analysis(vertex_ai_model: GenerativeModel, test_bucket: Bucket, tmp_path: Path) -> None:
     """
     Performs a simple E2E test to verify Vertex AI and GCS connectivity.
     It uploads a simple text file and asks the model to read it.
@@ -55,9 +53,10 @@ def test_simple_vertex_ai_analysis(
     gcs_uri = f"gs://{test_bucket.name}/{blob_name}"
     file_part = Part.from_uri(uri=gcs_uri, mime_type="text/plain")
     prompt = "What is the magic word in the document?"
+    contents: list[str | Part] = [prompt, file_part]
 
     try:
-        response = vertex_ai_model.generate_content([prompt, file_part])
+        response = vertex_ai_model.generate_content(contents)  # type: ignore[arg-type]
         # 4. Assert the response
         assert response, "Received an empty response from Vertex AI."
         assert "banana" in response.text.lower(), f"Expected 'banana' in response, but got: {response.text}"

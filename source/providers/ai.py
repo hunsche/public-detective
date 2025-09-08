@@ -18,7 +18,7 @@ from providers.config import Config, ConfigProvider
 from providers.gcs import GcsProvider
 from providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
-from vertexai.generative_models import Content, GenerationConfig, GenerationResponse, GenerativeModel, Part
+from vertexai.generative_models import GenerationConfig, GenerationResponse, GenerativeModel, Part
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
@@ -70,9 +70,7 @@ class AiProvider(Generic[PydanticModel]):
 
                     credentials = service_account.Credentials.from_service_account_info(credentials_info)
                 else:
-                    raise ValueError(
-                        "GCP_SERVICE_ACCOUNT_CREDENTIALS is set but does not appear to be a JSON object."
-                    )
+                    raise ValueError("GCP_SERVICE_ACCOUNT_CREDENTIALS is set but does not appear to be a JSON object.")
             except json.JSONDecodeError as e:
                 self.logger.error(f"Failed to parse GCP credentials JSON: {e}")
                 raise ValueError("Invalid JSON in GCP_SERVICE_ACCOUNT_CREDENTIALS.") from e
@@ -115,48 +113,17 @@ class AiProvider(Generic[PydanticModel]):
             - The number of input tokens used.
             - The number of output tokens used.
         """
-        file_parts = []
+        file_parts: list[Part] = []
         for file_display_name, file_content in files:
             self.logger.info(f"Uploading '{file_display_name}' to GCS.")
             gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
-            mime_type = guess_type(file_display_name)[0]
+            mime_type = guess_type(file_display_name)[0] or "application/octet-stream"
             file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
-        contents = [prompt, *file_parts]
-        # The response schema is explicitly defined here to ensure all fields are
-        # treated as required by the AI model, avoiding potential issues with
-        # optional fields in the Pydantic model.
-        ai_schema = {
-            "type": "object",
-            "properties": {
-                "risk_score": {"type": "integer"},
-                "risk_score_rationale": {"type": "string"},
-                "procurement_summary": {"type": "string"},
-                "analysis_summary": {"type": "string"},
-                "red_flags": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "category": {"type": "string"},
-                            "description": {"type": "string"},
-                            "evidence_quote": {"type": "string"},
-                            "auditor_reasoning": {"type": "string"},
-                        },
-                        "required": ["category", "description", "evidence_quote", "auditor_reasoning"],
-                    },
-                },
-                "seo_keywords": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": [
-                "risk_score",
-                "risk_score_rationale",
-                "procurement_summary",
-                "analysis_summary",
-                "red_flags",
-                "seo_keywords",
-            ],
-        }
+        contents: list[str | Part] = [prompt, *file_parts]
+        # The response schema is dynamically generated from the Pydantic model
+        # to ensure it is always synchronized with the expected data structure.
+        ai_schema = self.output_schema.model_json_schema()
 
         generation_config = GenerationConfig(
             response_mime_type="application/json",
@@ -164,7 +131,7 @@ class AiProvider(Generic[PydanticModel]):
             response_schema=ai_schema,
         )
 
-        response = self.model.generate_content(contents, generation_config=generation_config)
+        response = self.model.generate_content(contents, generation_config=generation_config)  # type: ignore[arg-type]
         self.logger.debug("Successfully received response from Vertex AI API.")
 
         validated_response = self._parse_and_validate_response(response)
@@ -186,15 +153,15 @@ class AiProvider(Generic[PydanticModel]):
             A tuple containing the total number of input tokens and 0 for output tokens.
         """
         self.logger.info("Counting tokens for analysis...")
-        file_parts = []
+        file_parts: list[Part] = []
         for file_display_name, file_content in files:
             mime_type = guess_type(file_display_name)[0]
             if not mime_type:
                 mime_type = "application/octet-stream"
             file_parts.append(Part.from_data(file_content, mime_type=mime_type))
 
-        contents = [prompt, *file_parts]
-        response = self.model.count_tokens(contents)
+        contents: list[str | Part] = [prompt, *file_parts]
+        response = self.model.count_tokens(contents)  # type: ignore[arg-type]
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
         return token_count, 0

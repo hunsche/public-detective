@@ -1,6 +1,4 @@
-import json
 import os
-import uuid
 
 import pytest
 from sqlalchemy import text

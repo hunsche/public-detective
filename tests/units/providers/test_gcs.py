@@ -23,7 +23,7 @@ def test_get_or_create_client_with_emulator() -> None:
     gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None  # Ensure client is recreated
 
-    with patch("google.cloud.storage.Client") as mock_storage_client:
+    with patch("providers.gcs.Client") as mock_storage_client:
         # Act
         client = gcs_provider._get_or_create_client()
 
@@ -53,7 +53,7 @@ def test_get_or_create_client_emulator_priority() -> None:
     gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None
 
-    with patch("google.cloud.storage.Client") as mock_storage_client:
+    with patch("providers.gcs.Client") as mock_storage_client:
         # Act
         gcs_provider._get_or_create_client()
 
@@ -84,7 +84,7 @@ def test_get_or_create_client_for_production() -> None:
     gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None  # Ensure client is recreated
 
-    with patch("google.cloud.storage.Client") as mock_storage_client:
+    with patch("providers.gcs.Client") as mock_storage_client:
         # Act
         client = gcs_provider._get_or_create_client()
 
@@ -114,7 +114,7 @@ def test_get_or_create_client_with_service_account_json() -> None:
     gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None
 
-    with patch("google.cloud.storage.Client") as mock_storage_client:
+    with patch("providers.gcs.Client") as mock_storage_client:
         # Act
         client = gcs_provider._get_or_create_client()
 
@@ -142,7 +142,7 @@ def test_get_or_create_client_caches_instance() -> None:
     gcs_provider._client_creation_lock = MagicMock()
     gcs_provider._client = None
 
-    with patch("google.cloud.storage.Client") as mock_storage_client:
+    with patch("providers.gcs.Client") as mock_storage_client:
         # Act
         client1 = gcs_provider._get_or_create_client()
         client2 = gcs_provider._get_or_create_client()

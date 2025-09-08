@@ -109,7 +109,7 @@ To get a local copy up and running, follow these simple steps.
 3.  **Set up environment variables:**
     Create a `.env` file and add your Gemini API key.
     ```sh
-    
+
     ```
 4.  **Start services:**
     ```bash

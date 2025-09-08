@@ -1,9 +1,16 @@
+"""This module provides a thread-safe provider for Google Cloud Storage (GCS).
+
+It defines a `GcsProvider` class that abstracts the interaction with GCS,
+including thread-safe, cached client management. It supports emulator usage
+for local development and testing.
+"""
+
 import json
 import os
 import threading
 from typing import cast
 
-from google.cloud import storage
+from google.cloud.storage import Client
 from providers.config import Config, ConfigProvider
 from providers.logging import Logger, LoggingProvider
 
@@ -17,7 +24,7 @@ class GcsProvider:
     GCP_GCS_HOST environment variable is set.
     """
 
-    _client: storage.Client | None = None
+    _client: Client | None = None
     _client_creation_lock: threading.Lock
     logger: Logger
     config: Config
@@ -33,7 +40,7 @@ class GcsProvider:
         self.config = ConfigProvider.get_config()
         self._client_creation_lock = threading.Lock()
 
-    def _get_or_create_client(self) -> storage.Client:
+    def _get_or_create_client(self) -> Client:
         """Retrieves a singleton instance of the GCS Client.
 
         If a client instance does not exist, it creates a new one in a
@@ -60,16 +67,14 @@ class GcsProvider:
 
                         os.environ["STORAGE_EMULATOR_HOST"] = emulator_host
                         self.logger.info(f"GCS client configured for emulator at {emulator_host}")
-                        self._client = storage.Client(
-                            credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT
-                        )
+                        self._client = Client(credentials=AnonymousCredentials(), project=self.config.GCP_PROJECT)
                     # Priority 2: Use Service Account JSON from env var
                     elif credentials_value:
                         try:
                             if credentials_value.strip().startswith("{"):
                                 self.logger.info("GCS client configured from Service Account JSON string.")
                                 credentials_info = json.loads(credentials_value)
-                                self._client = storage.Client.from_service_account_info(
+                                self._client = Client.from_service_account_info(
                                     credentials_info, project=self.config.GCP_PROJECT
                                 )
                             else:
@@ -84,10 +89,10 @@ class GcsProvider:
                         self.logger.info(
                             "GCS client configured for Google Cloud production via Application Default Credentials."
                         )
-                        self._client = storage.Client(project=self.config.GCP_PROJECT)
+                        self._client = Client(project=self.config.GCP_PROJECT)
 
                     self.logger.info("GCS client created successfully.")
-        return cast(storage.Client, self._client)
+        return cast(Client, self._client)
 
     def upload_file(self, bucket_name: str, destination_blob_name: str, content: bytes, content_type: str) -> str:
         """Uploads byte content to a specified GCS bucket.
