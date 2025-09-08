@@ -1,11 +1,10 @@
-from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
 from pydantic import BaseModel, Field
-from vertexai.generative_models import GenerationConfig, Part
+from google.genai import types
 
 
 class MockOutputSchema(BaseModel):
@@ -27,9 +26,7 @@ def mock_ai_provider(monkeypatch):
     monkeypatch.setenv("GCP_LOCATION", "us-central1")
 
     with (
-        patch("public_detective.providers.ai.vertexai.init"),
-        patch("public_detective.providers.ai.aiplatform.init"),
-        patch("public_detective.providers.ai.GenerativeModel") as mock_gen_model,
+        patch("public_detective.providers.ai.genai.GenerativeModel") as mock_gen_model,
         patch("public_detective.providers.ai.GcsProvider") as mock_gcs_provider,
         patch("public_detective.providers.ai.ConfigProvider") as mock_config_provider,
     ):
@@ -55,8 +52,6 @@ def create_mock_response(text, prompt_token_count, candidates_token_count):
     mock_response.text = text
     mock_response.usage_metadata.prompt_token_count = prompt_token_count
     mock_response.usage_metadata.candidates_token_count = candidates_token_count
-    # The `serialize` method is called internally by the SDK.
-    # We can just have it return the mock object itself.
     type(mock_response).serialize = MagicMock(return_value=b"")
     return mock_response
 
@@ -89,7 +84,6 @@ def test_get_structured_analysis(mock_ai_provider):
 def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
     mock_model_instance, _, _ = mock_ai_provider
 
-    # We need to return a mock from the generate_content call
     mock_response = create_mock_response(
         text="""{"risk_score": 8, "summary": "Test summary"}""",
         prompt_token_count=0,
@@ -102,7 +96,7 @@ def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
 
     _, kwargs = mock_model_instance.generate_content.call_args
     generation_config = kwargs.get("generation_config")
-    assert generation_config._raw_generation_config.max_output_tokens == 500
+    assert generation_config.max_output_tokens == 500
 
 
 def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
@@ -113,20 +107,17 @@ def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
         candidates_token_count=0,
     )
 
-    # Using the simplified schema for the test
     ai_provider = AiProvider(output_schema=AnalysisWithValidation)
     ai_provider.get_structured_analysis(prompt="test prompt", files=[])
 
     _, kwargs = mock_model_instance.generate_content.call_args
     generation_config = kwargs.get("generation_config")
-    response_schema = generation_config._raw_generation_config.response_schema
+    response_schema = generation_config.response_schema
 
     assert response_schema is not None
     risk_score_properties = response_schema.properties["risk_score"]
-    with pytest.raises(AttributeError):
-        _ = risk_score_properties.ge
-    with pytest.raises(AttributeError):
-        _ = risk_score_properties.le
+    assert "ge" not in risk_score_properties
+    assert "le" not in risk_score_properties
 
 
 def test_parse_response_blocked(mock_ai_provider):
@@ -205,9 +196,8 @@ def test_upload_file_to_gcs(mock_ai_provider):
 
 def test_count_tokens_for_analysis(mock_ai_provider):
     mock_model_instance, _, _ = mock_ai_provider
-    from google.cloud.aiplatform_v1.types import CountTokensResponse
 
-    mock_model_instance.count_tokens.return_value = CountTokensResponse(total_tokens=123)
+    mock_model_instance.count_tokens.return_value = types.CountTokensResponse(total_tokens=123)
 
     ai_provider = AiProvider(MockOutputSchema)
     prompt = "test prompt"
@@ -221,6 +211,6 @@ def test_count_tokens_for_analysis(mock_ai_provider):
     contents = args[0]
     assert len(contents) == 3
     assert contents[0] == prompt
-    assert isinstance(contents[1], Part)
-    assert contents[1]._raw_part.inline_data.mime_type == "application/pdf"
-    assert contents[2]._raw_part.inline_data.mime_type == "text/plain"
+    assert isinstance(contents[1], types.Part)
+    assert contents[1].inline_data.mime_type == "application/pdf"
+    assert contents[2].inline_data.mime_type == "text/plain"

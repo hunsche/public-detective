@@ -30,7 +30,7 @@ rarfile = "^4.2"
 py7zr = "^1.0.0"
 python-dotenv = "^1.1.1"
 grpcio = "^1.65.1"
-google-cloud-aiplatform = "^1.111.0"
+google-generativeai = "^0.8.0"
 
 [tool.poetry.group.tests.dependencies]
 pytest-dotenv = "^0.5.2"
