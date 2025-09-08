@@ -6,9 +6,9 @@ import pytest
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import pubsub_v1, storage
-from models.procurements import Procurement
-from providers.pubsub import PubSubProvider
-from repositories.procurements import ProcurementsRepository
+from public_detective.models.procurements import Procurement
+from public_detective.providers.pubsub import PubSubProvider
+from public_detective.repositories.procurements import ProcurementsRepository
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -93,7 +93,7 @@ def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
         f"GCP_PUBSUB_TOPIC_PROCUREMENTS='{topic_name}' "
         f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}' "
     )
-    worker_command = f"{env_vars} poetry run python -m source.worker --max-messages 1 --timeout 5"
+    worker_command = f"{env_vars} poetry run python -m public_detective.worker --max-messages 1 --timeout 5"
     run_command(worker_command)
 
     with db_session.connect() as connection:

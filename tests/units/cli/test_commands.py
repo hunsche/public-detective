@@ -2,21 +2,21 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-from cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
+from public_detective.cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
 from click.testing import CliRunner
 
 
 # --- Tests for 'retry' command ---
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_retry_command_success(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,
@@ -61,16 +61,16 @@ def test_retry_command_success(
     assert result.exit_code == 0
 
 
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_retry_command_no_analyses(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -113,16 +113,16 @@ def test_retry_command_no_analyses(
 
 
 # --- Tests for 'analyze' command ---
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_analyze_command_success(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -163,16 +163,16 @@ def test_analyze_command_missing_id() -> None:
     assert result.exit_code != 0
 
 
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_analyze_command_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -202,16 +202,16 @@ def test_analyze_command_exception(
 
 
 # --- Tests for 'trigger-ranked-analysis' command ---
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_trigger_ranked_analysis_manual_budget(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,
@@ -242,16 +242,16 @@ def test_trigger_ranked_analysis_manual_budget(
     assert result.exit_code == 0
 
 
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_trigger_ranked_analysis_auto_budget(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,
@@ -299,16 +299,16 @@ def test_trigger_ranked_analysis_auto_budget_no_period() -> None:
     assert result.exit_code != 0
 
 
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_trigger_ranked_analysis_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,
@@ -340,16 +340,16 @@ def test_trigger_ranked_analysis_exception(
 
 
 # --- Tests for 'pre-analyze' command ---
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_pre_analysis_command_with_valid_dates(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -423,16 +423,16 @@ def test_pre_analysis_command_with_invalid_date_range() -> None:
     assert result.exit_code != 0
 
 
-@patch("cli.commands.DatabaseManager")
-@patch("cli.commands.PubSubProvider")
-@patch("cli.commands.GcsProvider")
-@patch("cli.commands.AiProvider")
-@patch("cli.commands.AnalysisRepository")
-@patch("cli.commands.FileRecordsRepository")
-@patch("cli.commands.ProcurementsRepository")
-@patch("cli.commands.StatusHistoryRepository")
-@patch("cli.commands.BudgetLedgerRepository")
-@patch("cli.commands.AnalysisService")
+@patch("public_detective.cli.commands.DatabaseManager")
+@patch("public_detective.cli.commands.PubSubProvider")
+@patch("public_detective.cli.commands.GcsProvider")
+@patch("public_detective.cli.commands.AiProvider")
+@patch("public_detective.cli.commands.AnalysisRepository")
+@patch("public_detective.cli.commands.FileRecordsRepository")
+@patch("public_detective.cli.commands.ProcurementsRepository")
+@patch("public_detective.cli.commands.StatusHistoryRepository")
+@patch("public_detective.cli.commands.BudgetLedgerRepository")
+@patch("public_detective.cli.commands.AnalysisService")
 def test_pre_analysis_command_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841

@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.api_core.exceptions import GoogleAPICallError
-from worker.subscription import Subscription
+from public_detective.worker.subscription import Subscription
 
 
 @pytest.fixture
@@ -125,13 +125,13 @@ def test_debug_pause(subscription: Subscription) -> None:
         subscription._debug_pause()
 
 
-@patch("worker.subscription.AnalysisService")
-@patch("worker.subscription.FileRecordsRepository")
-@patch("worker.subscription.AnalysisRepository")
-@patch("worker.subscription.ProcurementsRepository")
-@patch("worker.subscription.AiProvider")
-@patch("worker.subscription.GcsProvider")
-@patch("worker.subscription.DatabaseManager")
+@patch("public_detective.worker.subscription.AnalysisService")
+@patch("public_detective.worker.subscription.FileRecordsRepository")
+@patch("public_detective.worker.subscription.AnalysisRepository")
+@patch("public_detective.worker.subscription.ProcurementsRepository")
+@patch("public_detective.worker.subscription.AiProvider")
+@patch("public_detective.worker.subscription.GcsProvider")
+@patch("public_detective.worker.subscription.DatabaseManager")
 def test_subscription_init_composition_root(
     mock_db_manager: MagicMock,
     mock_gcs_provider: MagicMock,

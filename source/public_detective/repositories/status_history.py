@@ -2,8 +2,8 @@
 
 from uuid import UUID
 
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from providers.logging import Logger, LoggingProvider
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.providers.logging import Logger, LoggingProvider
 from sqlalchemy import Engine, text
 
 

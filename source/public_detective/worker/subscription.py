@@ -14,24 +14,24 @@ from collections.abc import Generator
 from concurrent.futures import TimeoutError
 from contextlib import contextmanager
 
-from exceptions.analysis import AnalysisError
+from public_detective.exceptions.analysis import AnalysisError
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
-from models.analyses import Analysis
-from providers.ai import AiProvider
-from providers.config import Config, ConfigProvider
-from providers.database import DatabaseManager
-from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
-from providers.pubsub import Message, PubSubProvider
+from public_detective.models.analyses import Analysis
+from public_detective.providers.ai import AiProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.database import DatabaseManager
+from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.logging import Logger, LoggingProvider
+from public_detective.providers.pubsub import Message, PubSubProvider
 from pydantic import ValidationError
-from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
-from services.analysis import AnalysisService
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.file_records import FileRecordsRepository
+from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.analysis import AnalysisService
 
 
 class Subscription:

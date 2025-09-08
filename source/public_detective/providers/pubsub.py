@@ -15,8 +15,8 @@ from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.publisher.futures import Future
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from google.cloud.pubsub_v1.subscriber.message import Message
-from providers.config import Config, ConfigProvider
-from providers.logging import Logger, LoggingProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.logging import Logger, LoggingProvider
 
 
 class PubSubProvider:

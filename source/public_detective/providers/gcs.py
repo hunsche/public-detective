@@ -4,8 +4,8 @@ import threading
 from typing import cast
 
 from google.cloud import storage
-from providers.config import Config, ConfigProvider
-from providers.logging import Logger, LoggingProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.logging import Logger, LoggingProvider
 
 
 class GcsProvider:

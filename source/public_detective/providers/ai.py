@@ -14,9 +14,9 @@ from uuid import uuid4
 
 import vertexai
 from google.cloud import aiplatform
-from providers.config import Config, ConfigProvider
-from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
 from vertexai.generative_models import Content, GenerationConfig, GenerationResponse, GenerativeModel, Part
 
@@ -123,40 +123,7 @@ class AiProvider(Generic[PydanticModel]):
             file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
         contents = [prompt, *file_parts]
-        # The response schema is explicitly defined here to ensure all fields are
-        # treated as required by the AI model, avoiding potential issues with
-        # optional fields in the Pydantic model.
-        ai_schema = {
-            "type": "object",
-            "properties": {
-                "risk_score": {"type": "integer"},
-                "risk_score_rationale": {"type": "string"},
-                "procurement_summary": {"type": "string"},
-                "analysis_summary": {"type": "string"},
-                "red_flags": {
-                    "type": "array",
-                    "items": {
-                        "type": "object",
-                        "properties": {
-                            "category": {"type": "string"},
-                            "description": {"type": "string"},
-                            "evidence_quote": {"type": "string"},
-                            "auditor_reasoning": {"type": "string"},
-                        },
-                        "required": ["category", "description", "evidence_quote", "auditor_reasoning"],
-                    },
-                },
-                "seo_keywords": {"type": "array", "items": {"type": "string"}},
-            },
-            "required": [
-                "risk_score",
-                "risk_score_rationale",
-                "procurement_summary",
-                "analysis_summary",
-                "red_flags",
-                "seo_keywords",
-            ],
-        }
+        ai_schema = self.output_schema.model_json_schema()
 
         generation_config = GenerationConfig(
             response_mime_type="application/json",

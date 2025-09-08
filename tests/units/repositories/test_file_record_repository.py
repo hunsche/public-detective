@@ -2,8 +2,8 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from models.file_records import NewFileRecord
-from repositories.file_records import FileRecordsRepository
+from public_detective.models.file_records import NewFileRecord
+from public_detective.repositories.file_records import FileRecordsRepository
 
 
 @pytest.fixture

@@ -9,19 +9,19 @@ from decimal import Decimal
 from uuid import UUID
 
 import click
-from exceptions.analysis import AnalysisError
-from models.analyses import Analysis
-from providers.ai import AiProvider
-from providers.database import DatabaseManager
-from providers.date import DateProvider
-from providers.gcs import GcsProvider
-from providers.pubsub import PubSubProvider
-from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
-from services.analysis import AnalysisService
+from public_detective.exceptions.analysis import AnalysisError
+from public_detective.models.analyses import Analysis
+from public_detective.providers.ai import AiProvider
+from public_detective.providers.database import DatabaseManager
+from public_detective.providers.date import DateProvider
+from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.pubsub import PubSubProvider
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.file_records import FileRecordsRepository
+from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.analysis import AnalysisService
 
 
 @click.command("analyze")

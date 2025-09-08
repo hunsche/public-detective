@@ -1,6 +1,6 @@
 import os
 import pytest
-from providers.ai import AiProvider
+from public_detective.providers.ai import AiProvider
 from pydantic import BaseModel
 
 

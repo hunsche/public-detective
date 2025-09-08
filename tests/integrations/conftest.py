@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from providers.config import ConfigProvider
+from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 
 

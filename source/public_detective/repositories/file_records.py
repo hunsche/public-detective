@@ -1,7 +1,7 @@
 """This module defines the repository for file records management."""
 
-from models.file_records import NewFileRecord
-from providers.logging import Logger, LoggingProvider
+from public_detective.models.file_records import NewFileRecord
+from public_detective.providers.logging import Logger, LoggingProvider
 from sqlalchemy import Engine, text
 
 

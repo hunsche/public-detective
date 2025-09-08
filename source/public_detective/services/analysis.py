@@ -9,22 +9,22 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
-from exceptions.analysis import AnalysisError
-from models.analyses import Analysis, AnalysisResult
-from models.file_records import NewFileRecord
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from models.procurements import Procurement
-from providers.ai import AiProvider
-from providers.config import Config, ConfigProvider
-from providers.gcs import GcsProvider
-from providers.logging import Logger, LoggingProvider
-from providers.pubsub import PubSubProvider
-from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
+from public_detective.constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
+from public_detective.exceptions.analysis import AnalysisError
+from public_detective.models.analyses import Analysis, AnalysisResult
+from public_detective.models.file_records import NewFileRecord
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.models.procurements import Procurement
+from public_detective.providers.ai import AiProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.logging import Logger, LoggingProvider
+from public_detective.providers.pubsub import PubSubProvider
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.file_records import FileRecordsRepository
+from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.status_history import StatusHistoryRepository
 
 
 class AnalysisService:

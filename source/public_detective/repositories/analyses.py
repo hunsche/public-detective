@@ -4,9 +4,9 @@ import json
 from typing import Any, cast
 from uuid import UUID
 
-from models.analyses import Analysis, AnalysisResult
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from providers.logging import Logger, LoggingProvider
+from public_detective.models.analyses import Analysis, AnalysisResult
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.providers.logging import Logger, LoggingProvider
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
 
@@ -73,12 +73,12 @@ class AnalysisRepository:
 
         try:
             ai_analysis_data = {
-                "risk_score": row_dict.get("risk_score"),
-                "risk_score_rationale": row_dict.get("risk_score_rationale"),
-                "procurement_summary": row_dict.get("procurement_summary"),
-                "analysis_summary": row_dict.get("analysis_summary"),
+                "risk_score": row_dict.get("risk_score") or 0,
+                "risk_score_rationale": row_dict.get("risk_score_rationale") or "",
+                "procurement_summary": row_dict.get("procurement_summary") or "",
+                "analysis_summary": row_dict.get("analysis_summary") or "",
                 "red_flags": red_flags,
-                "seo_keywords": row_dict.get("seo_keywords", []),
+                "seo_keywords": row_dict.get("seo_keywords") or [],
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
             row_dict["warnings"] = warnings
@@ -405,7 +405,8 @@ class AnalysisRepository:
             return []
 
         columns = list(result[0]._fields)
-        return [self._parse_row_to_model(tuple(row), columns) for row in result if row]
+        analyses = [self._parse_row_to_model(tuple(row), columns) for row in result]
+        return [analysis for analysis in analyses if analysis]
 
     def save_retry_analysis(
         self,
@@ -513,7 +514,8 @@ class AnalysisRepository:
             return []
 
         columns = list(result[0]._fields)
-        return [self._parse_row_to_model(tuple(row), columns) for row in result if row]
+        analyses = [self._parse_row_to_model(tuple(row), columns) for row in result]
+        return [analysis for analysis in analyses if analysis]
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """Retrieves the overall status of a procurement based on its analysis history.

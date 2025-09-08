@@ -12,7 +12,7 @@ from alembic import command
 from alembic.config import Config
 from google.api_core import exceptions
 from google.cloud import pubsub_v1, storage
-from providers.config import ConfigProvider
+from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -58,6 +58,7 @@ def db_session() -> Generator:
     os.environ["POSTGRES_HOST"] = host
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
     os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
+    os.environ["GCP_GEMINI_API_KEY"] = "test-key"
 
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
@@ -141,6 +142,7 @@ def e2e_environment(db_session: Engine) -> Generator:
     os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
     os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
     os.environ["GCP_GCS_TEST_PREFIX"] = f"test-run-{run_id}"
+    os.environ["GCP_GEMINI_API_KEY"] = "test-key"
 
     # Create a temporary credentials file for ADC
     credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")

@@ -14,7 +14,7 @@ from collections.abc import Generator
 from contextlib import contextmanager
 from logging import Filter, Formatter, Logger, LogRecord, StreamHandler, _nameToLevel, getLogger
 
-from providers.config import ConfigProvider
+from public_detective.providers.config import ConfigProvider
 
 _log_context = threading.local()
 

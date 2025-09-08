@@ -6,9 +6,9 @@ be configured via CLI options.
 """
 
 import click
-from providers.config import ConfigProvider
-from providers.logging import LoggingProvider
-from worker.subscription import Subscription
+from public_detective.providers.config import ConfigProvider
+from public_detective.providers.logging import LoggingProvider
+from public_detective.worker.subscription import Subscription
 
 logger = LoggingProvider().get_logger()
 

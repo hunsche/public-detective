@@ -47,7 +47,7 @@ def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> 
 
 
     pre_analyze_command = (
-        f"poetry run python -m source.cli pre-analyze "
+            f"poetry run python -m public_detective.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
         f"--max-messages {max_items_to_process}"
     )
@@ -74,12 +74,12 @@ def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> 
         print("--- Inserted mock donation ---")
 
     ranked_analysis_command = (
-        "poetry run python -m source.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
+            "poetry run python -m public_detective.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
     )
     run_command(ranked_analysis_command)
 
     worker_command = (
-        f"poetry run python -m source.worker "
+        f"poetry run python -m public_detective.worker "
         f"--max-messages {max_items_to_process} "
         f"--timeout 5 "
         f"--max-output-tokens None"

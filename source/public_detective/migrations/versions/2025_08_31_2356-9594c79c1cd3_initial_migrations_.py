@@ -8,7 +8,7 @@ Create Date: 2025-08-31 23:56:00.000000
 from collections.abc import Sequence
 
 from alembic import op
-from migrations.helpers import get_qualified_name
+from public_detective.migrations.helpers import get_qualified_name
 
 revision: str = "9594c79c1cd3"
 down_revision: str | None = None

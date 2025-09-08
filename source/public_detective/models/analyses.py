@@ -2,13 +2,14 @@
 
 from datetime import datetime
 from enum import StrEnum
+from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
 
 class RedFlagCategory(StrEnum):
-    """Enumeration for the categories of identified procurement risks."""
+    """Enumeration for the categories of an identified procurement risk."""
 
     DIRECTING = "DIRECIONAMENTO"
     COMPETITION_RESTRICTION = "RESTRICAO_COMPETITIVIDADE"
@@ -19,7 +20,12 @@ class RedFlagCategory(StrEnum):
 class RedFlag(BaseModel):
     """Represents a single red flag identified during an audit."""
 
-    category: RedFlagCategory = Field(
+    category: Literal[
+        RedFlagCategory.DIRECTING,
+        RedFlagCategory.COMPETITION_RESTRICTION,
+        RedFlagCategory.OVERPRICE,
+        RedFlagCategory.POTENTIAL_OVERPRICE,
+    ] = Field(
         ...,
         description=("The category of the irregularity, which must be one of the allowed " "values."),
     )
@@ -43,25 +49,27 @@ class RedFlag(BaseModel):
 class Analysis(BaseModel):
     """Defines the structured output of a procurement document analysis."""
 
-    risk_score: int | None = Field(
+    risk_score: int = Field(
+        default=0,
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
-    risk_score_rationale: str | None = Field(
+    risk_score_rationale: str = Field(
+        default="",
         description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
     )
-    procurement_summary: str | None = Field(
-        default_factory=lambda: None,
+    procurement_summary: str = Field(
+        default="",
         description="A concise summary (maximum of 3 sentences, in pt-br) of the procurement's scope.",
     )
-    analysis_summary: str | None = Field(
-        default_factory=lambda: None,
+    analysis_summary: str = Field(
+        default="",
         description="A concise summary (maximum of 3 sentences, in pt-br) of the overall analysis.",
     )
     red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
     )
-    seo_keywords: list[str] | None = Field(
+    seo_keywords: list[str] = Field(
         default_factory=list,
         description="Strategic keywords for SEO (in pt-br) related to the procurement.",
     )

@@ -5,19 +5,19 @@ from unittest.mock import MagicMock, patch
 import pytest
 from google.api_core.client_options import ClientOptions
 from google.cloud import pubsub_v1
-from providers.pubsub import PubSubProvider
+from public_detective.providers.pubsub import PubSubProvider
 
 
 @pytest.fixture
 def mock_config_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
+    with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_get_config.return_value.GCP_PROJECT = "test-project"
         yield mock_get_config
 
 
 @pytest.fixture
 def mock_logger_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.logging.LoggingProvider") as mock_logging_provider:
+    with patch("public_detective.providers.logging.LoggingProvider") as mock_logging_provider:
         yield mock_logging_provider
 
 

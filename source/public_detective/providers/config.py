@@ -53,6 +53,7 @@ class Config(BaseSettings):
     
     GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
     GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
+    GCP_GEMINI_API_KEY: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
     GCP_GEMINI_PRICE_PER_1K_TOKENS: float = 0.002

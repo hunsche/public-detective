@@ -1,7 +1,7 @@
 """Main entry point for the CLI application."""
 
 import click
-from cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
+from public_detective.cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
 
 
 @click.group()

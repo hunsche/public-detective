@@ -2,7 +2,7 @@
 Unit tests for the analysis models.
 """
 
-from models.analyses import Analysis, RedFlag, RedFlagCategory
+from public_detective.models.analyses import Analysis, RedFlag, RedFlagCategory
 
 
 def test_red_flag_creation() -> None:

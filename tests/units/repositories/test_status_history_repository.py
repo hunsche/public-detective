@@ -1,8 +1,8 @@
 from unittest.mock import MagicMock
 
 import pytest
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from repositories.status_history import StatusHistoryRepository
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.repositories.status_history import StatusHistoryRepository
 
 
 @pytest.fixture

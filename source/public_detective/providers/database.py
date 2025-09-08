@@ -2,8 +2,8 @@
 
 import threading
 
-from providers.config import Config, ConfigProvider
-from providers.logging import Logger, LoggingProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.logging import Logger, LoggingProvider
 from sqlalchemy import create_engine
 from sqlalchemy.engine import Engine
 

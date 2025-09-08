@@ -21,16 +21,16 @@ import py7zr
 import rarfile
 import requests
 from google.api_core import exceptions
-from models.procurements import (
+from public_detective.models.procurements import (
     DocumentType,
     Procurement,
     ProcurementDocument,
     ProcurementListResponse,
     ProcurementModality,
 )
-from providers.config import Config, ConfigProvider
-from providers.logging import Logger, LoggingProvider
-from providers.pubsub import PubSubProvider
+from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.logging import Logger, LoggingProvider
+from public_detective.providers.pubsub import PubSubProvider
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
 
