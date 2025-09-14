@@ -43,9 +43,7 @@ def run_command(command_str: str) -> None:
 
 
 @pytest.fixture(scope="function")
-def e2e_pubsub(
-    db_session: Engine,
-) -> Generator[tuple[PublisherClient, str], None, None]:
+def e2e_pubsub() -> Generator[tuple[PublisherClient, str], None, None]:
     """Sets up and tears down the Pub/Sub resources for an E2E test."""
     config = ConfigProvider.get_config()
     project_id = config.GCP_PROJECT
@@ -119,6 +117,7 @@ def db_session() -> Generator[Engine, None, None]:
     os.environ.pop("GCP_GEMINI_HOST", None)
 
     # --- 2. Temporary ADC Credentials Setup ---
+    original_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
     credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")
     if not credentials_json:
         pytest.fail("GCP_SERVICE_ACCOUNT_CREDENTIALS must be set for E2E tests.")
@@ -189,6 +188,12 @@ def db_session() -> Generator[Engine, None, None]:
         print("\n--- Tearing down E2E test environment ---")
         if temp_credentials_path.exists():
             temp_credentials_path.unlink()
+
+        # Restore original credentials environment variable
+        if original_credentials is None:
+            os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+        else:
+            os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_credentials
 
         try:
             for blob in bucket.list_blobs(prefix=gcs_test_prefix):
