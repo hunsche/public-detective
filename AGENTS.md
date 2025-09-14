@@ -95,10 +95,7 @@ The project is standardized on **Python 3.12**.
     poetry install
     ```
 3.  **Set up environment variables:**
-    Create a `.env` file in the project root for the Gemini API key:
-    ```
-
-    ```
+    This project relies on environment variables for configuration. For full functionality, especially E2E tests that interact with live GCP services, the environment **must** be configured with valid `GCP_SERVICE_ACCOUNT_CREDENTIALS`. The agent should assume these credentials are provided and valid.
 
 ## 3. Running the Application and Services
 

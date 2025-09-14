@@ -57,7 +57,6 @@ interrogate = "^1.7.0"
 pydocstyle = "^6.3.0"
 darglint = "^1.8.1"
 
-
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

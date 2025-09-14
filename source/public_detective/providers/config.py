@@ -1,10 +1,8 @@
-"""This module defines the application's configuration management.
+"""This module defines the configuration management for the application.
 
-It uses Pydantic's `BaseSettings` to create a strongly-typed `Config`
-class that loads settings from environment variables and/or a .env file.
-This ensures that all configuration parameters are validated and available
-in a structured way throughout the application. A `ConfigProvider` is also
-included to act as a factory for this configuration.
+It uses Pydantic's BaseSettings to create a strongly-typed configuration
+class that reads from environment variables and .env files. This ensures
+all required configuration is present and valid at startup.
 """
 
 from pydantic import model_validator
@@ -12,10 +10,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Config(BaseSettings):
-    """Pydantic model that defines and validates all application settings.
+    """A Pydantic model for managing application settings.
 
-    It automatically reads from environment variables or a .env file,
-    providing type validation and default values.
+    It automatically loads configuration from environment variables and .env files.
     """
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
@@ -35,23 +32,23 @@ class Config(BaseSettings):
     PNCP_INTEGRATION_API_URL: str = "https://pncp.gov.br/api/pncp/v1/"
 
     LOG_LEVEL: str = "INFO"
+
     TARGET_IBGE_CODES: list[int] = [
         3550308,  # São Paulo
+        3304557,  # Rio de Janeiro
     ]
 
-    GCP_PROJECT: str = "total-entity-463718-k1"
+    GCP_PROJECT: str = "public-detective"
     GCP_LOCATION: str = "us-central1"
-    GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
+    GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
     GCP_GCS_HOST: str | None = None
+    GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
     GCP_GCS_TEST_PREFIX: str | None = None
-    GCP_AI_HOST: str | None = None
+    GCP_PUBSUB_HOST: str | None = None
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
-    GCP_PUBSUB_HOST: str | None = None
-
-    GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
-    GCP_GEMINI_API_KEY: str | None = None
+    GCP_GEMINI_HOST: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
     GCP_GEMINI_PRICE_PER_1K_TOKENS: float = 0.002

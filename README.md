@@ -91,34 +91,59 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
-- **Python 3.12+**
-- **Poetry** for dependency management
-- **Docker** and **Docker Compose** for running services
+-   Python 3.12
+-   Poetry
+-   Docker
 
-### Installation & Setup
+### ⚙️ Installation
 
-1.  **Clone the repo:**
+1.  **Clone the repository:**
     ```sh
     git clone https://github.com/hunsche/public-detective.git
     cd public-detective
     ```
 2.  **Install dependencies:**
-    ```sh
+    ```bash
     poetry install
     ```
 3.  **Set up environment variables:**
-    Create a `.env` file and add your Gemini API key.
+    Create a `.env` file from the example. This is primarily used to configure local emulators.
     ```sh
-
+    cp .env.example .env
     ```
+    Authentication with Google Cloud is handled automatically. See the
+    [Authentication](#-authentication) section for more details.
+
 4.  **Start services:**
     ```bash
     docker compose up -d
     ```
-5.  **Run database migrations:**
+5.  **Apply database migrations:**
     ```bash
     poetry run alembic upgrade head
     ```
+
+## 🔐 Authentication
+
+This project uses the **Vertex AI** backend for the Google Gemini API and authenticates using a standard Google Cloud pattern called [Application Default Credentials (ADC)](https://cloud.google.com/docs/authentication/application-default-credentials). This provides a secure and flexible mechanism that works across different environments.
+
+The application attempts to find credentials in the following order:
+
+1.  **`GCP_SERVICE_ACCOUNT_CREDENTIALS` Environment Variable:**
+    -   **Use Case:** Forcing the application to use a specific service account from a JSON key file. This is useful for local development when you need to impersonate a specific account or for certain CI/CD environments.
+    -   **To Use:** Set the environment variable to the absolute path of your key file.
+
+2.  **`gcloud` CLI Credentials (for Local Development):**
+    -   **Use Case:** The most common method for local development.
+    -   **To Use:** If the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable is not set, the application will use the credentials of the user logged into the `gcloud` CLI. To set this up, run:
+        ```sh
+        gcloud auth application-default login
+        ```
+
+3.  **Attached Service Account (Recommended for Production on GCP):**
+    -   **Use Case:** When running the application on Google Cloud infrastructure (e.g., Cloud Run, GKE, Compute Engine).
+    -   **How it Works:** The application automatically detects and uses the service account attached to the host resource. This is the most secure method for production as it eliminates the need to manage and store credential files.
+    -   **To Use:** Ensure the `GCP_SERVICE_ACCOUNT_CREDENTIALS` environment variable is **unset**, and the host's service account has the necessary IAM permissions (e.g., "Vertex AI User"). Also, ensure any emulator-specific environment variables (like `GCP_GEMINI_HOST`) are cleared so the application connects to the live Google Cloud APIs.
 
 ## 💻 How to Use
 
