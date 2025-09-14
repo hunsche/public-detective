@@ -110,7 +110,7 @@ repos:
     - --convention=google
   - id: pytest-cov
     name: pytest-cov
-    entry: poetry run pytest --cov=source
+    entry: poetry run pytest -n auto --cov=source
     language: system
     types:
     - python

@@ -119,7 +119,7 @@ jobs:
 
       - name: Run tests and generate coverage report
         run: |
-          poetry run pytest --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
+          poetry run pytest -n auto --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
 
       - name: Coverage Comment
         if: github.event_name == 'pull_request'
