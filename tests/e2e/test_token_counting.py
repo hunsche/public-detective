@@ -6,7 +6,7 @@ class MockOutputSchema(BaseModel):
     summary: str
 
 
-def test_token_counting() -> None:
+def test_token_counting(db_session) -> None:
     """
     Tests the token counting functionality against the live Vertex AI API.
     """
