@@ -1,10 +1,11 @@
+from collections.abc import Generator
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.models.analyses import Analysis
+from google.genai import types
 from public_detective.providers.ai import AiProvider
 from pydantic import BaseModel, Field
-from google.genai import types
+from pytest import MonkeyPatch
 
 
 class MockOutputSchema(BaseModel):
@@ -21,50 +22,71 @@ class AnalysisWithValidation(BaseModel):
 
 
 @pytest.fixture
-def mock_ai_provider(monkeypatch):
+def mock_ai_provider(monkeypatch: MonkeyPatch) -> Generator[tuple[MagicMock, MagicMock, MagicMock], None, None]:
     monkeypatch.setenv("GCP_PROJECT", "test-project")
     monkeypatch.setenv("GCP_LOCATION", "us-central1")
 
     with (
-        patch("public_detective.providers.ai.genai.GenerativeModel") as mock_gen_model,
+        patch("public_detective.providers.ai.genai.Client") as mock_genai_client,
         patch("public_detective.providers.ai.GcsProvider") as mock_gcs_provider,
         patch("public_detective.providers.ai.ConfigProvider") as mock_config_provider,
     ):
-
-        mock_model_instance = MagicMock()
+        mock_client_instance = MagicMock()
         mock_gcs_instance = MagicMock()
         mock_config_instance = MagicMock()
 
-        mock_gen_model.return_value = mock_model_instance
+        # This simulates the chained calls like client.models.generate_content
+        mock_models_api = MagicMock()
+        mock_client_instance.models = mock_models_api
+        mock_genai_client.return_value = mock_client_instance
+
         mock_gcs_provider.return_value = mock_gcs_instance
         mock_config_provider.get_config.return_value = mock_config_instance
 
-        mock_config_instance.GCP_VERTEX_AI_BUCKET = "test-bucket"
+        mock_config_instance.GCP_GCS_BUCKET_PROCUREMENTS = "test-bucket"
         mock_config_instance.GCP_PROJECT = "test-project"
         mock_config_instance.GCP_LOCATION = "us-central1"
         mock_config_instance.GCP_GEMINI_MODEL = "gemini-test"
 
-        yield mock_model_instance, mock_gcs_instance, mock_config_instance
+        # Yield the mock for the 'models' attribute, which is what's used in the provider
+        yield mock_models_api, mock_gcs_instance, mock_config_instance
 
 
-def create_mock_response(text, prompt_token_count, candidates_token_count):
+def create_mock_response(text: str, prompt_token_count: int, candidates_token_count: int) -> MagicMock:
     mock_response = MagicMock()
-    mock_response.text = text
-    mock_response.usage_metadata.prompt_token_count = prompt_token_count
-    mock_response.usage_metadata.candidates_token_count = candidates_token_count
-    type(mock_response).serialize = MagicMock(return_value=b"")
+    mock_candidate = MagicMock()
+    mock_content = MagicMock()
+
+    # The text is nested inside a Part inside a Content inside a Candidate
+    mock_part = MagicMock()
+    mock_part.text = text
+    mock_content.parts = [mock_part]
+    mock_candidate.content = mock_content
+    mock_response.candidates = [mock_candidate]
+
+    # Mock the usage_metadata
+    mock_usage = MagicMock()
+    mock_usage.prompt_token_count = prompt_token_count
+    mock_usage.candidates_token_count = candidates_token_count
+    mock_response.usage_metadata = mock_usage
+
+    # Add a mock for the text property for direct access
+    type(mock_response).text = text
+
     return mock_response
 
 
-def test_get_structured_analysis(mock_ai_provider):
-    mock_model_instance, mock_gcs_instance, _ = mock_ai_provider
+def test_get_structured_analysis(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
+    mock_models_api, mock_gcs_instance, _ = mock_ai_provider
 
     mock_response = create_mock_response(
         text="""{"risk_score": 8, "summary": "Test summary"}""",
         prompt_token_count=10,
         candidates_token_count=20,
     )
-    mock_model_instance.generate_content.return_value = mock_response
+    mock_models_api.generate_content.return_value = mock_response
 
     mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/file1.pdf"
 
@@ -78,31 +100,41 @@ def test_get_structured_analysis(mock_ai_provider):
     assert input_tokens == 10
     assert output_tokens == 20
     mock_gcs_instance.upload_file.assert_called_once()
-    mock_model_instance.generate_content.assert_called_once()
+    mock_models_api.generate_content.assert_called_once()
 
 
-def test_get_structured_analysis_with_max_tokens(mock_ai_provider):
-    mock_model_instance, _, _ = mock_ai_provider
+def test_get_structured_analysis_with_max_tokens(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
+    mock_models_api, _, _ = mock_ai_provider
 
     mock_response = create_mock_response(
         text="""{"risk_score": 8, "summary": "Test summary"}""",
         prompt_token_count=0,
         candidates_token_count=0,
     )
-    mock_model_instance.generate_content.return_value = mock_response
+    mock_models_api.generate_content.return_value = mock_response
 
     ai_provider = AiProvider(output_schema=MockOutputSchema)
     ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
 
-    _, kwargs = mock_model_instance.generate_content.call_args
-    generation_config = kwargs.get("generation_config")
+    _, kwargs = mock_models_api.generate_content.call_args
+    generation_config = kwargs.get("config")
     assert generation_config.max_output_tokens == 500
 
 
-def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
-    mock_model_instance, _, _ = mock_ai_provider
-    mock_model_instance.generate_content.return_value = create_mock_response(
-        text="""{"risk_score": 8, "risk_score_rationale": "High risk", "summary": "Test summary", "red_flags": [], "seo_keywords": []}""",
+def test_get_structured_analysis_uses_valid_schema(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
+    mock_models_api, _, _ = mock_ai_provider
+    mock_models_api.generate_content.return_value = create_mock_response(
+        text="""{
+            "risk_score": 8,
+            "risk_score_rationale": "High risk",
+            "summary": "Test summary",
+            "red_flags": [],
+            "seo_keywords": []
+        }""",
         prompt_token_count=0,
         candidates_token_count=0,
     )
@@ -110,17 +142,15 @@ def test_get_structured_analysis_uses_valid_schema(mock_ai_provider):
     ai_provider = AiProvider(output_schema=AnalysisWithValidation)
     ai_provider.get_structured_analysis(prompt="test prompt", files=[])
 
-    _, kwargs = mock_model_instance.generate_content.call_args
-    generation_config = kwargs.get("generation_config")
-    response_schema = generation_config.response_schema
+    _, kwargs = mock_models_api.generate_content.call_args
+    generation_config = kwargs.get("config")
 
-    assert response_schema is not None
-    risk_score_properties = response_schema.properties["risk_score"]
-    assert "ge" not in risk_score_properties
-    assert "le" not in risk_score_properties
+    assert generation_config.response_schema is AnalysisWithValidation
 
 
-def test_parse_response_blocked(mock_ai_provider):
+def test_parse_response_blocked(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = create_mock_response(text="", prompt_token_count=0, candidates_token_count=0)
@@ -131,7 +161,9 @@ def test_parse_response_blocked(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_empty(mock_ai_provider):
+def test_parse_response_empty(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = create_mock_response(text="", prompt_token_count=0, candidates_token_count=0)
@@ -142,7 +174,9 @@ def test_parse_response_empty(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_parse_response_from_text(mock_ai_provider):
+def test_parse_response_from_text(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = create_mock_response(
@@ -158,7 +192,9 @@ def test_parse_response_from_text(mock_ai_provider):
     assert result.summary == "text summary"
 
 
-def test_parse_response_with_markdown_in_text(mock_ai_provider):
+def test_parse_response_with_markdown_in_text(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = create_mock_response(
@@ -173,7 +209,9 @@ def test_parse_response_with_markdown_in_text(mock_ai_provider):
     assert isinstance(result, MockOutputSchema)
 
 
-def test_parse_response_parsing_error(mock_ai_provider):
+def test_parse_response_parsing_error(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, _, _ = mock_ai_provider
     ai_provider = AiProvider(MockOutputSchema)
     mock_response = create_mock_response(text="this is not json", prompt_token_count=0, candidates_token_count=0)
@@ -182,7 +220,9 @@ def test_parse_response_parsing_error(mock_ai_provider):
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_upload_file_to_gcs(mock_ai_provider):
+def test_upload_file_to_gcs(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
     _, mock_gcs_instance, _ = mock_ai_provider
     mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/test.pdf"
 
@@ -194,10 +234,12 @@ def test_upload_file_to_gcs(mock_ai_provider):
     mock_gcs_instance.upload_file.assert_called_once()
 
 
-def test_count_tokens_for_analysis(mock_ai_provider):
-    mock_model_instance, _, _ = mock_ai_provider
+def test_count_tokens_for_analysis(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
+) -> None:
+    mock_models_api, _, _ = mock_ai_provider
 
-    mock_model_instance.count_tokens.return_value = types.CountTokensResponse(total_tokens=123)
+    mock_models_api.count_tokens.return_value = types.CountTokensResponse(total_tokens=123)
 
     ai_provider = AiProvider(MockOutputSchema)
     prompt = "test prompt"
@@ -206,11 +248,18 @@ def test_count_tokens_for_analysis(mock_ai_provider):
     token_count, _ = ai_provider.count_tokens_for_analysis(prompt, files)
 
     assert token_count == 123
-    mock_model_instance.count_tokens.assert_called_once()
-    args, _ = mock_model_instance.count_tokens.call_args
-    contents = args[0]
+    mock_models_api.count_tokens.assert_called_once()
+    _, kwargs = mock_models_api.count_tokens.call_args
+    contents = kwargs["contents"]
     assert len(contents) == 3
     assert contents[0] == prompt
     assert isinstance(contents[1], types.Part)
-    assert contents[1].inline_data.mime_type == "application/pdf"
-    assert contents[2].inline_data.mime_type == "text/plain"
+    assert contents[1].file_data is not None
+    assert contents[1].file_data.mime_type == "application/pdf"
+    assert contents[1].file_data.file_uri is not None
+    assert "gs://" in contents[1].file_data.file_uri
+    assert isinstance(contents[2], types.Part)
+    assert contents[2].file_data is not None
+    assert contents[2].file_data.mime_type == "text/plain"
+    assert contents[2].file_data.file_uri is not None
+    assert "gs://" in contents[2].file_data.file_uri

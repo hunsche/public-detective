@@ -1,3 +1,15 @@
+"""Alembic environment configuration for database migrations.
+
+This script is the entry point for all Alembic commands. It sets up the
+database connection, configures the migration context, and defines the
+logic for running migrations in both "offline" (SQL script generation)
+and "online" (direct database connection) modes.
+
+The configuration dynamically sets the database URL from environment
+variables and handles schema-specific migrations for isolated test
+environments.
+"""
+
 from logging.config import fileConfig
 
 from alembic import context

@@ -97,7 +97,7 @@ The project is standardized on **Python 3.12**.
 3.  **Set up environment variables:**
     Create a `.env` file in the project root for the Gemini API key:
     ```
-    
+
     ```
 
 ## 3. Running the Application and Services

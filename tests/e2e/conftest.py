@@ -1,6 +1,5 @@
 import os
-import socket
-import subprocess
+import subprocess  # nosec B404
 import time
 import uuid
 import zipfile
@@ -11,7 +10,9 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from google.api_core import exceptions
-from google.cloud import pubsub_v1, storage
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
+from google.cloud.storage import Client
+from public_detective.migrations.helpers import get_qualified_name
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -94,9 +95,13 @@ def db_session() -> Generator:
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
+            procurements_table = get_qualified_name("procurements")
+            procurement_analyses_table = get_qualified_name("procurement_analyses")
+            file_records_table = get_qualified_name("file_records")
+            history_table = get_qualified_name("procurement_analysis_status_history")
             truncate_sql = text(
-                "TRUNCATE procurements, procurement_analyses, file_records, "
-                "procurement_analysis_status_history RESTART IDENTITY CASCADE;"
+                f"TRUNCATE {procurements_table}, {procurement_analyses_table}, "
+                f"{file_records_table}, {history_table} RESTART IDENTITY CASCADE;"
             )
             connection.execute(truncate_sql)
             connection.commit()
@@ -155,13 +160,13 @@ def e2e_environment(db_session: Engine) -> Generator:
     os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(temp_credentials_path)
 
     # Pub/Sub setup (can use emulator)
-    publisher = pubsub_v1.PublisherClient()
-    subscriber = pubsub_v1.SubscriberClient()
+    publisher = PublisherClient()
+    subscriber = SubscriberClient()
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
 
     # GCS setup (uses credentials from environment loaded by pytest-dotenv)
-    gcs_client = storage.Client(project=project_id)
+    gcs_client = Client(project=project_id)
     bucket = gcs_client.bucket(bucket_name_for_tests)
 
     if not bucket.exists():
@@ -180,9 +185,15 @@ def e2e_environment(db_session: Engine) -> Generator:
         with db_session.connect() as connection:
             print("Truncating tables before test run...")
             connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
+            procurements_table = get_qualified_name("procurements")
+            procurement_analyses_table = get_qualified_name("procurement_analyses")
+            file_records_table = get_qualified_name("file_records")
+            donations_table = get_qualified_name("donations")
+            budget_ledgers_table = get_qualified_name("budget_ledgers")
             connection.execute(
                 text(
-                    "TRUNCATE procurements, procurement_analyses, file_records, donations, budget_ledgers RESTART "
+                    f"TRUNCATE {procurements_table}, {procurement_analyses_table}, "
+                    f"{file_records_table}, {donations_table}, {budget_ledgers_table} RESTART "
                     "IDENTITY CASCADE;"
                 )
             )

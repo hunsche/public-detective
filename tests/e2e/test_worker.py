@@ -3,9 +3,6 @@ import os
 import uuid
 
 import pytest
-from google.api_core import exceptions
-from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1, storage
 from public_detective.models.procurements import Procurement
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.procurements import ProcurementsRepository
@@ -26,37 +23,39 @@ def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
     pubsub_provider = PubSubProvider()
     procurement_repo = ProcurementsRepository(engine=db_session, pubsub_provider=pubsub_provider)
 
-    raw_data_json = json.dumps({
-        "anoCompra": 2025,
-        "dataAtualizacao": "2025-08-23T14:30:00",
-        "dataPublicacaoPncp": "2025-08-23T14:30:00",
-        "sequencialCompra": 251,
-        "numeroControlePNCP": procurement_control_number,
-        "objetoCompra": "Aquisição de material de escritório",
-        "srp": False,
-        "orgaoEntidade": {
-            "cnpj": "43776491000170",
-            "razaoSocial": "MUNICIPIO DE ARACATUBA",
-            "poderId": "E",
-            "esferaId": "M"
-        },
-        "processo": "123/2025",
-        "amparoLegal": {"codigo": 1, "nome": "Lei 14.133/2021", "descricao": "Art. 75, II"},
-        "numeroCompra": "001/2025",
-        "unidadeOrgao": {
-            "codigoUnidade": "12345",
-            "nomeUnidade": "Secretaria de Administração",
-            "ufNome": "São Paulo",
-            "ufSigla": "SP",
-            "municipioNome": "ARACATUBA",
-            "codigoIbge": "3502804"
-        },
-        "modalidadeId": 1,
-        "dataAtualizacaoGlobal": "2025-08-23T14:30:00",
-        "modoDisputaId": 1,
-        "situacaoCompraId": 1,
-        "usuarioNome": "Teste"
-    })
+    raw_data_json = json.dumps(
+        {
+            "anoCompra": 2025,
+            "dataAtualizacao": "2025-08-23T14:30:00",
+            "dataPublicacaoPncp": "2025-08-23T14:30:00",
+            "sequencialCompra": 251,
+            "numeroControlePNCP": procurement_control_number,
+            "objetoCompra": "Aquisição de material de escritório",
+            "srp": False,
+            "orgaoEntidade": {
+                "cnpj": "43776491000170",
+                "razaoSocial": "MUNICIPIO DE ARACATUBA",
+                "poderId": "E",
+                "esferaId": "M",
+            },
+            "processo": "123/2025",
+            "amparoLegal": {"codigo": 1, "nome": "Lei 14.133/2021", "descricao": "Art. 75, II"},
+            "numeroCompra": "001/2025",
+            "unidadeOrgao": {
+                "codigoUnidade": "12345",
+                "nomeUnidade": "Secretaria de Administração",
+                "ufNome": "São Paulo",
+                "ufSigla": "SP",
+                "municipioNome": "ARACATUBA",
+                "codigoIbge": "3502804",
+            },
+            "modalidadeId": 1,
+            "dataAtualizacaoGlobal": "2025-08-23T14:30:00",
+            "modoDisputaId": 1,
+            "situacaoCompraId": 1,
+            "usuarioNome": "Teste",
+        }
+    )
 
     procurement_model = Procurement.model_validate(json.loads(raw_data_json))
     procurement_repo.save_procurement_version(
@@ -69,8 +68,22 @@ def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
     with db_session.connect() as connection:
         connection.execute(
             text(
-                """INSERT INTO procurement_analyses (analysis_id, procurement_control_number, version_number, status, created_at, updated_at)
-                   VALUES (:analysis_id, :procurement_control_number, :version_number, 'PENDING_ANALYSIS', NOW(), NOW())"""
+                """INSERT INTO procurement_analyses (
+                    analysis_id,
+                    procurement_control_number,
+                    version_number,
+                    status,
+                    created_at,
+                    updated_at
+                )
+                VALUES (
+                    :analysis_id,
+                    :procurement_control_number,
+                    :version_number,
+                    'PENDING_ANALYSIS',
+                    NOW(),
+                    NOW()
+                )"""
             ),
             {
                 "analysis_id": analysis_id,
@@ -91,7 +104,7 @@ def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
     subscription_name = os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"]
     env_vars = (
         f"GCP_PUBSUB_TOPIC_PROCUREMENTS='{topic_name}' "
-        f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}' "
+        f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}'"
     )
     worker_command = f"{env_vars} poetry run python -m public_detective.worker --max-messages 1 --timeout 5"
     run_command(worker_command)

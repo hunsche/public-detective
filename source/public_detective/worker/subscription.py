@@ -14,10 +14,10 @@ from collections.abc import Generator
 from concurrent.futures import TimeoutError
 from contextlib import contextmanager
 
-from public_detective.exceptions.analysis import AnalysisError
 from google.api_core.exceptions import GoogleAPICallError
-from google.cloud import pubsub_v1
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
+from google.cloud.pubsub_v1.types import FlowControl
+from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
@@ -25,13 +25,13 @@ from public_detective.providers.database import DatabaseManager
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import Message, PubSubProvider
-from pydantic import ValidationError
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
+from pydantic import ValidationError
 
 
 class Subscription:
@@ -260,13 +260,14 @@ class Subscription:
             """
             self._message_callback(message, max_messages, max_output_tokens)
 
-        flow_control = pubsub_v1.types.FlowControl(
+        flow_control = FlowControl(
             max_messages=self.config.WORKER_MAX_CONCURRENCY,
         )
 
         self.streaming_pull_future = self.pubsub_provider.subscribe(
             subscription_name, callback, flow_control=flow_control
         )
+
         self.logger.info(
             f"Worker is now running, waiting for messages "
             f"(max_concurrency: {self.config.WORKER_MAX_CONCURRENCY}, timeout: {timeout}s)..."

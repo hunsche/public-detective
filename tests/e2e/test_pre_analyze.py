@@ -1,6 +1,4 @@
-import json
 import os
-import uuid
 
 import pytest
 from sqlalchemy import text
@@ -24,7 +22,7 @@ def test_pre_analyze_command(db_session: Engine, e2e_environment: None) -> None:
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
 
     pre_analyze_command = (
-            f"poetry run python -m public_detective.cli pre-analyze "
+        f"poetry run python -m public_detective.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
         f"--max-messages {max_items_to_process}"
     )

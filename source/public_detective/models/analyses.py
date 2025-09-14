@@ -49,20 +49,22 @@ class RedFlag(BaseModel):
 class Analysis(BaseModel):
     """Defines the structured output of a procurement document analysis."""
 
-    risk_score: int = Field(
-        default=0,
+    risk_score: int | None = Field(
+        None,
+        ge=0,
+        le=10,
         description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
     )
-    risk_score_rationale: str = Field(
-        default="",
+    risk_score_rationale: str | None = Field(
+        None,
         description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
     )
-    procurement_summary: str = Field(
-        default="",
+    procurement_summary: str | None = Field(
+        None,
         description="A concise summary (maximum of 3 sentences, in pt-br) of the procurement's scope.",
     )
-    analysis_summary: str = Field(
-        default="",
+    analysis_summary: str | None = Field(
+        None,
         description="A concise summary (maximum of 3 sentences, in pt-br) of the overall analysis.",
     )
     red_flags: list[RedFlag] = Field(

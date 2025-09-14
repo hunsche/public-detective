@@ -45,13 +45,11 @@ class Config(BaseSettings):
     GCP_GCS_HOST: str | None = None
     GCP_GCS_TEST_PREFIX: str | None = None
     GCP_AI_HOST: str | None = None
-    GCP_VERTEX_AI_BUCKET: str = "vertex-ai-test-files"
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_PUBSUB_HOST: str | None = None
-    
-    GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
+
     GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
     GCP_GEMINI_API_KEY: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"

@@ -22,7 +22,8 @@ def test_analysis_creation() -> None:
     analysis = Analysis(
         risk_score=5,
         risk_score_rationale="Test rationale",
-        red_flags=[],
+        procurement_summary="Test procurement summary",
+        analysis_summary="Test analysis summary",
     )
     assert analysis.risk_score == 5
     assert analysis.risk_score_rationale == "Test rationale"
@@ -39,5 +40,11 @@ def test_red_flag_parsing() -> None:
             "auditor_reasoning": "Test",
         }
     ]
-    analysis = Analysis(risk_score=1, risk_score_rationale="test", red_flags=red_flags_dicts)
+    analysis = Analysis(
+        risk_score=1,
+        risk_score_rationale="test",
+        procurement_summary="Test procurement summary",
+        analysis_summary="Test analysis summary",
+        red_flags=red_flags_dicts,
+    )
     assert isinstance(analysis.red_flags[0], RedFlag)

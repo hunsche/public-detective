@@ -3,15 +3,8 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from public_detective.models.analyses import (
-    Analysis,
-    AnalysisResult,
-    RedFlag,
-    RedFlagCategory,
-)
-from public_detective.models.procurement_analysis_status import (
-    ProcurementAnalysisStatus,
-)
+from public_detective.models.analyses import AnalysisResult, RedFlag, RedFlagCategory
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.repositories.analyses import AnalysisRepository
 
 
@@ -205,6 +198,8 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         ai_analysis={
             "risk_score": 8,
             "risk_score_rationale": "High risk",
+            "procurement_summary": "Test procurement summary",
+            "analysis_summary": "Test analysis summary",
             "red_flags": [],
             "seo_keywords": ["keyword1", "keyword2"],
         },

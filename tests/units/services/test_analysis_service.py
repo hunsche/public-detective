@@ -8,10 +8,8 @@ from uuid import uuid4
 
 import pytest
 from public_detective.exceptions.analysis import AnalysisError
-from public_detective.models.analyses import Analysis, AnalysisResult
-from public_detective.models.procurement_analysis_status import (
-    ProcurementAnalysisStatus,
-)
+from public_detective.models.analyses import Analysis
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.services.analysis import AnalysisService
 

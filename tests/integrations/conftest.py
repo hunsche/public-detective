@@ -54,18 +54,20 @@ def db_session() -> Generator:
             connection.commit()
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
+
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.commit()
 
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
         command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             truncate_sql = text(
-                "TRUNCATE procurements, procurement_analyses, file_records, "
-                "procurement_analysis_status_history RESTART IDENTITY CASCADE;"
+                f"TRUNCATE {schema_name}.procurements, {schema_name}.procurement_analyses, {schema_name}.file_records, "
+                f"{schema_name}.procurement_analysis_status_history RESTART IDENTITY CASCADE;"
             )
             connection.execute(truncate_sql)
             connection.commit()

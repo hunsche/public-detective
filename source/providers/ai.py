@@ -7,16 +7,18 @@ of the AI's response.
 """
 
 import json
+import os
 from mimetypes import guess_type
 from typing import Generic, TypeVar
 from uuid import uuid4
 
-from google import genai
-from google.genai import types
+import vertexai
+from google.cloud import aiplatform
 from public_detective.providers.config import Config, ConfigProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from pydantic import BaseModel, ValidationError
+from vertexai.generative_models import GenerationConfig, GenerationResponse, GenerativeModel, Part
 
 PydanticModel = TypeVar("PydanticModel", bound=BaseModel)
 
@@ -29,7 +31,7 @@ class AiProvider(Generic[PydanticModel]):
 
     logger: Logger
     config: Config
-    client: genai.Client
+    model: GenerativeModel
     gcs_provider: GcsProvider
     output_schema: type[PydanticModel]
 
@@ -41,33 +43,66 @@ class AiProvider(Generic[PydanticModel]):
         Args:
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
+
+
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
 
-        self.client = genai.Client(vertexai=True, project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
+        emulator_host = self.config.GCP_AI_HOST
+        credentials_value = self.config.GCP_SERVICE_ACCOUNT_CREDENTIALS
+        credentials = None
 
+        # Priority 1: Use Emulator if GCP_AI_HOST is set
+        if emulator_host:
+            self.logger.info(f"AI client configured for emulator at {emulator_host}")
+            # The aiplatform.init() function will automatically use this env var
+            os.environ["AIPLATFORM_EMULATOR_HOST"] = str(emulator_host)
+        # Priority 2: Use Service Account JSON from env var
+        elif credentials_value:
+            try:
+                if credentials_value.strip().startswith("{"):
+                    self.logger.info("AI client configured from Service Account JSON string.")
+                    credentials_info = json.loads(credentials_value)
+                    from google.oauth2 import service_account
+
+                    credentials = service_account.Credentials.from_service_account_info(credentials_info)
+                else:
+                    raise ValueError("GCP_SERVICE_ACCOUNT_CREDENTIALS is set but does not appear to be a JSON object.")
+            except json.JSONDecodeError as e:
+                self.logger.error(f"Failed to parse GCP credentials JSON: {e}")
+                raise ValueError("Invalid JSON in GCP_SERVICE_ACCOUNT_CREDENTIALS.") from e
+        # Priority 3: Fallback to Application Default Credentials (credentials=None)
+        else:
+            self.logger.info("AI client configured for Google Cloud production via Application Default Credentials.")
+
+        aiplatform.init(
+            project=self.config.GCP_PROJECT,
+            location=self.config.GCP_LOCATION,
+            credentials=credentials,
+        )
+        vertexai.init(project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION, credentials=credentials)
+
+        self.model = GenerativeModel(self.config.GCP_GEMINI_MODEL)
         self.logger.info(
-            "Google Generative AI client configured successfully for schema "
-            f"'{self.output_schema.__name__}' using Vertex AI backend."
+            "Google Vertex AI client configured successfully for schema " f"'{self.output_schema.__name__}'."
         )
 
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
     ) -> tuple[PydanticModel, int, int]:
-        """Sends a file for analysis and parses the response.
+        """Uploads a file, sends it for analysis, and parses the response.
 
         This method is designed to be highly robust, handling cases where the AI
-        response might be empty, blocked by safety settings, or returned in a
-        format that doesn't match the expected Pydantic schema.
+        response might be empty, blocked by safety settings, or returned in
 
         Args:
             prompt: The instructional prompt for the AI model.
-            files: A list of tuples, where each tuple contains:
-                - The file path (for display name and mime type guessing).
-                - The byte content of the file.
+            files: A list of tuples:
+                - A list of tuples with file paths and their byte content.
+                - A list of descriptive names for the uploaded files.
             max_output_tokens: An optional integer to set the token limit.
                 If `None`, no limit is applied.
 
@@ -78,31 +113,61 @@ class AiProvider(Generic[PydanticModel]):
             - The number of input tokens used.
             - The number of output tokens used.
         """
-        file_parts: list[types.Part] = []
+        file_parts = []
         for file_display_name, file_content in files:
+            self.logger.info(f"Uploading '{file_display_name}' to GCS.")
             gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
             mime_type = guess_type(file_display_name)[0] or "application/octet-stream"
-            file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
+            file_parts.append(Part.from_uri(gcs_uri, mime_type=mime_type))
 
         contents = [prompt, *file_parts]
+        # The response schema is explicitly defined here to ensure all fields are
+        # treated as required by the AI model, avoiding potential issues with
+        # optional fields in the Pydantic model.
+        ai_schema = {
+            "type": "object",
+            "properties": {
+                "risk_score": {"type": "integer"},
+                "risk_score_rationale": {"type": "string"},
+                "procurement_summary": {"type": "string"},
+                "analysis_summary": {"type": "string"},
+                "red_flags": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "category": {"type": "string"},
+                            "description": {"type": "string"},
+                            "evidence_quote": {"type": "string"},
+                            "auditor_reasoning": {"type": "string"},
+                        },
+                        "required": ["category", "description", "evidence_quote", "auditor_reasoning"],
+                    },
+                },
+                "seo_keywords": {"type": "array", "items": {"type": "string"}},
+            },
+            "required": [
+                "risk_score",
+                "risk_score_rationale",
+                "procurement_summary",
+                "analysis_summary",
+                "red_flags",
+                "seo_keywords",
+            ],
+        }
 
-        response = self.client.models.generate_content(
-            model=self.config.GCP_GEMINI_MODEL,
-            contents=contents,  # type: ignore
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=self.output_schema,
-                max_output_tokens=max_output_tokens,
-            ),
+        generation_config = GenerationConfig(
+            response_mime_type="application/json",
+            max_output_tokens=max_output_tokens,
+            response_schema=ai_schema,
         )
-        self.logger.debug("Successfully received response from Generative AI API.")
+
+        response = self.model.generate_content(contents, generation_config=generation_config)  # type: ignore
+        self.logger.debug("Successfully received response from Vertex AI API.")
 
         validated_response = self._parse_and_validate_response(response)
-        input_tokens = 0
-        output_tokens = 0
-        if response.usage_metadata:
-            input_tokens = response.usage_metadata.prompt_token_count or 0
-            output_tokens = response.usage_metadata.candidates_token_count or 0
+        input_tokens = response.usage_metadata.prompt_token_count
+        output_tokens = response.usage_metadata.candidates_token_count
 
         return validated_response, input_tokens, output_tokens
 
@@ -119,23 +184,20 @@ class AiProvider(Generic[PydanticModel]):
             A tuple containing the total number of input tokens and 0 for output tokens.
         """
         self.logger.info("Counting tokens for analysis...")
-        file_parts: list[types.Part] = []
+        file_parts = []
         for file_display_name, file_content in files:
-            gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
             mime_type = guess_type(file_display_name)[0]
             if not mime_type:
                 mime_type = "application/octet-stream"
-            file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
+            file_parts.append(Part.from_data(file_content, mime_type=mime_type))
 
         contents = [prompt, *file_parts]
-        response = self.client.models.count_tokens(
-            model=self.config.GCP_GEMINI_MODEL, contents=contents  # type: ignore
-        )
+        response = self.model.count_tokens(contents)  # type: ignore
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
-        return token_count or 0, 0
+        return token_count, 0
 
-    def _parse_and_validate_response(self, response) -> PydanticModel:  # type: ignore
+    def _parse_and_validate_response(self, response: GenerationResponse) -> PydanticModel:
         """Parses the AI's response, handling multiple potential formats and errors.
 
         This method provides a robust, multi-step process to extract and validate
@@ -153,15 +215,17 @@ class AiProvider(Generic[PydanticModel]):
         if not response.candidates:
             if response.prompt_feedback and response.prompt_feedback.block_reason:
                 block_reason = response.prompt_feedback.block_reason.name
-                self.logger.error(f"Generative AI API blocked the prompt. Reason: {block_reason}")
+                self.logger.error(f"Vertex AI API blocked the prompt. Reason: {block_reason}")
                 raise ValueError(f"AI model blocked the response due to: {block_reason}")
 
-            self.logger.error(f"Generative AI API returned no candidates. Full response: {response}")
+            self.logger.error(f"Vertex AI API returned no candidates. Full response: {response}")
             raise ValueError("AI model returned an empty response.")
 
         try:
+            # In Vertex AI, the structured response is directly in the .text attribute
+            # when a schema is provided.
             response_text = response.text
-            self.logger.debug(f"Received text response from Generative AI: {response_text}")
+            self.logger.debug(f"Received text response from Vertex AI: {response_text}")
             if response_text.strip().startswith("```json"):
                 response_text = response_text.strip()[7:-3]
             json_data = json.loads(response_text)
@@ -187,7 +251,6 @@ class AiProvider(Generic[PydanticModel]):
             The GCS URI of the uploaded file (e.g., gs://bucket-name/object-name).
         """
         bucket_name = self.config.GCP_GCS_BUCKET_PROCUREMENTS
-
         object_name = f"ai-uploads/{uuid4()}/{display_name}"
         content_type = guess_type(display_name)[0] or "application/octet-stream"
 

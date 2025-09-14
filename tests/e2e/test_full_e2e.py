@@ -1,27 +1,11 @@
 import json
 import os
-import socket
-import subprocess  # nosec B404
-import time
 import uuid
-from collections.abc import Generator
-from pathlib import Path
-from zipfile import ZipFile
 
-import pytest
-from google.api_core import exceptions
-from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1, storage
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 from tests.e2e.conftest import run_command
-
-
-
-
-
-
 
 
 def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> None:  # noqa: F841
@@ -45,9 +29,8 @@ def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> 
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
     os.environ["GCP_GEMINI_PRICE_PER_1K_TOKENS"] = "0.002"
 
-
     pre_analyze_command = (
-            f"poetry run python -m public_detective.cli pre-analyze "
+        f"poetry run python -m public_detective.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
         f"--max-messages {max_items_to_process}"
     )
@@ -74,7 +57,7 @@ def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> 
         print("--- Inserted mock donation ---")
 
     ranked_analysis_command = (
-            "poetry run python -m public_detective.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
+        "poetry run python -m public_detective.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
     )
     run_command(ranked_analysis_command)
 

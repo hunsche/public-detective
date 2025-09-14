@@ -26,11 +26,11 @@ sqlalchemy = "^2.0.41"
 psycopg2-binary = "^2.9.9"
 google-cloud-pubsub = "^2.31.1"
 google-cloud-storage = "^3.3.1"
+google-genai = "^1.36.0"
 rarfile = "^4.2"
 py7zr = "^1.0.0"
 python-dotenv = "^1.1.1"
 grpcio = "^1.74.0"
-google-generativeai = "^0.8.5"
 
 [tool.poetry.group.tests.dependencies]
 pytest-dotenv = "^0.5.2"
@@ -52,13 +52,11 @@ mypy = "^1.10.1"
 coverage = "^7.5.1"
 vulture = "^2.11"
 pre-commit = "^3.7.1"
-types-requests = "^2.32.4.20250611"
-
-
-[tool.poetry.group.dev.dependencies]
+types-requests = "^2.32.4"
 interrogate = "^1.7.0"
 pydocstyle = "^6.3.0"
 darglint = "^1.8.1"
+
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -81,22 +79,9 @@ line-length = 120
 target-version = ['py312']
 exclude = '''
 /(
-    \.eggs
-  | \.git
-  | \.hg
-  | \.mypy_cache
-  | \.venv
-  | _build
-  | buck-out
-  | build
-  | dist
-  # protobuf
-  | app/customer/adapters/proto
-  | app/provider/adapters/proto
-  # The following are specific to Black, you probably don't want those.
-  | blib2to3
-  | tests/data
-  | profiling
+  \.git |
+  \.mypy_cache |
+  \.venv
 )/
 '''
 
@@ -105,20 +90,9 @@ profile = "black"
 line_length = 120
 multi_line_output = 3
 skip = '''
-  .eggs,\
-  .git,\
-  .hg,\
-  .mypy_cache,\
-  .venv,\
-  _build,\
-  buck-out,\
-  build,\
-  dist,\
-  app/customer/adapters/proto,\
-  app/provider/adapters/proto,\
-  blib2to3,\
-  tests/data,\
-  profiling
+  .git,
+  .mypy_cache,
+  .venv,
 '''
 
 [tool.mypy]
@@ -138,7 +112,7 @@ exclude = '(?x)(^.venv/)'
 
 [tool.vulture]
 min_confidence = 100
-ignore_names = ["cls", "self", "mock_config_provider", "mock_logger_provider"]
+ignore_names = ["cls", "self"]
 
 [tool.bandit]
 skips = ["B101", "B202"]

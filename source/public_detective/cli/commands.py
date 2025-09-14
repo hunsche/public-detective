@@ -135,7 +135,9 @@ def pre_analyze(
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
     import os
+
     import google.auth
+
     click.echo(f"GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
     try:
         credentials, project_id = google.auth.default()

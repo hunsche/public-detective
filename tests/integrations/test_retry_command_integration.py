@@ -2,9 +2,9 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from public_detective.cli.commands import retry
 from click.testing import CliRunner
 from faker import Faker
+from public_detective.cli.commands import retry
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
