@@ -211,6 +211,34 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
 - **Exception Handling:** Service layer methods (`source/services/`) must catch generic exceptions and re-raise them as specific, custom exceptions from the `source/exceptions/` package (e.g., `AnalysisError`). The presentation layers (`cli`, `worker`) are responsible for catching these specific exceptions and handling user-facing feedback (e.g., logging, raising `click.Abort()`).
 
+### C. Google Gemini API Imports
+**This is a critical project-specific rule. Violation of this rule will lead to incorrect behavior and pipeline failures.**
+
+The official Google Generative AI SDK has two namespaces: `google.genai` and the legacy `google.generativeai`. The `google.generativeai` namespace is **deprecated** and its usage is strictly **prohibited** in this project.
+
+-   **All imports** related to the Gemini API **must** come from the `google.genai` package.
+-   Do **not** use any imports from `google.generativeai`. This includes submodules like `google.generativeai.client`.
+
+**Correct Usage:**
+```python
+from google.genai import types
+from google.genai import GenerativeModel
+
+# Correct: All types and classes come from the `google.genai` root.
+contents: types.ContentsType = [...]
+```
+
+**Incorrect Usage (Prohibited):**
+```python
+# Incorrect: This will be rejected by the linter and CI.
+from google.generativeai.client import content_types
+
+# Incorrect: This namespace is deprecated and must not be used.
+from google.generativeai import types
+```
+
+This rule is enforced to maintain consistency and avoid issues caused by mixing legacy and modern APIs.
+
 ## 6. Database Migrations
 
 ### A. Raw SQL Only

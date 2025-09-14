@@ -251,15 +251,16 @@ def test_count_tokens_for_analysis(
     mock_models_api.count_tokens.assert_called_once()
     _, kwargs = mock_models_api.count_tokens.call_args
     contents = kwargs["contents"]
-    assert len(contents) == 3
-    assert contents[0] == prompt
-    assert isinstance(contents[1], types.Part)
-    assert contents[1].file_data is not None
-    assert contents[1].file_data.mime_type == "application/pdf"
-    assert contents[1].file_data.file_uri is not None
-    assert "gs://" in contents[1].file_data.file_uri
-    assert isinstance(contents[2], types.Part)
-    assert contents[2].file_data is not None
-    assert contents[2].file_data.mime_type == "text/plain"
-    assert contents[2].file_data.file_uri is not None
-    assert "gs://" in contents[2].file_data.file_uri
+    assert isinstance(contents, types.Content)
+    assert contents.role == "user"
+    assert contents.parts is not None
+    assert len(contents.parts) == 3
+    assert contents.parts[0].text == prompt
+    assert contents.parts[1].file_data is not None
+    assert contents.parts[1].file_data.mime_type == "application/pdf"
+    assert contents.parts[1].file_data.file_uri is not None
+    assert "gs://" in contents.parts[1].file_data.file_uri
+    assert contents.parts[2].file_data is not None
+    assert contents.parts[2].file_data.mime_type == "text/plain"
+    assert contents.parts[2].file_data.file_uri is not None
+    assert "gs://" in contents.parts[2].file_data.file_uri

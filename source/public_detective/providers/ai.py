@@ -84,7 +84,8 @@ class AiProvider(Generic[PydanticModel]):
             mime_type = guess_type(file_display_name)[0] or "application/octet-stream"
             file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
 
-        contents = [prompt, *file_parts]
+        all_parts = [types.Part(text=prompt), *file_parts]
+        contents = types.Content(role="user", parts=all_parts)
 
         response = self.client.models.generate_content(
             model=self.config.GCP_GEMINI_MODEL,
@@ -118,7 +119,6 @@ class AiProvider(Generic[PydanticModel]):
         Returns:
             A tuple containing the total number of input tokens and 0 for output tokens.
         """
-        self.logger.info("Counting tokens for analysis...")
         file_parts: list[types.Part] = []
         for file_display_name, file_content in files:
             gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
@@ -127,7 +127,8 @@ class AiProvider(Generic[PydanticModel]):
                 mime_type = "application/octet-stream"
             file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
 
-        contents = [prompt, *file_parts]
+        all_parts = [types.Part(text=prompt), *file_parts]
+        contents = types.Content(role="user", parts=all_parts)
         response = self.client.models.count_tokens(model=self.config.GCP_GEMINI_MODEL, contents=contents)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
