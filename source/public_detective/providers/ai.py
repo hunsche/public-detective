@@ -88,7 +88,7 @@ class AiProvider(Generic[PydanticModel]):
 
         response = self.client.models.generate_content(
             model=self.config.GCP_GEMINI_MODEL,
-            contents=contents,  # type: ignore
+            contents=contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=self.output_schema,
@@ -128,9 +128,7 @@ class AiProvider(Generic[PydanticModel]):
             file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
 
         contents = [prompt, *file_parts]
-        response = self.client.models.count_tokens(
-            model=self.config.GCP_GEMINI_MODEL, contents=contents  # type: ignore
-        )
+        response = self.client.models.count_tokens(model=self.config.GCP_GEMINI_MODEL, contents=contents)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
         return token_count or 0, 0
