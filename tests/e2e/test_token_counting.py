@@ -1,12 +1,13 @@
 from public_detective.providers.ai import AiProvider
 from pydantic import BaseModel
+from sqlalchemy.engine import Engine
 
 
 class MockOutputSchema(BaseModel):
     summary: str
 
 
-def test_token_counting() -> None:
+def test_token_counting(db_session: Engine) -> None:
     """
     Tests the token counting functionality against the live Vertex AI API.
     """
