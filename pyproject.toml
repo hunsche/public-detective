@@ -117,3 +117,9 @@ ignore_names = ["cls", "self"]
 skips = ["B101", "B202"]
 [tool.bandit.migrations]
 skips = ["B608"]
+
+[tool.interrogate]
+fail_under = 95
+verbose = 2
+color = true
+exclude = ["source/migrations", "tests", ".venv", "docs"]
