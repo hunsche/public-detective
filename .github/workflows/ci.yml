@@ -140,6 +140,10 @@ jobs:
         with:
           output: .github/badges/code-coverage.svg
 
+      - name: Check docstring coverage
+        run: |
+          poetry run interrogate
+
       - name: Generate docstring coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |

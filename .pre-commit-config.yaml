@@ -95,10 +95,7 @@ repos:
     language: python
     types:
     - python
-    exclude: ^(source/migrations/|tests/)
-    args:
-    - -v
-    - --fail-under=95
+    exclude: ^(source/migrations/|tests/|docs/)
   - id: pydocstyle
     name: pydocstyle
     entry: pydocstyle
