@@ -7,11 +7,11 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from exceptions.analysis import AnalysisError
-from models.analyses import Analysis
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from models.procurements import Procurement
-from services.analysis import AnalysisService
+from public_detective.exceptions.analysis import AnalysisError
+from public_detective.models.analyses import Analysis
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.models.procurements import Procurement
+from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture
@@ -206,7 +206,7 @@ def test_calculate_auto_budget(mock_dependencies: dict[str, Any]) -> None:
     service.budget_ledger_repo.get_total_expenses_for_period.return_value = 100
 
     # Mock the date to be the 15th of a 30-day month
-    with patch("services.analysis.datetime") as mock_datetime:
+    with patch("public_detective.services.analysis.datetime") as mock_datetime:
         mock_datetime.now.return_value.date.return_value = date(2025, 1, 15)
         mock_datetime.side_effect = lambda *args, **kw: datetime(*args, **kw)
 

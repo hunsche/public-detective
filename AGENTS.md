@@ -95,10 +95,7 @@ The project is standardized on **Python 3.12**.
     poetry install
     ```
 3.  **Set up environment variables:**
-    Create a `.env` file in the project root for the Gemini API key:
-    ```
-    GCP_GEMINI_API_KEY="your-gemini-api-key"
-    ```
+    This project relies on environment variables for configuration. For full functionality, especially E2E tests that interact with live GCP services, the environment **must** be configured with valid `GCP_SERVICE_ACCOUNT_CREDENTIALS`. The agent should assume these credentials are provided and valid.
 
 ## 3. Running the Application and Services
 
@@ -145,7 +142,7 @@ These require the Docker services to be running.
 
 ### End-to-End (E2E) Tests
 
-**Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment, including a valid `GCP_GEMINI_API_KEY`.
+**Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment.
 
 -   **Who Should Run This?** Agents working on the full application flow or making changes that could impact multiple components.
 -   **Purpose:** The E2E test (`tests/e2e/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.
@@ -210,6 +207,34 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
 - **Language:** All code, docstrings, and documentation are in **English**. The only exception is text that is user-facing or part of the AI prompt, which should be in **Portuguese (pt-br)**.
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
 - **Exception Handling:** Service layer methods (`source/services/`) must catch generic exceptions and re-raise them as specific, custom exceptions from the `source/exceptions/` package (e.g., `AnalysisError`). The presentation layers (`cli`, `worker`) are responsible for catching these specific exceptions and handling user-facing feedback (e.g., logging, raising `click.Abort()`).
+
+### C. Google Gemini API Imports
+**This is a critical project-specific rule. Violation of this rule will lead to incorrect behavior and pipeline failures.**
+
+The official Google Generative AI SDK has two namespaces: `google.genai` and the legacy `google.generativeai`. The `google.generativeai` namespace is **deprecated** and its usage is strictly **prohibited** in this project.
+
+-   **All imports** related to the Gemini API **must** come from the `google.genai` package.
+-   Do **not** use any imports from `google.generativeai`. This includes submodules like `google.generativeai.client`.
+
+**Correct Usage:**
+```python
+from google.genai import types
+from google.genai import GenerativeModel
+
+# Correct: All types and classes come from the `google.genai` root.
+contents: types.ContentsType = [...]
+```
+
+**Incorrect Usage (Prohibited):**
+```python
+# Incorrect: This will be rejected by the linter and CI.
+from google.generativeai.client import content_types
+
+# Incorrect: This namespace is deprecated and must not be used.
+from google.generativeai import types
+```
+
+This rule is enforced to maintain consistency and avoid issues caused by mixing legacy and modern APIs.
 
 ## 6. Database Migrations
 

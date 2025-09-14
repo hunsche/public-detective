@@ -1,7 +1,7 @@
 """This module contains shared fixtures for the services unit tests."""
 
 import pytest
-from models.procurements import Procurement
+from public_detective.models.procurements import Procurement
 
 
 @pytest.fixture

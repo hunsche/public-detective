@@ -6,8 +6,8 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 
 import pytest
-from models.procurements import Procurement
-from services.analysis import AnalysisService
+from public_detective.models.procurements import Procurement
+from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture

@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from cli.commands import retry
 from click.testing import CliRunner
 from faker import Faker
-from models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.cli.commands import retry
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -103,8 +103,8 @@ def test_retry_command_failed_analysis(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -147,8 +147,8 @@ def test_retry_command_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -190,8 +190,8 @@ def test_retry_command_max_retries_exceeded(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -216,8 +216,8 @@ def test_retry_command_not_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 

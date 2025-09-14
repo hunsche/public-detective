@@ -8,12 +8,16 @@ from pathlib import Path
 import pytest
 from alembic import command
 from alembic.config import Config
-from providers.config import ConfigProvider
+from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 
 
 @pytest.fixture(scope="function")
 def db_session() -> Generator:
+    os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
+    os.environ.pop("GCP_GCS_BUCKET_PROCUREMENTS", None)
+    os.environ["GCP_PROJECT"] = "public-detective"
+
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():
@@ -38,7 +42,7 @@ def db_session() -> Generator:
     engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
     # Wait for the database to be ready before proceeding
-    for _ in range(15):
+    for _ in range(30):
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
@@ -54,18 +58,20 @@ def db_session() -> Generator:
             connection.commit()
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
+
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.commit()
 
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
         command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             truncate_sql = text(
-                "TRUNCATE procurements, procurement_analyses, file_records, "
-                "procurement_analysis_status_history RESTART IDENTITY CASCADE;"
+                f"TRUNCATE {schema_name}.procurements, {schema_name}.procurement_analyses, {schema_name}.file_records, "
+                f"{schema_name}.procurement_analysis_status_history RESTART IDENTITY CASCADE;"
             )
             connection.execute(truncate_sql)
             connection.commit()

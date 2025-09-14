@@ -11,27 +11,28 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 import requests
-from cli.__main__ import cli
 from click.testing import CliRunner
 from google.api_core import exceptions
 from google.auth.credentials import AnonymousCredentials
-from google.cloud import pubsub_v1, storage
-from models.analyses import Analysis
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from models.procurements import Procurement
-from providers.ai import AiProvider
-from providers.gcs import GcsProvider
-from providers.logging import LoggingProvider
-from providers.pubsub import PubSubProvider
-from repositories.analyses import AnalysisRepository
-from repositories.budget_ledger import BudgetLedgerRepository
-from repositories.file_records import FileRecordsRepository
-from repositories.procurements import ProcurementsRepository
-from repositories.status_history import StatusHistoryRepository
-from services.analysis import AnalysisService
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
+from google.cloud.storage import Client
+from public_detective.cli.__main__ import cli
+from public_detective.models.analyses import Analysis
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.models.procurements import Procurement
+from public_detective.providers.ai import AiProvider
+from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.logging import LoggingProvider
+from public_detective.providers.pubsub import PubSubProvider
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.file_records import FileRecordsRepository
+from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.analysis import AnalysisService
+from public_detective.worker.subscription import Subscription
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
-from worker.subscription import Subscription
 
 
 @pytest.fixture(scope="function")
@@ -39,7 +40,7 @@ def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  
     project_id = "public-detective"
     os.environ["GCP_PROJECT"] = project_id
     os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
-    os.environ["GCP_GEMINI_API_KEY"] = "dummy-key-for-testing"
+
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
     subscription_name = f"procurements-subscription-{run_id}"
@@ -47,9 +48,9 @@ def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  
     os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
     gcs_prefix = f"test-run-{run_id}"
     os.environ["GCP_GCS_TEST_PREFIX"] = gcs_prefix
-    publisher = pubsub_v1.PublisherClient(credentials=AnonymousCredentials())
-    subscriber = pubsub_v1.SubscriberClient(credentials=AnonymousCredentials())
-    gcs_client = storage.Client(credentials=AnonymousCredentials(), project=project_id)
+    publisher = PublisherClient(credentials=AnonymousCredentials())
+    subscriber = SubscriberClient(credentials=AnonymousCredentials())
+    gcs_client = Client(credentials=AnonymousCredentials(), project=project_id)
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
     # Truncate tables before each test run
@@ -249,7 +250,7 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
     )
 
     with (
-        patch("source.repositories.procurements.requests.get", side_effect=mock_requests_get),
+        patch("public_detective.repositories.procurements.requests.get", side_effect=mock_requests_get),
         patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)),
     ):
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)

@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-from exceptions.analysis import AnalysisError
-from models.analyses import Analysis, AnalysisResult
-from repositories.analyses import AnalysisRepository
-from services.analysis import AnalysisService
+from public_detective.exceptions.analysis import AnalysisError
+from public_detective.models.analyses import Analysis, AnalysisResult
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture

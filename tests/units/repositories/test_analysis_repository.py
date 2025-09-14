@@ -3,9 +3,9 @@ from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
 import pytest
-from models.analyses import AnalysisResult, RedFlag, RedFlagCategory
-from models.procurement_analysis_status import ProcurementAnalysisStatus
-from repositories.analyses import AnalysisRepository
+from public_detective.models.analyses import AnalysisResult, RedFlag, RedFlagCategory
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.repositories.analyses import AnalysisRepository
 
 
 @pytest.fixture
@@ -150,7 +150,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
     assert result.ai_analysis.red_flags[0].category == RedFlagCategory.DIRECTING
 
 
-@patch("repositories.analyses.LoggingProvider")
+@patch("public_detective.repositories.analyses.LoggingProvider")
 def test_parse_row_to_model_with_invalid_data(
     mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository
 ) -> None:
@@ -198,6 +198,8 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         ai_analysis={
             "risk_score": 8,
             "risk_score_rationale": "High risk",
+            "procurement_summary": "Test procurement summary",
+            "analysis_summary": "Test analysis summary",
             "red_flags": [],
             "seo_keywords": ["keyword1", "keyword2"],
         },
@@ -477,7 +479,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
     assert result.warnings == ["Warning 1", "Warning 2"]
 
 
-@patch("repositories.analyses.LoggingProvider")
+@patch("public_detective.repositories.analyses.LoggingProvider")
 def test_update_analysis_status(mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository) -> None:
     """Should execute an UPDATE statement with the correct parameters."""
     mock_logger = MagicMock()

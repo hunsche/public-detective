@@ -4,25 +4,19 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.api_core.client_options import ClientOptions
-from google.cloud import pubsub_v1
-from providers.pubsub import PubSubProvider
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
+from public_detective.providers.pubsub import PubSubProvider
 
 
 @pytest.fixture
 def mock_config_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
+    with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_get_config.return_value.GCP_PROJECT = "test-project"
         yield mock_get_config
 
 
 @pytest.fixture
-def mock_logger_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.logging.LoggingProvider") as mock_logging_provider:
-        yield mock_logging_provider
-
-
-@pytest.fixture
-def pubsub_provider(mock_config_provider: MagicMock, mock_logger_provider: MagicMock) -> PubSubProvider:
+def pubsub_provider(mock_config_provider: MagicMock) -> PubSubProvider:
     return PubSubProvider()
 
 
@@ -67,7 +61,7 @@ def test_get_or_create_publisher_client_caches_instance(pubsub_provider: PubSubP
     with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
         client1 = pubsub_provider._get_or_create_publisher_client()
         client2 = pubsub_provider._get_or_create_publisher_client()
-        mock_create.assert_called_once_with(pubsub_v1.PublisherClient)
+        mock_create.assert_called_once_with(PublisherClient)
         assert client1 is client2
 
 
@@ -80,7 +74,7 @@ def test_get_or_create_subscriber_client_caches_instance(pubsub_provider: PubSub
     with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
         client1 = pubsub_provider._get_or_create_subscriber_client()
         client2 = pubsub_provider._get_or_create_subscriber_client()
-        mock_create.assert_called_once_with(pubsub_v1.SubscriberClient)
+        mock_create.assert_called_once_with(SubscriberClient)
         assert client1 is client2
 
 

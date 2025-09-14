@@ -9,8 +9,8 @@ import pytest
 import rarfile
 import requests
 from google.api_core import exceptions
-from models.procurements import Procurement
-from repositories.procurements import ProcurementsRepository
+from public_detective.models.procurements import Procurement
+from public_detective.repositories.procurements import ProcurementsRepository
 
 
 def _get_mock_procurement_data(control_number: str) -> dict:
@@ -81,7 +81,7 @@ def repo(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> Procurement
     Returns:
         An instance of ProcurementsRepository.
     """
-    with patch("providers.config.ConfigProvider.get_config") as mock_get_config:
+    with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
         return ProcurementsRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
