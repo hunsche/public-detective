@@ -8,7 +8,7 @@ from tests.e2e.conftest import run_command
 
 
 @pytest.mark.timeout(240)
-def test_pre_analyze_command(db_session: Engine, e2e_environment: None) -> None:
+def test_pre_analyze_command(db_session: Engine) -> None:
     """Tests the pre-analyze command in isolation.
 
     Args:

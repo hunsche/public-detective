@@ -12,21 +12,20 @@ from alembic.config import Config
 from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.storage import Client
-from public_detective.migrations.helpers import get_qualified_name
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 
-def run_command(command: str) -> None:
+def run_command(command_str: str) -> None:
     """Executes a shell command and streams its output in real-time.
 
     Args:
-        command: The shell command to execute.
+        command_str: The shell command to execute.
     """
-    print(f"\n--- Running command: {command} ---")
+    print(f"\n--- Running command: {command_str} ---")
     process = subprocess.Popen(
-        command,
+        command_str,
         shell=True,  # nosec B602
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
@@ -39,37 +38,104 @@ def run_command(command: str) -> None:
             print(line, end="")
     process.wait()
     if process.returncode != 0:
-        pytest.fail(f"Command failed with exit code {process.returncode}: {command}")
-    print(f"--- Command finished: {command} ---")
+        pytest.fail(f"Command failed with exit code {process.returncode}: {command_str}")
+    print(f"--- Command finished: {command_str} ---")
 
 
 @pytest.fixture(scope="function")
-def db_session() -> Generator:
-    fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
-    fixture_path = fixture_dir / "Anexos.zip"
-    if not fixture_path.exists():
-        fixture_dir.mkdir(parents=True, exist_ok=True)
-        with zipfile.ZipFile(fixture_path, "w") as zf:
-            zf.writestr("dummy_document.pdf", b"dummy pdf content")
-
+def e2e_pubsub(
+    db_session: Engine,
+) -> Generator[tuple[PublisherClient, str], None, None]:
+    """Sets up and tears down the Pub/Sub resources for an E2E test."""
     config = ConfigProvider.get_config()
+    project_id = config.GCP_PROJECT
+    run_id = uuid.uuid4().hex[:8]
+    topic_name = f"test-topic-{run_id}"
+    subscription_name = f"test-subscription-{run_id}"
 
-    # Use localhost for services, as docker-compose exposes the ports to the host
-    host = "localhost"
+    os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
+    os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
+
+    publisher = PublisherClient()
+    subscriber = SubscriberClient()
+    topic_path = publisher.topic_path(project_id, topic_name)
+    subscription_path = subscriber.subscription_path(project_id, subscription_name)
+
+    try:
+        publisher.create_topic(request={"name": topic_path})
+        subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
+        yield publisher, topic_path
+    finally:
+        try:
+            subscriber.delete_subscription(request={"subscription": subscription_path})
+        except exceptions.NotFound:
+            pass
+        try:
+            publisher.delete_topic(request={"topic": topic_path})
+        except exceptions.NotFound:
+            pass
+
+
+@pytest.fixture(scope="function")
+def db_session() -> Generator[Engine, None, None]:
+    """Configures a fully isolated environment for a single E2E test function.
+
+    This comprehensive fixture handles:
+    1.  **Configuration**: Sets environment variables for databases, emulators, and GCP services.
+    2.  **Database**: Creates a unique, temporary PostgreSQL schema and applies all migrations.
+    3.  **GCP Credentials**: Creates a temporary credentials file to ensure ADC uses the
+        correct service account for the test run.
+    4.  **Pub/Sub**: Creates a unique topic and subscription for the test run.
+    5.  **GCS**: Cleans up any previous test run artifacts from the target bucket.
+    6.  **Teardown**: Reliably tears down all created resources (DB schema, Pub/Sub topic,
+        subscription, and temporary credential files) after the test completes.
+
+    Yields:
+        A tuple containing the configured PublisherClient and the full topic path.
+    """
+    # --- 1. Configuration and Environment Setup ---
+    config = ConfigProvider.get_config()
+    project_id = config.GCP_PROJECT
+    bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
+    host = config.POSTGRES_HOST
+
+    run_id = uuid.uuid4().hex[:8]
+    schema_name = f"test_schema_{run_id}"
+    topic_name = f"test-topic-{run_id}"
+    subscription_name = f"test-subscription-{run_id}"
+    gcs_test_prefix = f"test-run-{run_id}"
+
+    # Set env vars for the test session
     os.environ["POSTGRES_HOST"] = host
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
-    os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
-    os.environ["GCP_GEMINI_API_KEY"] = "test-key"
-
-    schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
+    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = bucket_name
+    os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
+    os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
+    os.environ["GCP_GCS_TEST_PREFIX"] = gcs_test_prefix
+
+    # Pop emulator hosts for services that should hit live GCP APIs
+    os.environ.pop("GCP_GCS_HOST", None)
+    os.environ.pop("GCP_GEMINI_HOST", None)
+
+    # --- 2. Temporary ADC Credentials Setup ---
+    credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")
+    if not credentials_json:
+        pytest.fail("GCP_SERVICE_ACCOUNT_CREDENTIALS must be set for E2E tests.")
+
+    temp_credentials_path = Path(f"tests/.tmp/temp_credentials_{run_id}.json")
+    temp_credentials_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_credentials_path.write_text(credentials_json)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(temp_credentials_path)
+
+    # --- 3. Database Setup ---
     db_url = (
         f"postgresql://{config.POSTGRES_USER}:{config.POSTGRES_PASSWORD}@"
         f"{host}:{config.POSTGRES_PORT}/{config.POSTGRES_DB}"
     )
     engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
-    # Wait for the database to be ready before proceeding
+    # Wait for DB to be ready
     for _ in range(30):
         try:
             with engine.connect() as connection:
@@ -80,149 +146,58 @@ def db_session() -> Generator:
     else:
         pytest.fail("Database did not become available in time.")
 
-    try:
-        with engine.connect() as connection:
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-            connection.execute(text(f"CREATE SCHEMA {schema_name}"))
-            connection.commit()
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.commit()
-
-        alembic_cfg = Config("alembic.ini")
-        alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-        command.upgrade(alembic_cfg, "head")
-
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            procurements_table = get_qualified_name("procurements")
-            procurement_analyses_table = get_qualified_name("procurement_analyses")
-            file_records_table = get_qualified_name("file_records")
-            history_table = get_qualified_name("procurement_analysis_status_history")
-            truncate_sql = text(
-                f"TRUNCATE {procurements_table}, {procurement_analyses_table}, "
-                f"{file_records_table}, {history_table} RESTART IDENTITY CASCADE;"
-            )
-            connection.execute(truncate_sql)
-            connection.commit()
-        yield engine
-    finally:
-        with engine.connect() as connection:
-            connection.execute(text(f"SET search_path TO {schema_name}"))
-            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
-            connection.commit()
-        engine.dispose()
-
-
-@pytest.fixture(scope="function")
-def e2e_environment(db_session: Engine) -> Generator:
-    """Configures the environment for a single E2E test function.
-
-    Sets up unique Pub/Sub topics, GCS paths, and cleans up afterwards.
-    This fixture ensures that GCS and AI tests run against real GCP services
-    by clearing emulator hosts, while Pub/Sub can still use an emulator.
-    It relies on pytest-dotenv to load `GCP_SERVICE_ACCOUNT_CREDENTIALS` from the .env file.
-
-    Args:
-        db_session: The SQLAlchemy engine instance from the db_session fixture.
-
-    Yields:
-        A tuple containing the PublisherClient and the topic path.
-    """
-    # Ensure E2E tests for GCS and AI run against real GCP services
-    os.environ.pop("GCP_GCS_HOST", None)
-    os.environ.pop("GCP_AI_HOST", None)
-
-    print("\n--- Setting up E2E test environment ---")
-    project_id = os.environ.get("GCP_PROJECT", "total-entity-463718-k1")
-    os.environ["GCP_PROJECT"] = project_id
-
-    bucket_name_for_tests = "vertex-ai-test-files"
-    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = bucket_name_for_tests
-    os.environ["GCP_VERTEX_AI_BUCKET"] = bucket_name_for_tests
-
-    run_id = uuid.uuid4().hex
-    topic_name = f"procurements-topic-{run_id}"
-    subscription_name = f"procurements-subscription-{run_id}"
-    os.environ["GCP_PUBSUB_TOPIC_PROCUREMENTS"] = topic_name
-    os.environ["GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS"] = subscription_name
-    os.environ["GCP_GCS_TEST_PREFIX"] = f"test-run-{run_id}"
-    os.environ["GCP_GEMINI_API_KEY"] = "test-key"
-
-    # Create a temporary credentials file for ADC
-    credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")
-    if not credentials_json:
-        pytest.fail("GCP_SERVICE_ACCOUNT_CREDENTIALS must be set in the environment for E2E tests.")
-
-    temp_credentials_path = Path(f"tests/.tmp/temp_credentials_{run_id}.json")
-    temp_credentials_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_credentials_path.write_text(credentials_json)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(temp_credentials_path)
-
-    # Pub/Sub setup (can use emulator)
+    # --- 4. GCP Client Initialization ---
     publisher = PublisherClient()
     subscriber = SubscriberClient()
     topic_path = publisher.topic_path(project_id, topic_name)
     subscription_path = subscriber.subscription_path(project_id, subscription_name)
-
-    # GCS setup (uses credentials from environment loaded by pytest-dotenv)
     gcs_client = Client(project=project_id)
-    bucket = gcs_client.bucket(bucket_name_for_tests)
+    bucket = gcs_client.bucket(bucket_name)
 
     if not bucket.exists():
-        pytest.fail(f"GCS bucket '{bucket_name_for_tests}' does not exist. Please create it before running E2E tests.")
+        pytest.fail(f"GCS bucket '{bucket_name}' does not exist.")
 
-    # Teardown previous run's resources if they exist
-    for blob in bucket.list_blobs(prefix=os.environ["GCP_GCS_TEST_PREFIX"]):
+    # --- 5. Resource Creation and Cleanup ---
+    with engine.connect() as connection:
+        connection.execute(text(f"CREATE SCHEMA {schema_name}"))
+        connection.commit()
+
+    alembic_cfg = Config("alembic.ini")
+    alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+    command.upgrade(alembic_cfg, "head")
+
+    # Clean up any artifacts from previous runs
+    for blob in bucket.list_blobs(prefix=gcs_test_prefix):
         blob.delete()
 
     try:
-        print(f"Creating Pub/Sub topic: {topic_path}")
         publisher.create_topic(request={"name": topic_path})
-        print(f"Creating Pub/Sub subscription: {subscription_path}")
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
 
-        with db_session.connect() as connection:
-            print("Truncating tables before test run...")
-            connection.execute(text(f"SET search_path TO {os.environ['POSTGRES_DB_SCHEMA']}"))
-            procurements_table = get_qualified_name("procurements")
-            procurement_analyses_table = get_qualified_name("procurement_analyses")
-            file_records_table = get_qualified_name("file_records")
-            donations_table = get_qualified_name("donations")
-            budget_ledgers_table = get_qualified_name("budget_ledgers")
-            connection.execute(
-                text(
-                    f"TRUNCATE {procurements_table}, {procurement_analyses_table}, "
-                    f"{file_records_table}, {donations_table}, {budget_ledgers_table} RESTART "
-                    "IDENTITY CASCADE;"
-                )
-            )
-            connection.commit()
-            print("Tables truncated.")
+        # Create a dummy zip file for tests that need it
+        fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
+        fixture_path = fixture_dir / "Anexos.zip"
+        if not fixture_path.exists():
+            fixture_dir.mkdir(parents=True, exist_ok=True)
+            with zipfile.ZipFile(fixture_path, "w") as zf:
+                zf.writestr("dummy_document.pdf", b"dummy pdf content")
 
-        yield publisher, topic_path
+        yield engine
 
     finally:
+        # --- 6. Teardown ---
+        print("\n--- Tearing down E2E test environment ---")
         if temp_credentials_path.exists():
             temp_credentials_path.unlink()
-        print("\n--- Tearing down E2E test environment ---")
-        try:
-            subscriber.delete_subscription(request={"subscription": subscription_path})
-            print(f"Deleted subscription: {subscription_name}")
-        except exceptions.NotFound:
-            print(f"Subscription not found, skipping deletion: {subscription_name}")
-        try:
-            publisher.delete_topic(request={"topic": topic_path})
-            print(f"Deleted topic: {topic_name}")
-        except exceptions.NotFound:
-            print(f"Topic not found, skipping deletion: {topic_name}")
 
         try:
-            print(f"Clearing GCS objects in bucket: {bucket_name_for_tests}")
-            for blob in bucket.list_blobs(prefix=os.environ["GCP_GCS_TEST_PREFIX"]):
+            for blob in bucket.list_blobs(prefix=gcs_test_prefix):
                 blob.delete()
-            print(f"Cleared bucket: {bucket_name_for_tests}")
         except exceptions.NotFound:
-            print(f"Bucket not found, skipping cleanup: {bucket_name_for_tests}")
+            pass
 
+        with engine.connect() as connection:
+            connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
+            connection.commit()
+        engine.dispose()
         print("E2E test environment torn down.")

@@ -8,7 +8,7 @@ from sqlalchemy.engine import Engine
 from tests.e2e.conftest import run_command
 
 
-def test_ranked_analysis_e2e_flow(e2e_environment: None, db_session: Engine) -> None:  # noqa: F841
+def test_ranked_analysis_e2e_flow(db_session: Engine) -> None:
     """Tests the full E2E flow for ranked analysis against live dependencies.
 
     1. Pre-analyzes procurements, creating analysis records in the DB.

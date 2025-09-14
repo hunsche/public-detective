@@ -13,9 +13,9 @@ from tests.e2e.conftest import run_command
 
 
 @pytest.mark.timeout(240)
-def test_worker_flow(e2e_environment: tuple, db_session: Engine) -> None:
+def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
     """Tests the worker processing a single message."""
-    publisher, topic_path = e2e_environment
+    publisher, topic_path = e2e_pubsub
     analysis_id = uuid.uuid4()
     procurement_control_number = "43776491000170-1-000251/2025"
     version_number = 1

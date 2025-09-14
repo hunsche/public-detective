@@ -129,9 +129,10 @@ This project uses the **Vertex AI** backend for the Google Gemini API and authen
 
 The application attempts to find credentials in the following order:
 
-1.  **`GCP_SERVICE_ACCOUNT_CREDENTIALS` Environment Variable:**
-    -   **Use Case:** Forcing the application to use a specific service account from a JSON key file. This is useful for local development when you need to impersonate a specific account or for certain CI/CD environments.
-    -   **To Use:** Set the environment variable to the absolute path of your key file.
+1.  **`GOOGLE_APPLICATION_CREDENTIALS` Environment Variable:**
+    -   **Use Case:** This is the standard Google Cloud method to force the application to use a specific service account. It's useful for local development or CI/CD.
+    -   **To Use:** Set the environment variable to the **absolute path** of your service account's JSON key file.
+    -   **⭐ E2E Test Convention:** To make running E2E tests easier, this project uses the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable (defined in `.env.example`). You should paste the **full JSON content** of your key there. The test suite will automatically handle creating a temporary file and setting the `GOOGLE_APPLICATION_CREDENTIALS` path for you during the test run.
 
 2.  **`gcloud` CLI Credentials (for Local Development):**
     -   **Use Case:** The most common method for local development.
