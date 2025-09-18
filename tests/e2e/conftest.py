@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from alembic import command
+from filelock import FileLock
 from alembic.config import Config
 from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
@@ -163,7 +164,12 @@ def db_session() -> Generator[Engine, None, None]:
 
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    command.upgrade(alembic_cfg, "head")
+    lock_path = Path("/tmp/e2e_alembic.lock")
+    try:
+        with FileLock(lock_path):
+            command.upgrade(alembic_cfg, "head")
+    except Exception as e:
+        pytest.fail(f"Alembic upgrade failed: {e}")
 
     # Clean up any artifacts from previous runs
     for blob in bucket.list_blobs(prefix=gcs_test_prefix):
