@@ -1,5 +1,6 @@
 import os
 import subprocess  # nosec B404
+import tempfile
 import time
 import uuid
 import zipfile
@@ -8,8 +9,8 @@ from pathlib import Path
 
 import pytest
 from alembic import command
-from filelock import FileLock
 from alembic.config import Config
+from filelock import FileLock
 from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.storage import Client
@@ -164,9 +165,9 @@ def db_session() -> Generator[Engine, None, None]:
 
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", db_url)
-    lock_path = Path("/tmp/e2e_alembic.lock")
+    lock_path = Path(tempfile.gettempdir()) / "e2e_alembic.lock"
     try:
-        with FileLock(lock_path):
+        with FileLock(str(lock_path)):
             command.upgrade(alembic_cfg, "head")
     except Exception as e:
         pytest.fail(f"Alembic upgrade failed: {e}")
