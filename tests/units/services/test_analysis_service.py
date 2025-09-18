@@ -54,18 +54,6 @@ def test_get_priority_as_string(mock_dependencies: dict[str, Any]) -> None:
     assert "Sem priorização." in service._get_priority_as_string("some_other_file.pdf")
 
 
-def test_calculate_estimated_cost(mock_dependencies: dict[str, Any]) -> None:
-    """Test that the _calculate_estimated_cost method returns the correct cost."""
-    service = AnalysisService(**mock_dependencies)
-    # Assuming the prices are the default ones in the class
-    # _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("2.62")
-    # _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("7.88")
-    input_tokens = 1_000_000
-    output_tokens = 1_000_000
-    expected_cost = Decimal("2.62") + Decimal("7.88")
-    assert service._calculate_estimated_cost(input_tokens, output_tokens) == expected_cost
-
-
 def test_update_status_with_history(mock_dependencies: dict[str, Any]) -> None:
     """Test that the _update_status_with_history method calls the correct repositories."""
     service = AnalysisService(**mock_dependencies)
@@ -238,7 +226,7 @@ def test_run_ranked_analysis_happy_path(mock_dependencies: dict[str, Any]) -> No
     """Test the happy path for run_ranked_analysis."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00"))
     ]
     service.budget_ledger_repo.get_total_donations.return_value = 1000
     service.budget_ledger_repo.get_total_expenses_for_period.return_value = 100
@@ -257,7 +245,7 @@ def test_run_ranked_analysis_auto_budget(mock_dependencies: dict[str, Any]) -> N
     """Test run_ranked_analysis with auto-budget enabled."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00"))
     ]
 
     with patch.object(service, "_calculate_auto_budget", return_value=Decimal("10.00")) as mock_auto_budget:
@@ -287,8 +275,8 @@ def test_run_ranked_analysis_max_messages(mock_dependencies: dict[str, Any]) -> 
     """Test that run_ranked_analysis stops when max_messages is reached."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50),
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50),
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00")),
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00")),
     ]
 
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
@@ -308,14 +296,14 @@ def test_run_ranked_analysis_budget_exhausted(mock_dependencies: dict[str, Any])
     analysis1_id = uuid4()
     analysis2_id = uuid4()
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=analysis1_id, votes_count=1, input_tokens_used=1000000, output_tokens_used=1000000),
-        MagicMock(analysis_id=analysis2_id, votes_count=1, input_tokens_used=100000, output_tokens_used=50000),
+        MagicMock(analysis_id=analysis1_id, votes_count=1, total_cost=Decimal("10.00")),
+        MagicMock(analysis_id=analysis2_id, votes_count=1, total_cost=Decimal("0.50")),
     ]
 
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
         service.run_ranked_analysis(
             use_auto_budget=False,
-            budget=Decimal("1.00"),  # cost of first analysis is > 10, cost of second is ~0.65
+            budget=Decimal("1.00"),
             budget_period=None,
             zero_vote_budget_percent=10,
         )
@@ -326,7 +314,7 @@ def test_run_ranked_analysis_zero_vote_budget(mock_dependencies: dict[str, Any])
     """Test the zero-vote budget logic."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=0, input_tokens_used=1000000, output_tokens_used=1000000),
+        MagicMock(analysis_id=uuid4(), votes_count=0, total_cost=Decimal("10.00")),
     ]
 
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
@@ -334,7 +322,7 @@ def test_run_ranked_analysis_zero_vote_budget(mock_dependencies: dict[str, Any])
             use_auto_budget=False,
             budget=Decimal("100.00"),
             budget_period=None,
-            zero_vote_budget_percent=1,  # 1% of 100 is 1, cost is > 10
+            zero_vote_budget_percent=1,
         )
         mock_run_specific.assert_not_called()
 
@@ -343,7 +331,7 @@ def test_run_ranked_analysis_no_budget_left(mock_dependencies: dict[str, Any]) -
     """Test that run_ranked_analysis stops when there is no budget left."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00"))
     ]
 
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
@@ -360,7 +348,7 @@ def test_run_ranked_analysis_run_specific_fails(mock_dependencies: dict[str, Any
     """Test that run_ranked_analysis handles exceptions from run_specific_analysis."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=1, input_tokens_used=100, output_tokens_used=50)
+        MagicMock(analysis_id=uuid4(), votes_count=1, total_cost=Decimal("1.00"))
     ]
 
     with patch.object(service, "run_specific_analysis", side_effect=Exception("test error")):
@@ -377,7 +365,7 @@ def test_run_ranked_analysis_zero_vote_budget_success(mock_dependencies: dict[st
     """Test the zero-vote budget logic with a successful run."""
     service = AnalysisService(**mock_dependencies)
     service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        MagicMock(analysis_id=uuid4(), votes_count=0, input_tokens_used=100, output_tokens_used=50),
+        MagicMock(analysis_id=uuid4(), votes_count=0, total_cost=Decimal("1.00")),
     ]
 
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
@@ -508,7 +496,10 @@ def test_process_analysis_from_message_analysis_fails(
             service.process_analysis_from_message(analysis_id)
 
 
-def test_analyze_procurement_happy_path(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
+@patch("public_detective.services.analysis.CostCalculator")
+def test_analyze_procurement_happy_path(
+    mock_cost_calculator: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     """Test the happy path for analyze_procurement."""
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
@@ -523,18 +514,31 @@ def test_analyze_procurement_happy_path(mock_dependencies: dict[str, Any], mock_
         seo_keywords=["keyword1"],
     )
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+    mock_cost_calculator.return_value.calculate.return_value = (
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("3"),
+    )
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_called_once()
+    call_kwargs = service.analysis_repo.save_analysis.call_args[1]
+    assert call_kwargs["total_cost"] == Decimal("3")
+    assert call_kwargs["is_thinking_mode"] is False
 
 
-def test_analyze_procurement_reuse_existing(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
+@patch("public_detective.services.analysis.CostCalculator")
+def test_analyze_procurement_reuse_existing(
+    mock_cost_calculator: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     """Test that analyze_procurement reuses an existing analysis."""
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
     mock_existing_analysis = MagicMock()
+    mock_existing_analysis.input_tokens_used = 100
+    mock_existing_analysis.output_tokens_used = 50
     mock_existing_analysis.ai_analysis = Analysis(
         risk_score=5,
         risk_score_rationale="Rationale",
@@ -544,13 +548,19 @@ def test_analyze_procurement_reuse_existing(mock_dependencies: dict[str, Any], m
         seo_keywords=["keyword1"],
     )
     service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
+    mock_cost_calculator.return_value.calculate.return_value = (
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("3"),
+    )
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_called_once()
     # Check that the reused result is passed to save_analysis
-    call_args = service.analysis_repo.save_analysis.call_args[0]
-    assert call_args[1].ai_analysis.risk_score == 5
+    call_args = service.analysis_repo.save_analysis.call_args[1]
+    assert call_args["result"].ai_analysis.risk_score == 5
+    assert call_args["total_cost"] == Decimal("3")
 
 
 def test_analyze_procurement_no_files(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
@@ -573,6 +583,8 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
     analysis_id = uuid4()
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
     mock_existing_analysis = MagicMock()
+    mock_existing_analysis.input_tokens_used = 100
+    mock_existing_analysis.output_tokens_used = 50
     mock_existing_analysis.ai_analysis = Analysis(
         risk_score=5,
         risk_score_rationale="Rationale",
@@ -586,8 +598,8 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_called_once()
-    call_args = service.analysis_repo.save_analysis.call_args[0]
-    assert "test-prefix" in call_args[1].original_documents_gcs_path
+    call_args = service.analysis_repo.save_analysis.call_args[1]
+    assert "test-prefix" in call_args["result"].original_documents_gcs_path
 
 
 def test_analyze_procurement_with_gcs_prefix(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:

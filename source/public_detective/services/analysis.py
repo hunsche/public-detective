@@ -25,6 +25,7 @@ from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.cost_calculator import CostCalculator
 
 
 class AnalysisService:
@@ -47,6 +48,7 @@ class AnalysisService:
     pubsub_provider: PubSubProvider | None
     logger: Logger
     config: Config
+    cost_calculator: CostCalculator
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
     _FILE_PRIORITY_ORDER = [
@@ -61,8 +63,6 @@ class AnalysisService:
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
-    _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("2.62")
-    _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("7.88")
 
     def __init__(
         self,
@@ -97,6 +97,7 @@ class AnalysisService:
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
+        self.cost_calculator = CostCalculator()
 
     def _update_status_with_history(
         self,
@@ -200,6 +201,7 @@ class AnalysisService:
 
         document_hash = self._calculate_hash(files_for_ai)
         existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
+        is_thinking_mode = max_output_tokens == self.config.GCP_GEMINI_THINKING_BUDGET
 
         if existing_analysis:
             self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
@@ -226,11 +228,20 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
             )
-            self.analysis_repo.save_analysis(
-                analysis_id,
-                reused_result,
+            input_cost, output_cost, total_cost = self.cost_calculator.calculate(
                 existing_analysis.input_tokens_used,
                 existing_analysis.output_tokens_used,
+                is_thinking_mode,
+            )
+            self.analysis_repo.save_analysis(
+                analysis_id=analysis_id,
+                result=reused_result,
+                input_tokens=existing_analysis.input_tokens_used,
+                output_tokens=existing_analysis.output_tokens_used,
+                is_thinking_mode=is_thinking_mode,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                total_cost=total_cost,
             )
 
             # Even if we reuse the analysis, we must record the files for the *new* analysis run
@@ -267,7 +278,19 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            self.analysis_repo.save_analysis(analysis_id, final_result, input_tokens, output_tokens)
+            input_cost, output_cost, total_cost = self.cost_calculator.calculate(
+                input_tokens, output_tokens, is_thinking_mode
+            )
+            self.analysis_repo.save_analysis(
+                analysis_id=analysis_id,
+                result=final_result,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                is_thinking_mode=is_thinking_mode,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                total_cost=total_cost,
+            )
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
@@ -705,6 +728,11 @@ class AnalysisService:
 
         prompt = self._build_analysis_prompt(procurement, warnings)
         input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        # Assuming pre-analysis is never "thinking mode"
+        is_thinking_mode = False
+        input_cost, output_cost, total_cost = self.cost_calculator.calculate(
+            input_tokens, output_tokens, is_thinking_mode
+        )
 
         analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
@@ -712,6 +740,10 @@ class AnalysisService:
             document_hash=analysis_document_hash,
             input_tokens_used=input_tokens,
             output_tokens_used=output_tokens,
+            is_thinking_mode=is_thinking_mode,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            total_cost=total_cost,
         )
         self.status_history_repo.create_record(
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
@@ -768,7 +800,7 @@ class AnalysisService:
                 self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
                 break
 
-            estimated_cost = self._calculate_estimated_cost(analysis.input_tokens_used, analysis.output_tokens_used)
+            estimated_cost = analysis.total_cost or Decimal(0)
 
             if estimated_cost > remaining_budget:
                 self.logger.info(
@@ -812,20 +844,6 @@ class AnalysisService:
                 )
 
         self.logger.info("Ranked analysis job completed.")
-
-    def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
-        """Calculates the estimated cost of an analysis based on token counts.
-
-        Args:
-            input_tokens: The number of input tokens used.
-            output_tokens: The number of output tokens used.
-
-        Returns:
-            The estimated cost of the analysis.
-        """
-        input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
-        output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
-        return input_cost + output_cost
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
         """Retries failed or stale analyses.

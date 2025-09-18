@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -209,7 +210,16 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     )
 
     # Act
-    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50)
+    analysis_repository.save_analysis(
+        analysis_id,
+        analysis_result,
+        100,
+        50,
+        False,
+        Decimal("0.1"),
+        Decimal("0.2"),
+        Decimal("0.3"),
+    )
 
     # Assert
     mock_conn.execute.assert_called_once()
@@ -220,6 +230,8 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     assert params["seo_keywords"] == ["keyword1", "keyword2"]
     assert "UPDATE procurement_analyses" in str(args[0])
     assert "seo_keywords = :seo_keywords" in str(args[0])
+    assert params["is_thinking_mode"] is False
+    assert params["total_cost"] == Decimal("0.3")
 
 
 def test_parse_row_to_model_empty_row(analysis_repository: AnalysisRepository) -> None:
@@ -291,6 +303,10 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
         document_hash="pre-analysis-hash",
         input_tokens_used=200,
         output_tokens_used=100,
+        is_thinking_mode=True,
+        input_cost=Decimal("0.2"),
+        output_cost=Decimal("0.3"),
+        total_cost=Decimal("0.5"),
     )
 
     # Assert
@@ -303,6 +319,8 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     assert params["input_tokens_used"] == 200
     assert params["output_tokens_used"] == 100
     assert params["document_hash"] == "pre-analysis-hash"
+    assert params["is_thinking_mode"] is True
+    assert params["total_cost"] == Decimal("0.5")
 
 
 def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -> None:

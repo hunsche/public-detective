@@ -6,6 +6,7 @@ import uuid
 from collections.abc import Generator
 from contextlib import redirect_stdout
 from datetime import date
+from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
 
@@ -141,6 +142,10 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
         document_hash="pre-analysis-hash-1",
         input_tokens_used=0,
         output_tokens_used=0,
+        is_thinking_mode=False,
+        input_cost=Decimal("0"),
+        output_cost=Decimal("0"),
+        total_cost=Decimal("0"),
     )
     status_history_repo.create_record(
         analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Initial pre-analysis record."
@@ -182,12 +187,15 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
 
     # 4. Check results
     with db_engine.connect() as connection:
-        analysis_query = text("SELECT status, risk_score FROM procurement_analyses WHERE analysis_id = :analysis_id")
+        analysis_query = text(
+            "SELECT status, risk_score, total_cost FROM procurement_analyses WHERE analysis_id = :analysis_id"
+        )
         db_analysis = connection.execute(analysis_query, {"analysis_id": analysis_id}).fetchone()
         assert db_analysis is not None
-        status, risk_score = db_analysis
+        status, risk_score, total_cost = db_analysis
         assert status == "ANALYSIS_SUCCESSFUL"
         assert risk_score == gemini_response_fixture.risk_score
+        assert total_cost > 0
 
         # Check history records
         history_query = text(
@@ -274,13 +282,14 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
         assert raw_data["anoCompra"] == target_procurement["anoCompra"]
 
         analysis_query = text(
-            "SELECT version_number, status, input_tokens_used, output_tokens_used FROM procurement_analyses WHERE "
-            "procurement_control_number = :pcn"
+            "SELECT version_number, status, input_tokens_used, output_tokens_used, total_cost "
+            "FROM procurement_analyses WHERE procurement_control_number = :pcn"
         )
         db_analysis = connection.execute(analysis_query, {"pcn": pcn}).fetchone()
         assert db_analysis is not None, f"No analysis found in the database for {pcn}"
-        version, status, input_tokens_used, output_tokens_used = db_analysis
+        version, status, input_tokens_used, output_tokens_used, total_cost = db_analysis
         assert version == 1
         assert status == "PENDING_ANALYSIS"
         assert input_tokens_used == 1000
         assert output_tokens_used == 0
+        assert total_cost > 0
