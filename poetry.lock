@@ -883,7 +883,7 @@ version = "3.19.1"
 description = "A platform independent file lock."
 optional = false
 python-versions = ">=3.9"
-groups = ["development"]
+groups = ["development", "tests"]
 files = [
     {file = "filelock-3.19.1-py3-none-any.whl", hash = "sha256:d38e30481def20772f5baf097c122c3babc4fcdb7e14e57049eb9d88c6dc017d"},
     {file = "filelock-3.19.1.tar.gz", hash = "sha256:66eda1888b0171c998b35be2bcc0f6d75c388a7ce20c3f3f37aa8e96c2dddf58"},
@@ -3870,4 +3870,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.1"
 python-versions = "^3.12"
-content-hash = "8f80ef4f897550c4d93b9ce1a3d0b6f2c09ac2cc19ec0e50be43ca2b5a960f02"
+content-hash = "cc9ed136b880dff4c316dc336357b8ff56483299bf7a371b9c5b66e1e4e9d0e2"
