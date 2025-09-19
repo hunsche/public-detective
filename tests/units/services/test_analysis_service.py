@@ -496,9 +496,9 @@ def test_process_analysis_from_message_analysis_fails(
             service.process_analysis_from_message(analysis_id)
 
 
-@patch("public_detective.services.analysis.CostCalculator")
+@patch("public_detective.services.analysis.PricingService")
 def test_analyze_procurement_happy_path(
-    mock_cost_calculator: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+    mock_pricing_service: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
 ) -> None:
     """Test the happy path for analyze_procurement."""
     service = AnalysisService(**mock_dependencies)
@@ -514,7 +514,7 @@ def test_analyze_procurement_happy_path(
         seo_keywords=["keyword1"],
     )
     service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
-    mock_cost_calculator.return_value.calculate.return_value = (
+    mock_pricing_service.return_value.calculate.return_value = (
         Decimal("1"),
         Decimal("2"),
         Decimal("3"),
@@ -528,9 +528,9 @@ def test_analyze_procurement_happy_path(
     assert call_kwargs["is_thinking_mode"] is False
 
 
-@patch("public_detective.services.analysis.CostCalculator")
+@patch("public_detective.services.analysis.PricingService")
 def test_analyze_procurement_reuse_existing(
-    mock_cost_calculator: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+    mock_pricing_service: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
 ) -> None:
     """Test that analyze_procurement reuses an existing analysis."""
     service = AnalysisService(**mock_dependencies)
@@ -548,7 +548,7 @@ def test_analyze_procurement_reuse_existing(
         seo_keywords=["keyword1"],
     )
     service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
-    mock_cost_calculator.return_value.calculate.return_value = (
+    mock_pricing_service.return_value.calculate.return_value = (
         Decimal("1"),
         Decimal("2"),
         Decimal("3"),

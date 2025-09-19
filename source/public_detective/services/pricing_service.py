@@ -5,13 +5,13 @@ from decimal import Decimal
 from public_detective.providers.config import Config, ConfigProvider
 
 
-class CostCalculator:
+class PricingService:
     """A service to calculate the cost of a generative AI analysis."""
 
     config: Config
 
     def __init__(self) -> None:
-        """Initializes the CostCalculator."""
+        """Initializes the PricingService."""
         self.config = ConfigProvider.get_config()
 
     def calculate(

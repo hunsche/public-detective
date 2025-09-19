@@ -25,7 +25,7 @@ from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
-from public_detective.services.cost_calculator import CostCalculator
+from public_detective.services.pricing_service import PricingService
 
 
 class AnalysisService:
@@ -48,7 +48,7 @@ class AnalysisService:
     pubsub_provider: PubSubProvider | None
     logger: Logger
     config: Config
-    cost_calculator: CostCalculator
+    pricing_service: PricingService
 
     _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
     _FILE_PRIORITY_ORDER = [
@@ -97,7 +97,7 @@ class AnalysisService:
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
-        self.cost_calculator = CostCalculator()
+        self.pricing_service = PricingService()
 
     def _update_status_with_history(
         self,
@@ -228,7 +228,7 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
             )
-            input_cost, output_cost, total_cost = self.cost_calculator.calculate(
+            input_cost, output_cost, total_cost = self.pricing_service.calculate(
                 existing_analysis.input_tokens_used,
                 existing_analysis.output_tokens_used,
                 is_thinking_mode,
@@ -278,7 +278,7 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            input_cost, output_cost, total_cost = self.cost_calculator.calculate(
+            input_cost, output_cost, total_cost = self.pricing_service.calculate(
                 input_tokens, output_tokens, is_thinking_mode
             )
             self.analysis_repo.save_analysis(
@@ -730,7 +730,7 @@ class AnalysisService:
         input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
         # Assuming pre-analysis is never "thinking mode"
         is_thinking_mode = False
-        input_cost, output_cost, total_cost = self.cost_calculator.calculate(
+        input_cost, output_cost, total_cost = self.pricing_service.calculate(
             input_tokens, output_tokens, is_thinking_mode
         )
 

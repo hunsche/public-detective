@@ -4,7 +4,7 @@ from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.services.cost_calculator import CostCalculator
+from public_detective.services.pricing_service import PricingService
 
 
 @pytest.fixture
@@ -24,7 +24,7 @@ def mock_config() -> MagicMock:
 def test_calculate_short_context_no_thinking(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
     """Tests cost calculation for a short context without thinking mode."""
     mock_get_config.return_value = mock_config
-    calculator = CostCalculator()
+    calculator = PricingService()
 
     input_tokens = 100_000
     output_tokens = 50_000
@@ -45,7 +45,7 @@ def test_calculate_short_context_no_thinking(mock_get_config: MagicMock, mock_co
 def test_calculate_long_context_no_thinking(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
     """Tests cost calculation for a long context without thinking mode."""
     mock_get_config.return_value = mock_config
-    calculator = CostCalculator()
+    calculator = PricingService()
 
     input_tokens = 300_000
     output_tokens = 50_000
@@ -66,7 +66,7 @@ def test_calculate_long_context_no_thinking(mock_get_config: MagicMock, mock_con
 def test_calculate_short_context_with_thinking(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
     """Tests cost calculation for a short context with thinking mode."""
     mock_get_config.return_value = mock_config
-    calculator = CostCalculator()
+    calculator = PricingService()
 
     input_tokens = 100_000
     output_tokens = 50_000
@@ -87,7 +87,7 @@ def test_calculate_short_context_with_thinking(mock_get_config: MagicMock, mock_
 def test_calculate_long_context_with_thinking(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
     """Tests cost calculation for a long context with thinking mode."""
     mock_get_config.return_value = mock_config
-    calculator = CostCalculator()
+    calculator = PricingService()
 
     input_tokens = 300_000
     output_tokens = 50_000
@@ -108,7 +108,7 @@ def test_calculate_long_context_with_thinking(mock_get_config: MagicMock, mock_c
 def test_calculate_zero_tokens(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
     """Tests cost calculation with zero tokens."""
     mock_get_config.return_value = mock_config
-    calculator = CostCalculator()
+    calculator = PricingService()
 
     input_tokens = 0
     output_tokens = 0
