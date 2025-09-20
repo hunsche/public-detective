@@ -1,8 +1,18 @@
 """This module defines the service for calculating AI analysis costs."""
 
 from decimal import Decimal
+from enum import Enum, auto
 
 from public_detective.providers.config import Config, ConfigProvider
+
+
+class Modality(Enum):
+    """Represents the modality of the analysis."""
+
+    TEXT = auto()
+    AUDIO = auto()
+    IMAGE = auto()
+    VIDEO = auto()
 
 
 class PricingService:
@@ -19,6 +29,7 @@ class PricingService:
         input_tokens: int,
         output_tokens: int,
         thinking_tokens: int,
+        modality: Modality,
     ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         """Calculates the cost of an analysis based on token counts and pricing.
 
@@ -26,6 +37,7 @@ class PricingService:
             input_tokens: The number of input tokens used.
             output_tokens: The number of output tokens used.
             thinking_tokens: The number of thinking tokens used.
+            modality: The modality of the analysis.
 
         Returns:
             A tuple containing the input cost, output cost, thinking cost, and
@@ -35,9 +47,23 @@ class PricingService:
 
         # Determine input cost
         if is_long_context:
-            input_cost_per_million = self.config.GCP_GEMINI_TEXT_INPUT_LONG_COST
+            if modality == Modality.TEXT:
+                input_cost_per_million = self.config.GCP_GEMINI_TEXT_INPUT_LONG_COST
+            elif modality == Modality.AUDIO:
+                input_cost_per_million = self.config.GCP_GEMINI_AUDIO_INPUT_LONG_COST
+            elif modality == Modality.IMAGE:
+                input_cost_per_million = self.config.GCP_GEMINI_IMAGE_INPUT_LONG_COST
+            else:  # Modality.VIDEO
+                input_cost_per_million = self.config.GCP_GEMINI_VIDEO_INPUT_LONG_COST
         else:
-            input_cost_per_million = self.config.GCP_GEMINI_TEXT_INPUT_COST
+            if modality == Modality.TEXT:
+                input_cost_per_million = self.config.GCP_GEMINI_TEXT_INPUT_COST
+            elif modality == Modality.AUDIO:
+                input_cost_per_million = self.config.GCP_GEMINI_AUDIO_INPUT_COST
+            elif modality == Modality.IMAGE:
+                input_cost_per_million = self.config.GCP_GEMINI_IMAGE_INPUT_COST
+            else:  # Modality.VIDEO
+                input_cost_per_million = self.config.GCP_GEMINI_VIDEO_INPUT_COST
 
         input_cost = (Decimal(input_tokens) / 1_000_000) * input_cost_per_million
 

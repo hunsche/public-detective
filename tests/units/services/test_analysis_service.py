@@ -521,13 +521,15 @@ def test_analyze_procurement_happy_path(
         Decimal("3.5"),
     )
 
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
+    with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    service.analysis_repo.save_analysis.assert_called_once()
-    call_kwargs = service.analysis_repo.save_analysis.call_args[1]
-    assert call_kwargs["total_cost"] == Decimal("3.5")
-    assert call_kwargs["thinking_tokens"] == 10
-    assert call_kwargs["thinking_cost"] == Decimal("0.5")
+        mock_get_modality.assert_called_once()
+        service.analysis_repo.save_analysis.assert_called_once()
+        call_kwargs = service.analysis_repo.save_analysis.call_args[1]
+        assert call_kwargs["total_cost"] == Decimal("3.5")
+        assert call_kwargs["thinking_tokens"] == 10
+        assert call_kwargs["thinking_cost"] == Decimal("0.5")
 
 
 @patch("public_detective.services.analysis.PricingService")
@@ -558,13 +560,15 @@ def test_analyze_procurement_reuse_existing(
         Decimal("3.5"),
     )
 
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
+    with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    service.analysis_repo.save_analysis.assert_called_once()
-    # Check that the reused result is passed to save_analysis
-    call_args = service.analysis_repo.save_analysis.call_args[1]
-    assert call_args["result"].ai_analysis.risk_score == 5
-    assert call_args["total_cost"] == Decimal("3.5")
+        mock_get_modality.assert_called_once()
+        service.analysis_repo.save_analysis.assert_called_once()
+        # Check that the reused result is passed to save_analysis
+        call_args = service.analysis_repo.save_analysis.call_args[1]
+        assert call_args["result"].ai_analysis.risk_score == 5
+        assert call_args["total_cost"] == Decimal("3.5")
 
 
 def test_analyze_procurement_no_files(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
@@ -607,11 +611,13 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
         Decimal("3.5"),
     )
 
-    service.analyze_procurement(mock_procurement, 1, analysis_id)
+    with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    service.analysis_repo.save_analysis.assert_called_once()
-    call_args = service.analysis_repo.save_analysis.call_args[1]
-    assert "test-prefix" in call_args["result"].original_documents_gcs_path
+        mock_get_modality.assert_called_once()
+        service.analysis_repo.save_analysis.assert_called_once()
+        call_args = service.analysis_repo.save_analysis.call_args[1]
+        assert "test-prefix" in call_args["result"].original_documents_gcs_path
 
 
 @patch("public_detective.services.analysis.PricingService")
@@ -640,10 +646,24 @@ def test_analyze_procurement_with_gcs_prefix(
         Decimal("3.5"),
     )
 
-    with patch.object(service, "_upload_analysis_report", return_value="test/path/report.json") as mock_upload:
-        service.analyze_procurement(mock_procurement, 1, analysis_id)
-        mock_upload.assert_called_once()
-        assert "test-prefix" in mock_upload.call_args[0][0]
+    with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        with patch.object(service, "_upload_analysis_report", return_value="test/path/report.json") as mock_upload:
+            service.analyze_procurement(mock_procurement, 1, analysis_id)
+            mock_upload.assert_called_once()
+            assert "test-prefix" in mock_upload.call_args[0][0]
+            mock_get_modality.assert_called_once()
+
+
+def test_get_modality(mock_dependencies: dict[str, Any]) -> None:
+    """Test that the _get_modality method returns the correct modality."""
+    from public_detective.services.pricing_service import Modality
+
+    service = AnalysisService(**mock_dependencies)
+    assert service._get_modality([("file.pdf", b"")]) == Modality.TEXT
+    assert service._get_modality([("file.mp4", b"")]) == Modality.VIDEO
+    assert service._get_modality([("file.mp3", b"")]) == Modality.AUDIO
+    assert service._get_modality([("file.jpg", b"")]) == Modality.IMAGE
+    assert service._get_modality([("file.pdf", b""), ("file.mp4", b"")]) == Modality.VIDEO
 
 
 def test_analyze_procurement_ai_fails(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:

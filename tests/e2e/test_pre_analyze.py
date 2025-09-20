@@ -24,7 +24,7 @@ def test_pre_analyze_command(db_session: Engine) -> None:
     pre_analyze_command = (
         f"poetry run python -m public_detective.cli pre-analyze "
         f"--start-date {target_date_str} --end-date {target_date_str} "
-        f"--max-messages {max_items_to_process} --recreate-db"
+        f"--max-messages {max_items_to_process}"
     )
     run_command(pre_analyze_command)
 
