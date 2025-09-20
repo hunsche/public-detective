@@ -47,7 +47,7 @@ def upgrade() -> None:
             proposal_opening_date TIMESTAMPTZ,
             proposal_closing_date TIMESTAMPTZ,
             object_description TEXT NOT NULL,
-            total_awarded_value DOUBLE PRECISION,
+            total_awarded_value DECIMAL(28, 18),
             is_srp BOOLEAN NOT NULL,
             procurement_year INTEGER NOT NULL,
             procurement_sequence INTEGER NOT NULL,
@@ -55,7 +55,7 @@ def upgrade() -> None:
             last_update_date TIMESTAMPTZ NOT NULL,
             modality_id INTEGER NOT NULL,
             procurement_status_id INTEGER NOT NULL,
-            total_estimated_value DOUBLE PRECISION,
+            total_estimated_value DECIMAL(28, 18),
             version_number INTEGER NOT NULL,
             raw_data JSONB NOT NULL,
             content_hash VARCHAR(64),
@@ -84,6 +84,11 @@ def upgrade() -> None:
             processed_documents_gcs_path VARCHAR,
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
+            thinking_tokens_used INTEGER,
+            cost_input_tokens DECIMAL(28, 18),
+            cost_output_tokens DECIMAL(28, 18),
+            cost_thinking_tokens DECIMAL(28, 18),
+            total_cost DECIMAL(28, 18),
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)
         );
@@ -122,14 +127,14 @@ def upgrade() -> None:
         CREATE TABLE {donations_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             donor_identifier VARCHAR NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
+            amount DECIMAL(28, 18) NOT NULL,
             transaction_id VARCHAR,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE TABLE {budget_ledgers_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             transaction_type {transaction_type} NOT NULL,
-            amount DECIMAL(10, 2) NOT NULL,
+            amount DECIMAL(28, 18) NOT NULL,
             related_analysis_id UUID REFERENCES {procurement_analyses_table}(analysis_id),
             related_donation_id UUID REFERENCES {donations_table}(id),
             description TEXT,
@@ -178,28 +183,33 @@ def upgrade() -> None:
 
 def downgrade() -> None:
     """Downgrades the database to the previous version."""
+    procurements_table_dropped = get_qualified_name("procurements_dropped")
     procurements_table = get_qualified_name("procurements")
+    procurement_analyses_table_dropped = get_qualified_name("procurement_analyses_dropped")
     procurement_analyses_table = get_qualified_name("procurement_analyses")
+    file_records_table_dropped = get_qualified_name("file_records_dropped")
     file_records_table = get_qualified_name("file_records")
+    history_table_dropped = get_qualified_name("procurement_analysis_status_history_dropped")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
+    votes_table_dropped = get_qualified_name("votes_dropped")
     votes_table = get_qualified_name("votes")
     vote_type = get_qualified_name("vote_type")
+    donations_table_dropped = get_qualified_name("donations_dropped")
     donations_table = get_qualified_name("donations")
+    budget_ledgers_table_dropped = get_qualified_name("budget_ledgers_dropped")
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
-    op.execute(
-        f"""
-        DROP TABLE IF EXISTS {budget_ledgers_table} CASCADE;
-        DROP TABLE IF EXISTS {donations_table} CASCADE;
-        DROP TABLE IF EXISTS {votes_table} CASCADE;
-        DROP TABLE IF EXISTS {history_table} CASCADE;
-        DROP TABLE IF EXISTS {file_records_table} CASCADE;
-        DROP TABLE IF EXISTS {procurement_analyses_table} CASCADE;
-        DROP TABLE IF EXISTS {procurements_table} CASCADE;
-        DROP TYPE IF EXISTS {transaction_type} CASCADE;
-        DROP TYPE IF EXISTS {vote_type} CASCADE;
-        DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;
-        """
-    )
+
+    op.execute(f"ALTER TABLE {procurements_table} RENAME TO {procurements_table_dropped};")
+    op.execute(f"ALTER TABLE {procurement_analyses_table} RENAME TO {procurement_analyses_table_dropped};")
+    op.execute(f"ALTER TABLE {file_records_table} RENAME TO {file_records_table_dropped};")
+    op.execute(f"ALTER TABLE {history_table} RENAME TO {history_table_dropped};")
+    op.execute(f"ALTER TABLE {votes_table} RENAME TO {votes_table_dropped};")
+    op.execute(f"ALTER TABLE {donations_table} RENAME TO {donations_table_dropped};")
+    op.execute(f"ALTER TABLE {budget_ledgers_table} RENAME TO {budget_ledgers_table_dropped};")
+
+    op.execute(f"DROP TYPE IF EXISTS {transaction_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
     op.execute('DROP EXTENSION IF EXISTS "uuid-ossp";')

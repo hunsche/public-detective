@@ -56,7 +56,7 @@ class AiProvider(Generic[PydanticModel]):
 
     def get_structured_analysis(
         self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
-    ) -> tuple[PydanticModel, int, int]:
+    ) -> tuple[PydanticModel, int, int, int]:
         """Sends a file for analysis and parses the response.
 
         This method is designed to be highly robust, handling cases where the AI
@@ -77,6 +77,7 @@ class AiProvider(Generic[PydanticModel]):
               populated with the AI's response.
             - The number of input tokens used.
             - The number of output tokens used.
+            - The number of thinking tokens used.
         """
         file_parts: list[types.Part] = []
         for file_display_name, file_content in files:
@@ -96,18 +97,21 @@ class AiProvider(Generic[PydanticModel]):
                 max_output_tokens=max_output_tokens,
             ),
         )
+        self.logger.info(f"Full API Response: {response}")
         self.logger.debug("Successfully received response from Generative AI API.")
 
         validated_response = self._parse_and_validate_response(response)
         input_tokens = 0
         output_tokens = 0
+        thinking_tokens = 0
         if response.usage_metadata:
             input_tokens = response.usage_metadata.prompt_token_count or 0
             output_tokens = response.usage_metadata.candidates_token_count or 0
+            thinking_tokens = response.usage_metadata.thoughts_token_count or 0
 
-        return validated_response, input_tokens, output_tokens
+        return validated_response, input_tokens, output_tokens, thinking_tokens
 
-    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int]:
+    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int, int]:
         """Calculates the number of tokens for a given prompt and files.
 
         Args:
@@ -117,7 +121,8 @@ class AiProvider(Generic[PydanticModel]):
                 - The byte content of the file.
 
         Returns:
-            A tuple containing the total number of input tokens and 0 for output tokens.
+            A tuple containing the total number of input tokens, 0 for output
+            tokens, and 0 for thinking tokens.
         """
         file_parts: list[types.Part] = []
         for file_display_name, file_content in files:
@@ -132,7 +137,7 @@ class AiProvider(Generic[PydanticModel]):
         response = self.client.models.count_tokens(model=self.config.GCP_GEMINI_MODEL, contents=contents)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
-        return token_count or 0, 0
+        return token_count or 0, 0, 0
 
     def _parse_and_validate_response(self, response) -> PydanticModel:  # type: ignore
         """Parses the AI's response, handling multiple potential formats and errors.

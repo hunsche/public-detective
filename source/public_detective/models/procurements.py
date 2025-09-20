@@ -8,6 +8,7 @@ other related entities.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from enum import IntEnum, StrEnum
 from uuid import UUID
 
@@ -230,7 +231,7 @@ class Procurement(BaseModel):
     object_description: str = Field(..., alias="objetoCompra")
     source_system_link: HttpUrl | str | None = Field(None, alias="linkSistemaOrigem")
     legal_support: LegalSupport = Field(..., alias="amparoLegal")
-    total_awarded_value: float | None = Field(None, alias="valorTotalHomologado")
+    total_awarded_value: Decimal | None = Field(None, alias="valorTotalHomologado")
     is_srp: bool = Field(..., alias="srp")
     government_entity: GovernmentEntity = Field(..., alias="orgaoEntidade")
     procurement_year: int = Field(..., alias="anoCompra")
@@ -243,7 +244,7 @@ class Procurement(BaseModel):
     pncp_control_number: str = Field(..., alias="numeroControlePNCP")
     global_update_date: datetime = Field(..., alias="dataAtualizacaoGlobal")
     dispute_method: DisputeMethod | int = Field(..., alias="modoDisputaId")
-    total_estimated_value: float | None = Field(None, alias="valorTotalEstimado")
+    total_estimated_value: Decimal | None = Field(None, alias="valorTotalEstimado")
     procurement_status: ProcurementStatus | int = Field(..., alias="situacaoCompraId")
     user_name: str = Field(..., alias="usuarioNome")
     electronic_process_link: HttpUrl | str | None = Field(None, alias="linkProcessoEletronico")

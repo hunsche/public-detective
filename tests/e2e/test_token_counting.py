@@ -15,7 +15,9 @@ def test_token_counting(db_session: Engine) -> None:
     prompt = "This is a test prompt."
     files = [("test.txt", b"This is a test file.")]
 
-    token_count, _ = ai_provider.count_tokens_for_analysis(prompt, files)
+    input_tokens, output_tokens, thinking_tokens = ai_provider.count_tokens_for_analysis(prompt, files)
 
-    assert isinstance(token_count, int)
-    assert token_count > 0
+    assert isinstance(input_tokens, int)
+    assert input_tokens > 0
+    assert isinstance(output_tokens, int)
+    assert isinstance(thinking_tokens, int)

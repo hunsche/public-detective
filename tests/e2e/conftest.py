@@ -19,29 +19,35 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
 
-def run_command(command_str: str) -> None:
+def run_command(command_str: str, max_retries: int = 3, delay: int = 10) -> None:
     """Executes a shell command and streams its output in real-time.
 
     Args:
         command_str: The shell command to execute.
+        max_retries: The maximum number of times to retry the command.
+        delay: The delay in seconds between retries.
     """
     print(f"\n--- Running command: {command_str} ---")
-    process = subprocess.Popen(
-        command_str,
-        shell=True,  # nosec B602
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        bufsize=1,
-        universal_newlines=True,
-    )
-    if process.stdout:
-        for line in process.stdout:
-            print(line, end="")
-    process.wait()
-    if process.returncode != 0:
-        pytest.fail(f"Command failed with exit code {process.returncode}: {command_str}")
-    print(f"--- Command finished: {command_str} ---")
+    for _ in range(max_retries):
+        process = subprocess.Popen(
+            command_str,
+            shell=True,  # nosec B602
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+            universal_newlines=True,
+        )
+        if process.stdout:
+            for line in process.stdout:
+                print(line, end="")
+        process.wait()
+        if process.returncode == 0:
+            print(f"--- Command finished: {command_str} ---")
+            return
+        print(f"--- Command failed with exit code {process.returncode}. Retrying in {delay}s... ---")
+        time.sleep(delay)
+    pytest.fail(f"Command failed after {max_retries} attempts: {command_str}")
 
 
 @pytest.fixture(scope="function")

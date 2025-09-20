@@ -120,17 +120,28 @@ def test_run_pre_analysis_max_messages(mock_dependencies: dict, mock_procurement
         assert mock_pre_analyze.call_count == 1
 
 
-def test_pre_analyze_procurement_happy_path(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+@patch("public_detective.services.analysis.PricingService")
+def test_pre_analyze_procurement_happy_path(
+    mock_pricing_service: MagicMock, mock_dependencies: dict, mock_procurement: Procurement
+) -> None:
     """Test the happy path for _pre_analyze_procurement."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.get_procurement_by_hash.return_value = None
     service.procurement_repo.get_latest_version.return_value = 1
-    service.ai_provider.count_tokens_for_analysis.return_value = (100, 50)
+    service.ai_provider.count_tokens_for_analysis.return_value = (100, 50, 10)
+    mock_pricing_service.return_value.calculate.return_value = (
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+        MagicMock(),
+    )
 
     service._pre_analyze_procurement(mock_procurement, {})
 
     service.procurement_repo.save_procurement_version.assert_called_once()
     service.analysis_repo.save_pre_analysis.assert_called_once()
+    call_kwargs = service.analysis_repo.save_pre_analysis.call_args[1]
+    assert call_kwargs["thinking_tokens_used"] == 10
     service.status_history_repo.create_record.assert_called_once()
 
 

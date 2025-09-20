@@ -1,6 +1,7 @@
 """This module defines the Pydantic models for the analysis data structures."""
 
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 from uuid import UUID
@@ -121,4 +122,9 @@ class AnalysisResult(BaseModel):
     processed_documents_gcs_path: str | None = None
     input_tokens_used: int | None = None
     output_tokens_used: int | None = None
+    thinking_tokens_used: int | None = None
     votes_count: int | None = 0
+    cost_input_tokens: Decimal | None = None
+    cost_output_tokens: Decimal | None = None
+    cost_thinking_tokens: Decimal | None = None
+    total_cost: Decimal | None = None
