@@ -52,7 +52,12 @@ def mock_ai_provider(monkeypatch: MonkeyPatch) -> Generator[tuple[MagicMock, Mag
         yield mock_models_api, mock_gcs_instance, mock_config_instance
 
 
-def create_mock_response(text: str, prompt_token_count: int, candidates_token_count: int) -> MagicMock:
+def create_mock_response(
+    text: str,
+    prompt_token_count: int,
+    candidates_token_count: int,
+    thoughts_token_count: int | None = 0,
+) -> MagicMock:
     mock_response = MagicMock()
     mock_candidate = MagicMock()
     mock_content = MagicMock()
@@ -68,6 +73,7 @@ def create_mock_response(text: str, prompt_token_count: int, candidates_token_co
     mock_usage = MagicMock()
     mock_usage.prompt_token_count = prompt_token_count
     mock_usage.candidates_token_count = candidates_token_count
+    mock_usage.thoughts_token_count = thoughts_token_count
     mock_response.usage_metadata = mock_usage
 
     # Add a mock for the text property for direct access
@@ -85,13 +91,14 @@ def test_get_structured_analysis(
         text="""{"risk_score": 8, "summary": "Test summary"}""",
         prompt_token_count=10,
         candidates_token_count=20,
+        thoughts_token_count=5,
     )
     mock_models_api.generate_content.return_value = mock_response
 
     mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/file1.pdf"
 
     ai_provider = AiProvider(output_schema=MockOutputSchema)
-    result, input_tokens, output_tokens = ai_provider.get_structured_analysis(
+    result, input_tokens, output_tokens, thinking_tokens = ai_provider.get_structured_analysis(
         prompt="test prompt", files=[("file1.pdf", b"content")]
     )
 
@@ -99,6 +106,7 @@ def test_get_structured_analysis(
     assert result.risk_score == 8
     assert input_tokens == 10
     assert output_tokens == 20
+    assert thinking_tokens == 5
     mock_gcs_instance.upload_file.assert_called_once()
     mock_models_api.generate_content.assert_called_once()
 
@@ -245,9 +253,11 @@ def test_count_tokens_for_analysis(
     prompt = "test prompt"
     files = [("file1.pdf", b"content1"), ("file2.txt", b"content2")]
 
-    token_count, _ = ai_provider.count_tokens_for_analysis(prompt, files)
+    input_tokens, output_tokens, thinking_tokens = ai_provider.count_tokens_for_analysis(prompt, files)
 
-    assert token_count == 123
+    assert input_tokens == 123
+    assert output_tokens == 0
+    assert thinking_tokens == 0
     mock_models_api.count_tokens.assert_called_once()
     _, kwargs = mock_models_api.count_tokens.call_args
     contents = kwargs["contents"]

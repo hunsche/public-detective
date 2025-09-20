@@ -1,4 +1,5 @@
 import json
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 from uuid import UUID, uuid4
 
@@ -209,7 +210,17 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     )
 
     # Act
-    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50)
+    analysis_repository.save_analysis(
+        analysis_id=analysis_id,
+        result=analysis_result,
+        input_tokens=100,
+        output_tokens=50,
+        thinking_tokens=10,
+        input_cost=Decimal("0.1"),
+        output_cost=Decimal("0.2"),
+        thinking_cost=Decimal("0.05"),
+        total_cost=Decimal("0.35"),
+    )
 
     # Assert
     mock_conn.execute.assert_called_once()
@@ -220,6 +231,9 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     assert params["seo_keywords"] == ["keyword1", "keyword2"]
     assert "UPDATE procurement_analyses" in str(args[0])
     assert "seo_keywords = :seo_keywords" in str(args[0])
+    assert params["thinking_tokens_used"] == 10
+    assert params["cost_thinking_tokens"] == Decimal("0.05")
+    assert params["total_cost"] == Decimal("0.35")
 
 
 def test_parse_row_to_model_empty_row(analysis_repository: AnalysisRepository) -> None:
@@ -291,6 +305,11 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
         document_hash="pre-analysis-hash",
         input_tokens_used=200,
         output_tokens_used=100,
+        thinking_tokens_used=20,
+        input_cost=Decimal("0.2"),
+        output_cost=Decimal("0.3"),
+        thinking_cost=Decimal("0.1"),
+        total_cost=Decimal("0.6"),
     )
 
     # Assert
@@ -303,6 +322,9 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     assert params["input_tokens_used"] == 200
     assert params["output_tokens_used"] == 100
     assert params["document_hash"] == "pre-analysis-hash"
+    assert params["thinking_tokens_used"] == 20
+    assert params["cost_thinking_tokens"] == Decimal("0.1")
+    assert params["total_cost"] == Decimal("0.6")
 
 
 def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -> None:
@@ -538,6 +560,11 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         document_hash="retry-hash",
         input_tokens_used=200,
         output_tokens_used=100,
+        thinking_tokens_used=50,
+        input_cost=Decimal("0.2"),
+        output_cost=Decimal("0.3"),
+        thinking_cost=Decimal("0.1"),
+        total_cost=Decimal("0.6"),
         retry_count=1,
     )
 
@@ -547,6 +574,8 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
     params = args[1]
     assert params["procurement_control_number"] == "PNCP-789"
     assert params["retry_count"] == 1
+    assert params["thinking_tokens_used"] == 50
+    assert params["total_cost"] == Decimal("0.6")
 
 
 def test_get_pending_analyses_ranked(analysis_repository: AnalysisRepository) -> None:

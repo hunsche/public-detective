@@ -5,6 +5,8 @@ class that reads from environment variables and .env files. This ensures
 all required configuration is present and valid at startup.
 """
 
+from decimal import Decimal
+
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -51,7 +53,19 @@ class Config(BaseSettings):
     GCP_GEMINI_HOST: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
-    GCP_GEMINI_PRICE_PER_1K_TOKENS: float = 0.002
+    GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("7.750969275")
+    GCP_GEMINI_TEXT_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
+    GCP_GEMINI_TEXT_OUTPUT_COST: Decimal = Decimal("62.0077542")
+    GCP_GEMINI_TEXT_OUTPUT_LONG_COST: Decimal = Decimal("93.0116313")
+    GCP_GEMINI_THINKING_OUTPUT_COST: Decimal = Decimal("62.0077542")
+    GCP_GEMINI_THINKING_OUTPUT_LONG_COST: Decimal = Decimal("93.0116313")
+    GCP_GEMINI_AUDIO_INPUT_COST: Decimal = Decimal("7.750969275")
+    GCP_GEMINI_AUDIO_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
+    GCP_GEMINI_IMAGE_INPUT_COST: Decimal = Decimal("7.750969275")
+    GCP_GEMINI_IMAGE_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
+    GCP_GEMINI_VIDEO_INPUT_COST: Decimal = Decimal("7.750969275")
+    GCP_GEMINI_VIDEO_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
+    GCP_GEMINI_THINKING_BUDGET: int = 32768
 
     WORKER_MAX_CONCURRENCY: int = 4
 

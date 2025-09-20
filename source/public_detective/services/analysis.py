@@ -25,6 +25,7 @@ from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.pricing_service import Modality, PricingService
 
 
 class AnalysisService:
@@ -47,8 +48,33 @@ class AnalysisService:
     pubsub_provider: PubSubProvider | None
     logger: Logger
     config: Config
+    pricing_service: PricingService
 
-    _SUPPORTED_EXTENSIONS = (".pdf", ".docx", ".doc", ".rtf", ".xlsx", ".xls", ".csv")
+    _SUPPORTED_EXTENSIONS = (
+        ".pdf",
+        ".docx",
+        ".doc",
+        ".rtf",
+        ".xlsx",
+        ".xls",
+        ".csv",
+        ".mp4",
+        ".mov",
+        ".avi",
+        ".mkv",
+        ".mp3",
+        ".wav",
+        ".flac",
+        ".ogg",
+        ".jpg",
+        ".jpeg",
+        ".png",
+        ".gif",
+        ".bmp",
+    )
+    _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
+    _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
+    _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".bmp")
     _FILE_PRIORITY_ORDER = [
         "edital",
         "termo de referencia",
@@ -61,8 +87,6 @@ class AnalysisService:
     ]
     _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
-    _GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS = Decimal("2.62")
-    _GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS = Decimal("7.88")
 
     def __init__(
         self,
@@ -97,6 +121,30 @@ class AnalysisService:
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
+        self.pricing_service = PricingService()
+
+    def _get_modality(self, files: list[tuple[str, bytes]]) -> Modality:
+        """Determines the modality of an analysis based on file extensions.
+
+        The modality is determined by the first file with a non-text modality.
+        If no non-text files are found, the modality is TEXT.
+
+        Args:
+            files: A list of tuples, where each tuple contains the file path
+                and its content.
+
+        Returns:
+            The determined modality.
+        """
+        for path, _ in files:
+            ext = os.path.splitext(path)[1].lower()
+            if ext in self._VIDEO_EXTENSIONS:
+                return Modality.VIDEO
+            if ext in self._AUDIO_EXTENSIONS:
+                return Modality.AUDIO
+            if ext in self._IMAGE_EXTENSIONS:
+                return Modality.IMAGE
+        return Modality.TEXT
 
     def _update_status_with_history(
         self,
@@ -200,6 +248,7 @@ class AnalysisService:
 
         document_hash = self._calculate_hash(files_for_ai)
         existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
+        modality = self._get_modality(files_for_ai)
 
         if existing_analysis:
             self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
@@ -226,11 +275,22 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
             )
-            self.analysis_repo.save_analysis(
-                analysis_id,
-                reused_result,
+            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
                 existing_analysis.input_tokens_used,
                 existing_analysis.output_tokens_used,
+                existing_analysis.thinking_tokens_used,
+                modality=modality,
+            )
+            self.analysis_repo.save_analysis(
+                analysis_id=analysis_id,
+                result=reused_result,
+                input_tokens=existing_analysis.input_tokens_used,
+                output_tokens=existing_analysis.output_tokens_used,
+                thinking_tokens=existing_analysis.thinking_tokens_used,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                thinking_cost=thinking_cost,
+                total_cost=total_cost,
             )
 
             # Even if we reuse the analysis, we must record the files for the *new* analysis run
@@ -246,7 +306,7 @@ class AnalysisService:
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
-            ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
+            ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
                 files=files_for_ai,
             )
@@ -267,7 +327,20 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            self.analysis_repo.save_analysis(analysis_id, final_result, input_tokens, output_tokens)
+            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                input_tokens, output_tokens, thinking_tokens, modality=modality
+            )
+            self.analysis_repo.save_analysis(
+                analysis_id=analysis_id,
+                result=final_result,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                thinking_tokens=thinking_tokens,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                thinking_cost=thinking_cost,
+                total_cost=total_cost,
+            )
 
             self._process_and_save_file_records(
                 analysis_id=analysis_id,
@@ -704,7 +777,11 @@ class AnalysisService:
         )
 
         prompt = self._build_analysis_prompt(procurement, warnings)
-        input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        input_tokens, output_tokens, thinking_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        modality = self._get_modality(files_for_ai)
+        input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+            input_tokens, output_tokens, thinking_tokens, modality=modality
+        )
 
         analysis_id = self.analysis_repo.save_pre_analysis(
             procurement_control_number=procurement.pncp_control_number,
@@ -712,6 +789,11 @@ class AnalysisService:
             document_hash=analysis_document_hash,
             input_tokens_used=input_tokens,
             output_tokens_used=output_tokens,
+            thinking_tokens_used=thinking_tokens,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            thinking_cost=thinking_cost,
+            total_cost=total_cost,
         )
         self.status_history_repo.create_record(
             analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
@@ -768,7 +850,7 @@ class AnalysisService:
                 self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
                 break
 
-            estimated_cost = self._calculate_estimated_cost(analysis.input_tokens_used, analysis.output_tokens_used)
+            estimated_cost = analysis.total_cost or Decimal(0)
 
             if estimated_cost > remaining_budget:
                 self.logger.info(
@@ -813,20 +895,6 @@ class AnalysisService:
 
         self.logger.info("Ranked analysis job completed.")
 
-    def _calculate_estimated_cost(self, input_tokens: int, output_tokens: int) -> Decimal:
-        """Calculates the estimated cost of an analysis based on token counts.
-
-        Args:
-            input_tokens: The number of input tokens used.
-            output_tokens: The number of output tokens used.
-
-        Returns:
-            The estimated cost of the analysis.
-        """
-        input_cost = (Decimal(input_tokens) / 1_000_000) * self._GEMINI_PRO_INPUT_PRICE_PER_MILLION_TOKENS
-        output_cost = (Decimal(output_tokens) / 1_000_000) * self._GEMINI_PRO_OUTPUT_PRICE_PER_MILLION_TOKENS
-        return input_cost + output_cost
-
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
         """Retries failed or stale analyses.
 
@@ -860,12 +928,25 @@ class AnalysisService:
 
                 if now >= next_retry_time:
                     self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                    # Modality for retries is not available, so we assume TEXT
+                    modality = Modality.TEXT
+                    input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                        analysis.input_tokens_used,
+                        analysis.output_tokens_used,
+                        analysis.thinking_tokens_used,
+                        modality=modality,
+                    )
                     new_analysis_id = self.analysis_repo.save_retry_analysis(
                         procurement_control_number=analysis.procurement_control_number,
                         version_number=analysis.version_number,
                         document_hash=analysis.document_hash,
                         input_tokens_used=analysis.input_tokens_used,
                         output_tokens_used=analysis.output_tokens_used,
+                        thinking_tokens_used=analysis.thinking_tokens_used,
+                        input_cost=input_cost,
+                        output_cost=output_cost,
+                        thinking_cost=thinking_cost,
+                        total_cost=total_cost,
                         retry_count=analysis.retry_count + 1,
                     )
                     self.run_specific_analysis(new_analysis_id)
