@@ -18,17 +18,18 @@ class PricingService:
         self,
         input_tokens: int,
         output_tokens: int,
-        is_thinking_mode: bool,
-    ) -> tuple[Decimal, Decimal, Decimal]:
+        thinking_tokens: int,
+    ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         """Calculates the cost of an analysis based on token counts and pricing.
 
         Args:
             input_tokens: The number of input tokens used.
             output_tokens: The number of output tokens used.
-            is_thinking_mode: A flag indicating if thinking mode was used.
+            thinking_tokens: The number of thinking tokens used.
 
         Returns:
-            A tuple containing the input cost, output cost, and total cost.
+            A tuple containing the input cost, output cost, thinking cost, and
+            total cost.
         """
         is_long_context = input_tokens > 200_000
 
@@ -41,19 +42,21 @@ class PricingService:
         input_cost = (Decimal(input_tokens) / 1_000_000) * input_cost_per_million
 
         # Determine output cost
-        if is_thinking_mode:
-            if is_long_context:
-                output_cost_per_million = self.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
-            else:
-                output_cost_per_million = self.config.GCP_GEMINI_THINKING_OUTPUT_COST
+        if is_long_context:
+            output_cost_per_million = self.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
         else:
-            if is_long_context:
-                output_cost_per_million = self.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
-            else:
-                output_cost_per_million = self.config.GCP_GEMINI_TEXT_OUTPUT_COST
+            output_cost_per_million = self.config.GCP_GEMINI_TEXT_OUTPUT_COST
 
         output_cost = (Decimal(output_tokens) / 1_000_000) * output_cost_per_million
 
-        total_cost = input_cost + output_cost
+        # Determine thinking cost
+        if is_long_context:
+            thinking_cost_per_million = self.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
+        else:
+            thinking_cost_per_million = self.config.GCP_GEMINI_THINKING_OUTPUT_COST
 
-        return input_cost, output_cost, total_cost
+        thinking_cost = (Decimal(thinking_tokens) / 1_000_000) * thinking_cost_per_million
+
+        total_cost = input_cost + output_cost + thinking_cost
+
+        return input_cost, output_cost, thinking_cost, total_cost

@@ -84,9 +84,10 @@ def upgrade() -> None:
             processed_documents_gcs_path VARCHAR,
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
-            is_thinking_mode BOOLEAN,
+            thinking_tokens_used INTEGER,
             cost_input_tokens DECIMAL(28, 18),
             cost_output_tokens DECIMAL(28, 18),
+            cost_thinking_tokens DECIMAL(28, 18),
             total_cost DECIMAL(28, 18),
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)
@@ -157,8 +158,6 @@ def upgrade() -> None:
             ON {procurement_analyses_table} (votes_count DESC, input_tokens_used ASC);
         CREATE INDEX idx_procurement_analyses_document_hash
             ON {procurement_analyses_table} (document_hash);
-        CREATE INDEX idx_procurement_analyses_is_thinking_mode
-            ON {procurement_analyses_table} (is_thinking_mode);
         -- Indexes for file_records table
         CREATE INDEX idx_file_records_analysis_id
             ON {file_records_table} (analysis_id);

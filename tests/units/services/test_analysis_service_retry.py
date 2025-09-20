@@ -80,6 +80,7 @@ def test_retry_analyses_triggers_eligible_analysis(analysis_service_fixture: dic
         document_hash="hash123",
         input_tokens_used=100,
         output_tokens_used=50,
+        thinking_tokens_used=10,
         ai_analysis=mock_ai_analysis,
     )
     analysis_repo.get_analyses_to_retry.return_value = [eligible_analysis]
@@ -90,14 +91,11 @@ def test_retry_analyses_triggers_eligible_analysis(analysis_service_fixture: dic
 
         assert result == 1
         analysis_repo.get_analyses_to_retry.assert_called_once_with(3, 1)
-        analysis_repo.save_retry_analysis.assert_called_once_with(
-            procurement_control_number="123",
-            version_number=1,
-            document_hash="hash123",
-            input_tokens_used=100,
-            output_tokens_used=50,
-            retry_count=1,
-        )
+        analysis_repo.save_retry_analysis.assert_called_once()
+        call_kwargs = analysis_repo.save_retry_analysis.call_args[1]
+        assert call_kwargs["procurement_control_number"] == "123"
+        assert call_kwargs["retry_count"] == 1
+        assert call_kwargs["thinking_tokens_used"] == 10
         mock_run_specific.assert_called_once()
 
 

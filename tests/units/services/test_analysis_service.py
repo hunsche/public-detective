@@ -513,19 +513,21 @@ def test_analyze_procurement_happy_path(
         red_flags=[],
         seo_keywords=["keyword1"],
     )
-    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50, 10)
     mock_pricing_service.return_value.calculate.return_value = (
         Decimal("1"),
         Decimal("2"),
-        Decimal("3"),
+        Decimal("0.5"),
+        Decimal("3.5"),
     )
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_called_once()
     call_kwargs = service.analysis_repo.save_analysis.call_args[1]
-    assert call_kwargs["total_cost"] == Decimal("3")
-    assert call_kwargs["is_thinking_mode"] is False
+    assert call_kwargs["total_cost"] == Decimal("3.5")
+    assert call_kwargs["thinking_tokens"] == 10
+    assert call_kwargs["thinking_cost"] == Decimal("0.5")
 
 
 @patch("public_detective.services.analysis.PricingService")
@@ -539,6 +541,7 @@ def test_analyze_procurement_reuse_existing(
     mock_existing_analysis = MagicMock()
     mock_existing_analysis.input_tokens_used = 100
     mock_existing_analysis.output_tokens_used = 50
+    mock_existing_analysis.thinking_tokens_used = 10
     mock_existing_analysis.ai_analysis = Analysis(
         risk_score=5,
         risk_score_rationale="Rationale",
@@ -551,7 +554,8 @@ def test_analyze_procurement_reuse_existing(
     mock_pricing_service.return_value.calculate.return_value = (
         Decimal("1"),
         Decimal("2"),
-        Decimal("3"),
+        Decimal("0.5"),
+        Decimal("3.5"),
     )
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
@@ -560,7 +564,7 @@ def test_analyze_procurement_reuse_existing(
     # Check that the reused result is passed to save_analysis
     call_args = service.analysis_repo.save_analysis.call_args[1]
     assert call_args["result"].ai_analysis.risk_score == 5
-    assert call_args["total_cost"] == Decimal("3")
+    assert call_args["total_cost"] == Decimal("3.5")
 
 
 def test_analyze_procurement_no_files(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
@@ -574,8 +578,9 @@ def test_analyze_procurement_no_files(mock_dependencies: dict[str, Any], mock_pr
     service.analysis_repo.save_analysis.assert_not_called()
 
 
+@patch("public_detective.services.analysis.PricingService")
 def test_analyze_procurement_reuse_existing_with_gcs_prefix(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+    mock_pricing_service: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
 ) -> None:
     """Test that analyze_procurement reuses an existing analysis with a GCS test prefix."""
     service = AnalysisService(**mock_dependencies)
@@ -585,6 +590,7 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
     mock_existing_analysis = MagicMock()
     mock_existing_analysis.input_tokens_used = 100
     mock_existing_analysis.output_tokens_used = 50
+    mock_existing_analysis.thinking_tokens_used = 10
     mock_existing_analysis.ai_analysis = Analysis(
         risk_score=5,
         risk_score_rationale="Rationale",
@@ -594,6 +600,12 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
         seo_keywords=["keyword1"],
     )
     service.analysis_repo.get_analysis_by_hash.return_value = mock_existing_analysis
+    mock_pricing_service.return_value.calculate.return_value = (
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("0.5"),
+        Decimal("3.5"),
+    )
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
@@ -602,7 +614,10 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
     assert "test-prefix" in call_args["result"].original_documents_gcs_path
 
 
-def test_analyze_procurement_with_gcs_prefix(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
+@patch("public_detective.services.analysis.PricingService")
+def test_analyze_procurement_with_gcs_prefix(
+    mock_pricing_service: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     """Test analyze_procurement with a GCS test prefix."""
     service = AnalysisService(**mock_dependencies)
     service.config.GCP_GCS_TEST_PREFIX = "test-prefix"
@@ -617,7 +632,13 @@ def test_analyze_procurement_with_gcs_prefix(mock_dependencies: dict[str, Any], 
         red_flags=[],
         seo_keywords=["keyword1"],
     )
-    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50)
+    service.ai_provider.get_structured_analysis.return_value = (mock_ai_analysis, 100, 50, 10)
+    mock_pricing_service.return_value.calculate.return_value = (
+        Decimal("1"),
+        Decimal("2"),
+        Decimal("0.5"),
+        Decimal("3.5"),
+    )
 
     with patch.object(service, "_upload_analysis_report", return_value="test/path/report.json") as mock_upload:
         service.analyze_procurement(mock_procurement, 1, analysis_id)

@@ -122,8 +122,9 @@ class AnalysisResult(BaseModel):
     processed_documents_gcs_path: str | None = None
     input_tokens_used: int | None = None
     output_tokens_used: int | None = None
+    thinking_tokens_used: int | None = None
     votes_count: int | None = 0
-    is_thinking_mode: bool | None = False
     cost_input_tokens: Decimal | None = None
     cost_output_tokens: Decimal | None = None
+    cost_thinking_tokens: Decimal | None = None
     total_cost: Decimal | None = None

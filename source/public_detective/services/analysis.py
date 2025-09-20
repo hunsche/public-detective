@@ -201,7 +201,6 @@ class AnalysisService:
 
         document_hash = self._calculate_hash(files_for_ai)
         existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
-        is_thinking_mode = max_output_tokens == self.config.GCP_GEMINI_THINKING_BUDGET
 
         if existing_analysis:
             self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
@@ -228,19 +227,20 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
             )
-            input_cost, output_cost, total_cost = self.pricing_service.calculate(
+            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
                 existing_analysis.input_tokens_used,
                 existing_analysis.output_tokens_used,
-                is_thinking_mode,
+                existing_analysis.thinking_tokens_used,
             )
             self.analysis_repo.save_analysis(
                 analysis_id=analysis_id,
                 result=reused_result,
                 input_tokens=existing_analysis.input_tokens_used,
                 output_tokens=existing_analysis.output_tokens_used,
-                is_thinking_mode=is_thinking_mode,
+                thinking_tokens=existing_analysis.thinking_tokens_used,
                 input_cost=input_cost,
                 output_cost=output_cost,
+                thinking_cost=thinking_cost,
                 total_cost=total_cost,
             )
 
@@ -257,7 +257,7 @@ class AnalysisService:
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
-            ai_analysis, input_tokens, output_tokens = self.ai_provider.get_structured_analysis(
+            ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
                 prompt=prompt,
                 files=files_for_ai,
             )
@@ -278,17 +278,18 @@ class AnalysisService:
                 original_documents_gcs_path=f"{gcs_base_path}/files/",
                 processed_documents_gcs_path=analysis_report_gcs_path,
             )
-            input_cost, output_cost, total_cost = self.pricing_service.calculate(
-                input_tokens, output_tokens, is_thinking_mode
+            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                input_tokens, output_tokens, thinking_tokens
             )
             self.analysis_repo.save_analysis(
                 analysis_id=analysis_id,
                 result=final_result,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                is_thinking_mode=is_thinking_mode,
+                thinking_tokens=thinking_tokens,
                 input_cost=input_cost,
                 output_cost=output_cost,
+                thinking_cost=thinking_cost,
                 total_cost=total_cost,
             )
 
@@ -727,11 +728,9 @@ class AnalysisService:
         )
 
         prompt = self._build_analysis_prompt(procurement, warnings)
-        input_tokens, output_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
-        # Assuming pre-analysis is never "thinking mode"
-        is_thinking_mode = False
-        input_cost, output_cost, total_cost = self.pricing_service.calculate(
-            input_tokens, output_tokens, is_thinking_mode
+        input_tokens, output_tokens, thinking_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+            input_tokens, output_tokens, thinking_tokens
         )
 
         analysis_id = self.analysis_repo.save_pre_analysis(
@@ -740,9 +739,10 @@ class AnalysisService:
             document_hash=analysis_document_hash,
             input_tokens_used=input_tokens,
             output_tokens_used=output_tokens,
-            is_thinking_mode=is_thinking_mode,
+            thinking_tokens_used=thinking_tokens,
             input_cost=input_cost,
             output_cost=output_cost,
+            thinking_cost=thinking_cost,
             total_cost=total_cost,
         )
         self.status_history_repo.create_record(
@@ -878,12 +878,22 @@ class AnalysisService:
 
                 if now >= next_retry_time:
                     self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
+                    input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                        analysis.input_tokens_used,
+                        analysis.output_tokens_used,
+                        analysis.thinking_tokens_used,
+                    )
                     new_analysis_id = self.analysis_repo.save_retry_analysis(
                         procurement_control_number=analysis.procurement_control_number,
                         version_number=analysis.version_number,
                         document_hash=analysis.document_hash,
                         input_tokens_used=analysis.input_tokens_used,
                         output_tokens_used=analysis.output_tokens_used,
+                        thinking_tokens_used=analysis.thinking_tokens_used,
+                        input_cost=input_cost,
+                        output_cost=output_cost,
+                        thinking_cost=thinking_cost,
+                        total_cost=total_cost,
                         retry_count=analysis.retry_count + 1,
                     )
                     self.run_specific_analysis(new_analysis_id)

@@ -68,10 +68,14 @@ def setup_analysis(
                 """
                 INSERT INTO procurement_analyses (
                     analysis_id, procurement_control_number, version_number,
-                    status, retry_count, updated_at, document_hash
+                    status, retry_count, updated_at, document_hash,
+                    input_tokens_used, output_tokens_used, thinking_tokens_used,
+                    cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost
                 ) VALUES (
                     :analysis_id, :procurement_id, :version_number,
-                    :status, :retry_count, :updated_at, 'hash'
+                    :status, :retry_count, :updated_at, 'hash',
+                    :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
+                    :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost
                 )
                 """
             ),
@@ -82,6 +86,13 @@ def setup_analysis(
                 "status": status.value,
                 "retry_count": retry_count,
                 "updated_at": updated_at,
+                "input_tokens_used": 0,
+                "output_tokens_used": 0,
+                "thinking_tokens_used": 0,
+                "cost_input_tokens": 0.0,
+                "cost_output_tokens": 0.0,
+                "cost_thinking_tokens": 0.0,
+                "total_cost": 0.0,
             },
         )
         conn.commit()

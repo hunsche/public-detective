@@ -142,9 +142,10 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
         document_hash="pre-analysis-hash-1",
         input_tokens_used=0,
         output_tokens_used=0,
-        is_thinking_mode=False,
+        thinking_tokens_used=0,
         input_cost=Decimal("0"),
         output_cost=Decimal("0"),
+        thinking_cost=Decimal("0"),
         total_cost=Decimal("0"),
     )
     status_history_repo.create_record(
@@ -152,7 +153,9 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
     )
 
     # 2. Run analyze command
-    with patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50)):
+    with patch.object(
+        ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50, 10)
+    ) as mock_get_analysis:
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):
             runner = CliRunner()
             result = runner.invoke(cli, ["analyze", f"--analysis-id={analysis_id}"])
@@ -259,7 +262,7 @@ def test_pre_analysis_flow_integration(integration_test_setup: None, db_session:
 
     with (
         patch("public_detective.repositories.procurements.requests.get", side_effect=mock_requests_get),
-        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0)),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1000, 0, 0)),
     ):
         analysis_service.run_pre_analysis(date(2025, 8, 23), date(2025, 8, 23), 10, 0)
 
