@@ -79,45 +79,102 @@ def test_build_analysis_prompt(mock_dependencies: dict[str, Any], mock_procureme
     assert mock_procurement.model_dump_json(by_alias=True, indent=2) in prompt
 
 
-def test_select_and_prepare_files_for_ai_happy_path(mock_dependencies: dict[str, Any]) -> None:
+def test_select_and_prepare_files_for_ai_happy_path(
+    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     """Test the happy path for _select_and_prepare_files_for_ai."""
     service = AnalysisService(**mock_dependencies)
     files = [("file1.pdf", b"content1"), ("file2.docx", b"content2")]
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
+    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
 
     assert len(selected_files) == 2
-    assert len(excluded_files) == 0
-    assert len(warnings) == 0
+    assert not excluded_files
+    assert not warnings  # No warning message for ignored files
+    assert tokens > 0
 
 
-def test_select_and_prepare_files_for_ai_unsupported_extension(mock_dependencies: dict[str, Any]) -> None:
+def test_select_and_prepare_files_for_ai_unsupported_extension(
+    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     """Test that files with unsupported extensions are excluded."""
     service = AnalysisService(**mock_dependencies)
     files = [("file1.txt", b"content1"), ("file2.pdf", b"content2")]
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
+    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
 
     assert len(selected_files) == 1
     assert selected_files[0][0] == "file2.pdf"
     assert len(excluded_files) == 1
     assert "file1.txt" in excluded_files
-    assert len(warnings) == 0
 
 
-def test_select_and_prepare_files_for_ai_file_limit_exceeded(mock_dependencies: dict[str, Any]) -> None:
-    """Test that files are excluded when the file limit is exceeded."""
+def test_select_and_prepare_files_for_ai_token_limit_exceeded(
+    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
+    """Test that files are excluded when the token limit is exceeded."""
     service = AnalysisService(**mock_dependencies)
-    service._MAX_FILES_FOR_AI = 1
-    files = [("file1.pdf", b"content1"), ("file2.pdf", b"content2")]
+    service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 100
+    # Prioritized file first
+    files = [("edital.pdf", b"content1"), ("anexo.pdf", b"content2")]
 
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
+    def count_tokens_side_effect(prompt: str, files: list) -> tuple[int, int, int]:
+        # Base prompt with warning for both files
+        if "edital.pdf" in prompt and "anexo.pdf" in prompt:
+            return (30, 0, 0)
+        # Base prompt with warning for one file
+        if "anexo.pdf" in prompt:
+            return (20, 0, 0)
+        # Final calculation with selected files
+        if files:
+            # If it's the check for the second file, make it exceed the limit
+            if len(files) > 1:
+                return (110, 0, 0)
+            # The prompt will have a warning for the second file
+            if "anexo.pdf" in prompt:
+                return (20 + 50, 0, 0)  # warning + file1
+        # Token count for a single file
+        if files and "edital" in files[0][0]:
+            return (50, 0, 0)
+        if files and "anexo" in files[0][0]:
+            return (70, 0, 0)  # This one is larger
+        # Base prompt
+        return (10, 0, 0)
+
+    service.ai_provider.count_tokens_for_analysis.side_effect = count_tokens_side_effect
+
+    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
 
     assert len(selected_files) == 1
+    assert selected_files[0][0] == "edital.pdf"
     assert len(excluded_files) == 1
+    assert "anexo.pdf" in excluded_files
     assert len(warnings) == 1
-    assert "Limite de" in warnings[0]
-    assert "excedido" in warnings[0]
+    assert "tokens foi excedido" in warnings[0]
+    assert "anexo.pdf" in warnings[0]
+    assert "edital.pdf" not in warnings[0]
+
+
+def test_select_and_prepare_files_for_ai_warning_exceeds_limit(
+    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
+    """Test case where the base prompt plus the warning message for all files exceeds the token limit."""
+    service = AnalysisService(**mock_dependencies)
+    service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 50
+    files = [("file1.pdf", b"c1"), ("file2.pdf", b"c2")]
+
+    # Mock the token count for a prompt with a warning about all files to be over the limit
+    service.ai_provider.count_tokens_for_analysis.return_value = (60, 0, 0)
+
+    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
+
+    assert len(selected_files) == 0
+    assert len(excluded_files) == 2
+    assert "file1.pdf" in excluded_files
+    assert "file2.pdf" in excluded_files
+    assert tokens == 60
 
 
 def test_upload_analysis_report(mock_dependencies: dict[str, Any]) -> None:
@@ -522,6 +579,8 @@ def test_analyze_procurement_happy_path(
     )
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        # Mock the token counting for the selection process
+        service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
         service.analyze_procurement(mock_procurement, 1, analysis_id)
 
         mock_get_modality.assert_called_once()
@@ -561,6 +620,7 @@ def test_analyze_procurement_reuse_existing(
     )
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
         service.analyze_procurement(mock_procurement, 1, analysis_id)
 
         mock_get_modality.assert_called_once()
@@ -612,6 +672,7 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
     )
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
+        service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
         service.analyze_procurement(mock_procurement, 1, analysis_id)
 
         mock_get_modality.assert_called_once()
@@ -648,6 +709,7 @@ def test_analyze_procurement_with_gcs_prefix(
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
         with patch.object(service, "_upload_analysis_report", return_value="test/path/report.json") as mock_upload:
+            service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
             service.analyze_procurement(mock_procurement, 1, analysis_id)
             mock_upload.assert_called_once()
             assert "test-prefix" in mock_upload.call_args[0][0]
@@ -674,6 +736,7 @@ def test_analyze_procurement_ai_fails(mock_dependencies: dict[str, Any], mock_pr
     service.analysis_repo.get_analysis_by_hash.return_value = None
     service.ai_provider.get_structured_analysis.side_effect = Exception("AI error")
 
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
     with pytest.raises(Exception, match="AI error"):
         service.analyze_procurement(mock_procurement, 1, analysis_id)
 
@@ -687,24 +750,26 @@ def test_analyze_procurement_no_supported_files(
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
     service.procurement_repo.process_procurement_documents.return_value = [("file.txt", b"content")]
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_not_called()
 
 
-def test_select_and_prepare_files_for_ai_size_limit_exceeded(mock_dependencies: dict[str, Any]) -> None:
-    """Test that files are excluded when the total size limit is exceeded."""
+def test_select_and_prepare_files_for_ai_size_limit_exceeded(
+    mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
+    """Test that files are excluded when the individual size limit is exceeded."""
     service = AnalysisService(**mock_dependencies)
     service._MAX_SIZE_BYTES_FOR_AI = 10
-    files = [("file1.pdf", b"content1"), ("file2.pdf", b"content2")]
+    files = [("file1.pdf", b"content1"), ("file2.pdf", b"this content is way too long")]
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
-    selected_files, excluded_files, warnings = service._select_and_prepare_files_for_ai(files)
+    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
 
     assert len(selected_files) == 1
     assert selected_files[0][0] == "file1.pdf"
     assert len(excluded_files) == 1
     assert "file2.pdf" in excluded_files
-    assert len(warnings) == 1
-    assert "Limite de" in warnings[0]
-    assert "excedido" in warnings[0]
+    assert "excedeu o limite" in excluded_files["file2.pdf"]

@@ -85,7 +85,6 @@ class AnalysisService:
         "contrato",
         "ata de registro",
     ]
-    _MAX_FILES_FOR_AI = 10
     _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
 
     def __init__(
@@ -240,7 +239,9 @@ class AnalysisService:
             self.logger.warning(f"No files found for {control_number}. Aborting.")
             return
 
-        files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        files_for_ai, excluded_files, warnings, _ = self._select_and_prepare_files_for_ai(
+            all_original_files, procurement
+        )
 
         if not files_for_ai:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
@@ -442,17 +443,18 @@ class AnalysisService:
             self.file_record_repo.save_file_record(file_record)
 
     def _select_and_prepare_files_for_ai(
-        self,
-        all_files: list[tuple[str, bytes]],
-    ) -> tuple[list[tuple[str, bytes]], dict[str, str], list[str]]:
+        self, all_files: list[tuple[str, bytes]], procurement: Procurement
+    ) -> tuple[list[tuple[str, bytes]], dict[str, str], list[str], int]:
         """Applies business rules to filter and prioritize files for AI analysis.
 
-        This method implements the core logic for deciding which files are
-        most relevant for analysis, based on file type, keywords in the
-        filename, and constraints on the number of files and total size.
+        This method implements a dynamic file selection logic based on the AI
+        model's token limit. It prioritizes files and adds them to the analysis
+        until the total token count approaches the maximum allowed, ensuring
+        optimal use of the context window.
 
         Args:
             all_files: A list of all available files for the procurement.
+            procurement: The procurement object, used to build the base prompt.
 
         Returns:
             A tuple containing:
@@ -460,65 +462,92 @@ class AnalysisService:
             - A dictionary mapping the path of each excluded file to the reason
               for its exclusion.
             - A list of warning messages to be included in the AI prompt.
+            - The total calculated input tokens for the final selection.
         """
-        warnings = []
-        excluded_files = {}
+        excluded_files: dict[str, str] = {}
+        max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
 
-        # Filter by supported extensions
-        supported_files, unsupported_files = [], []
-        for path, content in all_files:
-            if path.lower().endswith(self._SUPPORTED_EXTENSIONS):
-                supported_files.append((path, content))
-            else:
-                unsupported_files.append(path)
-        for path in unsupported_files:
-            excluded_files[path] = ExclusionReason.UNSUPPORTED_EXTENSION
-
-        # Sort by priority
-        supported_files.sort(key=lambda item: self._get_priority(item[0]))
-
-        # Filter by max number of files
-        if len(supported_files) > self._MAX_FILES_FOR_AI:
-            files_to_exclude = supported_files[self._MAX_FILES_FOR_AI :]
-            for path, _ in files_to_exclude:
-                excluded_files[path] = ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=self._MAX_FILES_FOR_AI)
-
-            warnings.append(
-                Warnings.FILE_LIMIT_EXCEEDED.format(
-                    max_files=self._MAX_FILES_FOR_AI,
-                    ignored_files=", ".join(p for p, _ in files_to_exclude),
-                )
-            )
-            selected_files = supported_files[: self._MAX_FILES_FOR_AI]
-        else:
-            selected_files = supported_files
-
-        # Filter by size
-        final_files = []
-        current_size = 0
-        files_excluded_by_size = []
+        # 1. Initial filtering by extension and size
+        candidate_files = []
         max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
-
-        for path, content in selected_files:
-            if current_size + len(content) > self._MAX_SIZE_BYTES_FOR_AI:
+        for path, content in all_files:
+            if not path.lower().endswith(self._SUPPORTED_EXTENSIONS):
+                excluded_files[path] = ExclusionReason.UNSUPPORTED_EXTENSION
+            elif len(content) > self._MAX_SIZE_BYTES_FOR_AI:
                 excluded_files[path] = ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
-                files_excluded_by_size.append(path)
             else:
-                final_files.append((path, content))
-                current_size += len(content)
+                candidate_files.append((path, content))
 
-        if files_excluded_by_size:
-            warnings.append(
-                Warnings.TOTAL_SIZE_LIMIT_EXCEEDED.format(
-                    max_size_mb=max_size_mb,
-                    ignored_files=", ".join(files_excluded_by_size),
-                )
-            )
+        # 2. Sort candidates by priority
+        candidate_files.sort(key=lambda item: self._get_priority(item[0]))
 
-        for warning_msg in warnings:
-            self.logger.warning(warning_msg)
+        # 3. Dynamic selection based on tokens
+        final_files: list[tuple[str, bytes]] = []
+        excluded_candidates = candidate_files.copy()
 
-        return final_files, excluded_files, warnings
+        # Helper to generate warning message and count its token cost
+        def get_warning_info(ignored_files: list[tuple[str, bytes]]) -> tuple[str, int]:
+            if not ignored_files:
+                return "", 0
+
+            ignored_names = ", ".join([os.path.basename(p) for p, _ in ignored_files])
+            warning_str = Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=ignored_names)
+
+            # The cost is the warning itself plus the prompt structure that holds it
+            prompt_with_warning = self._build_analysis_prompt(procurement, [warning_str])
+            prompt_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt_with_warning, [])
+            return warning_str, prompt_tokens
+
+        # Calculate base prompt tokens (no files, no warnings)
+        base_prompt_text = self._build_analysis_prompt(procurement, [])
+        current_token_count, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, [])
+
+        # Check if the prompt with a warning about all files already exceeds the limit
+        initial_warning_str, tokens_with_initial_warning = get_warning_info(excluded_candidates)
+        if tokens_with_initial_warning > max_tokens:
+            self.logger.warning(f"Base prompt with all files excluded already exceeds token limit for {procurement.pncp_control_number}")
+            for path, _ in candidate_files:
+                excluded_files[path] = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
+            return [], excluded_files, [initial_warning_str], tokens_with_initial_warning
+
+        current_token_count = tokens_with_initial_warning
+
+        # Iteratively try to move files from excluded to final
+        for i in range(len(candidate_files)):
+            candidate_to_add = candidate_files[i]
+            path, _ = candidate_to_add
+
+            # Calculate tokens for the file itself
+            file_tokens, _, _ = self.ai_provider.count_tokens_for_analysis("", [candidate_to_add])
+
+            # Calculate how many tokens we save by removing this file from the warning
+            temp_excluded_list = [f for f in excluded_candidates if f != candidate_to_add]
+            _, tokens_with_new_warning = get_warning_info(temp_excluded_list)
+
+            # The warning cost difference is not linear, so we calculate the full new prompt
+            # The new total would be: base_prompt + new_warning + final_files + candidate_file
+            prompt_with_new_warning = self._build_analysis_prompt(procurement, ([get_warning_info(temp_excluded_list)[0]] if temp_excluded_list else []))
+            potential_total, _, _ = self.ai_provider.count_tokens_for_analysis(prompt_with_new_warning, final_files + [candidate_to_add])
+
+
+            if potential_total <= max_tokens:
+                final_files.append(candidate_to_add)
+                excluded_candidates.remove(candidate_to_add)
+                current_token_count = potential_total
+            else:
+                excluded_files[path] = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
+
+        # Finalize warnings and token count
+        final_warning_str, final_token_count = get_warning_info(excluded_candidates)
+        final_prompt = self._build_analysis_prompt(procurement, [final_warning_str] if final_warning_str else [])
+        final_token_count, _, _ = self.ai_provider.count_tokens_for_analysis(final_prompt, final_files)
+
+        final_warnings = [final_warning_str] if final_warning_str else []
+        for msg in final_warnings:
+            if msg:
+                self.logger.warning(msg)
+
+        return final_files, excluded_files, final_warnings, final_token_count
 
     def _get_priority(self, file_path: str) -> int:
         """Determines the priority of a file based on keywords in its name.
@@ -754,7 +783,7 @@ class AnalysisService:
             raw_data: The raw JSON data of the procurement.
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        files_for_ai, _, _, input_tokens = self._select_and_prepare_files_for_ai(all_original_files, procurement)
 
         raw_data_str = json.dumps(raw_data, sort_keys=True)
         all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
@@ -776,8 +805,8 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        prompt = self._build_analysis_prompt(procurement, warnings)
-        input_tokens, output_tokens, thinking_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        output_tokens = 0
+        thinking_tokens = 0
         modality = self._get_modality(files_for_ai)
         input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
             input_tokens, output_tokens, thinking_tokens, modality=modality
