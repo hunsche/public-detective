@@ -85,7 +85,6 @@ class AnalysisService:
         "contrato",
         "ata de registro",
     ]
-    _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
 
     def __init__(
         self,
@@ -467,14 +466,11 @@ class AnalysisService:
         excluded_files: dict[str, str] = {}
         max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
 
-        # 1. Initial filtering by extension and size
+        # 1. Initial filtering by extension
         candidate_files = []
-        max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
         for path, content in all_files:
             if not path.lower().endswith(self._SUPPORTED_EXTENSIONS):
                 excluded_files[path] = ExclusionReason.UNSUPPORTED_EXTENSION
-            elif len(content) > self._MAX_SIZE_BYTES_FOR_AI:
-                excluded_files[path] = ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
             else:
                 candidate_files.append((path, content))
 

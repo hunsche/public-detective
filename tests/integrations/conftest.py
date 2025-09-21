@@ -42,13 +42,13 @@ def db_session() -> Generator:
     engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
     # Wait for the database to be ready before proceeding
-    for _ in range(30):
+    for _ in range(60):
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
             break
         except Exception:
-            time.sleep(1)
+            time.sleep(2)
     else:
         pytest.fail("Database did not become available in time.")
 

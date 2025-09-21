@@ -757,19 +757,3 @@ def test_analyze_procurement_no_supported_files(
     service.analysis_repo.save_analysis.assert_not_called()
 
 
-def test_select_and_prepare_files_for_ai_size_limit_exceeded(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test that files are excluded when the individual size limit is exceeded."""
-    service = AnalysisService(**mock_dependencies)
-    service._MAX_SIZE_BYTES_FOR_AI = 10
-    files = [("file1.pdf", b"content1"), ("file2.pdf", b"this content is way too long")]
-    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
-
-    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
-
-    assert len(selected_files) == 1
-    assert selected_files[0][0] == "file1.pdf"
-    assert len(excluded_files) == 1
-    assert "file2.pdf" in excluded_files
-    assert "excedeu o limite" in excluded_files["file2.pdf"]
