@@ -62,3 +62,22 @@ class FileRecordsRepository:
             conn.commit()
 
         self.logger.info("File record saved successfully.")
+
+    def get_all_file_records_by_analysis_id(self, analysis_id: str) -> list:
+        """Retrieves all file records for a given analysis ID.
+
+        Args:
+            analysis_id: The ID of the analysis to retrieve file records for.
+
+        Returns:
+            A list of file records, where each record is a dictionary-like object.
+        """
+        self.logger.info(f"Fetching all file records for analysis_id {analysis_id}.")
+        sql = text(
+            """
+            SELECT * FROM file_records WHERE analysis_id = :analysis_id;
+            """
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"analysis_id": analysis_id}).fetchall()
+        return result

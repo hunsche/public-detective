@@ -82,3 +82,37 @@ def db_session() -> Generator:
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
         engine.dispose()
+
+
+@pytest.fixture
+def integration_dependencies(db_session):
+    """Provides real dependencies for integration tests."""
+    from public_detective.providers.ai import AiProvider
+    from public_detective.providers.gcs import GcsProvider
+    from public_detective.providers.pubsub import PubSubProvider
+    from public_detective.repositories.analyses import AnalysisRepository
+    from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+    from public_detective.repositories.file_records import FileRecordsRepository
+    from public_detective.repositories.procurements import ProcurementsRepository
+    from public_detective.repositories.status_history import StatusHistoryRepository
+    from public_detective.services.analysis import Analysis
+
+    pubsub_provider = PubSubProvider()
+    procurement_repo = ProcurementsRepository(db_session, pubsub_provider)
+    analysis_repo = AnalysisRepository(db_session)
+    file_record_repo = FileRecordsRepository(db_session)
+    status_history_repo = StatusHistoryRepository(db_session)
+    budget_ledger_repo = BudgetLedgerRepository(db_session)
+    ai_provider = AiProvider(output_schema=Analysis)
+    gcs_provider = GcsProvider()
+
+    return {
+        "procurement_repo": procurement_repo,
+        "analysis_repo": analysis_repo,
+        "file_record_repo": file_record_repo,
+        "status_history_repo": status_history_repo,
+        "budget_ledger_repo": budget_ledger_repo,
+        "ai_provider": ai_provider,
+        "gcs_provider": gcs_provider,
+        "pubsub_provider": pubsub_provider,
+    }
