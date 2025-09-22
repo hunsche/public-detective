@@ -755,5 +755,3 @@ def test_analyze_procurement_no_supported_files(
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 
     service.analysis_repo.save_analysis.assert_not_called()
-
-

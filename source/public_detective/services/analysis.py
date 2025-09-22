@@ -501,35 +501,31 @@ class AnalysisService:
         # Check if the prompt with a warning about all files already exceeds the limit
         initial_warning_str, tokens_with_initial_warning = get_warning_info(excluded_candidates)
         if tokens_with_initial_warning > max_tokens:
-            self.logger.warning(f"Base prompt with all files excluded already exceeds token limit for {procurement.pncp_control_number}")
+            self.logger.warning(
+                f"Base prompt with all files excluded already exceeds token limit for {procurement.pncp_control_number}"
+            )
             for path, _ in candidate_files:
                 excluded_files[path] = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
             return [], excluded_files, [initial_warning_str], tokens_with_initial_warning
-
-        current_token_count = tokens_with_initial_warning
 
         # Iteratively try to move files from excluded to final
         for i in range(len(candidate_files)):
             candidate_to_add = candidate_files[i]
             path, _ = candidate_to_add
 
-            # Calculate tokens for the file itself
-            file_tokens, _, _ = self.ai_provider.count_tokens_for_analysis("", [candidate_to_add])
-
-            # Calculate how many tokens we save by removing this file from the warning
-            temp_excluded_list = [f for f in excluded_candidates if f != candidate_to_add]
-            _, tokens_with_new_warning = get_warning_info(temp_excluded_list)
-
             # The warning cost difference is not linear, so we calculate the full new prompt
             # The new total would be: base_prompt + new_warning + final_files + candidate_file
-            prompt_with_new_warning = self._build_analysis_prompt(procurement, ([get_warning_info(temp_excluded_list)[0]] if temp_excluded_list else []))
-            potential_total, _, _ = self.ai_provider.count_tokens_for_analysis(prompt_with_new_warning, final_files + [candidate_to_add])
-
+            temp_excluded_list = [f for f in excluded_candidates if f != candidate_to_add]
+            prompt_with_new_warning = self._build_analysis_prompt(
+                procurement, ([get_warning_info(temp_excluded_list)[0]] if temp_excluded_list else [])
+            )
+            potential_total, _, _ = self.ai_provider.count_tokens_for_analysis(
+                prompt_with_new_warning, final_files + [candidate_to_add]
+            )
 
             if potential_total <= max_tokens:
                 final_files.append(candidate_to_add)
                 excluded_candidates.remove(candidate_to_add)
-                current_token_count = potential_total
             else:
                 excluded_files[path] = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
 
