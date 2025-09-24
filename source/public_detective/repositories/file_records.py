@@ -46,11 +46,11 @@ class FileRecordsRepository:
             INSERT INTO file_records (
                 analysis_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
-                prioritization_logic
+                prioritization_logic, converted_gcs_path
             ) VALUES (
                 :analysis_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
-                :prioritization_logic
+                :prioritization_logic, :converted_gcs_path
             );
         """
         )

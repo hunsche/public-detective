@@ -6,6 +6,10 @@ import uuid
 import zipfile
 from collections.abc import Generator
 from pathlib import Path
+import threading
+import asyncio
+from aiohttp import web
+import socket
 
 import pytest
 from alembic import command
@@ -17,6 +21,72 @@ from google.cloud.storage import Client
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+
+def get_free_port():
+    """Finds a free port on the host."""
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(("", 0))
+        return s.getsockname()[1]
+
+
+class MockPNCP:
+    """A mock PNCP server for E2E tests."""
+
+    def __init__(self, port: int):
+        self.port = port
+        self.file_content = b""
+        self.file_metadata = {}
+        self.server_app = web.Application()
+        self.server_app.router.add_get("/orgaos/{cnpj}/compras/{year}/{sequence}/arquivos", self.get_file_metadata)
+        self.server_app.router.add_get("/pncp-api/v1/contratacoes/{pncp_id}/arquivos/{file_id}", self.get_file_content)
+        self.runner = web.AppRunner(self.server_app)
+        self.site = None
+        self.loop = None
+
+    async def get_file_metadata(self, request: web.Request) -> web.Response:
+        """Serves the file metadata."""
+        return web.json_response(self.file_metadata)
+
+    async def get_file_content(self, request: web.Request) -> web.Response:
+        """Serves the file content."""
+        return web.Response(body=self.file_content)
+
+    def run_server(self):
+        """Runs the aiohttp server."""
+        self.loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(self.loop)
+        self.loop.run_until_complete(self.runner.setup())
+        self.site = web.TCPSite(self.runner, "localhost", self.port)
+        self.loop.run_until_complete(self.site.start())
+        self.loop.run_forever()
+
+    def start(self):
+        """Starts the server in a background thread."""
+        self.server_thread = threading.Thread(target=self.run_server)
+        self.server_thread.daemon = True
+        self.server_thread.start()
+        time.sleep(1)  # Give the server a moment to start
+
+    def stop(self):
+        """Stops the server."""
+        if self.loop:
+            self.loop.call_soon_threadsafe(self.loop.stop)
+
+    @property
+    def url(self) -> str:
+        """Returns the base URL of the mock server."""
+        return f"http://localhost:{self.port}"
+
+
+@pytest.fixture(scope="function")
+def mock_pncp_server() -> Generator[MockPNCP, None, None]:
+    """Fixture to manage the mock PNCP server."""
+    port = get_free_port()
+    server = MockPNCP(port)
+    server.start()
+    yield server
+    server.stop()
 
 
 def run_command(command_str: str, max_retries: int = 3, delay: int = 10) -> None:
@@ -182,6 +252,13 @@ def db_session() -> Generator[Engine, None, None]:
     for blob in bucket.list_blobs(prefix=gcs_test_prefix):
         blob.delete()
 
+    # Ensure LibreOffice is installed for conversion tests
+    try:
+        subprocess.run(["sudo", "apt-get", "update"], check=True)
+        subprocess.run(["sudo", "apt-get", "install", "-y", "libreoffice"], check=True)
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        pytest.fail(f"Failed to install LibreOffice: {e}")
+
     try:
         publisher.create_topic(request={"name": topic_path})
         subscriber.create_subscription(request={"name": subscription_path, "topic": topic_path})
@@ -219,3 +296,4 @@ def db_session() -> Generator[Engine, None, None]:
             connection.commit()
         engine.dispose()
         print("E2E test environment torn down.")
+        ConfigProvider._config = None
