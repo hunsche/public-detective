@@ -75,7 +75,7 @@ ignore_errors = false
 omit = [
     ".venv/**",
     "*__init__*",
-    "source/migrations/*",
+    "source/public_detective/migrations/*",
 ]
 
 [tool.black]
