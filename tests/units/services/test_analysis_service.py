@@ -11,7 +11,7 @@ from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
-from public_detective.services.analysis import AnalysisService
+from public_detective.services.analysis import AIFileCandidate, AnalysisService
 
 
 @pytest.fixture
@@ -58,7 +58,7 @@ def test_update_status_with_history(mock_dependencies: dict[str, Any]) -> None:
     """Test that the _update_status_with_history method calls the correct repositories."""
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
-    status = "ANALYSIS_SUCCESSFUL"
+    status = ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL
     details = "Details"
 
     service._update_status_with_history(analysis_id, status, details)
@@ -79,102 +79,40 @@ def test_build_analysis_prompt(mock_dependencies: dict[str, Any], mock_procureme
     assert mock_procurement.model_dump_json(by_alias=True, indent=2) in prompt
 
 
-def test_select_and_prepare_files_for_ai_happy_path(
+def test_select_files_by_token_limit_happy_path(
     mock_dependencies: dict[str, Any], mock_procurement: Procurement
 ) -> None:
-    """Test the happy path for _select_and_prepare_files_for_ai."""
+    """Test the happy path for _select_files_by_token_limit."""
     service = AnalysisService(**mock_dependencies)
-    files = [("file1.pdf", b"content1"), ("file2.docx", b"content2")]
+    candidates = [
+        AIFileCandidate(original_path="file1.pdf", original_content=b"content1"),
+        AIFileCandidate(original_path="file2.docx", original_content=b"content2"),
+    ]
     service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
-    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
+    selected_candidates, warnings = service._select_files_by_token_limit(candidates, mock_procurement)
 
-    assert len(selected_files) == 2
-    assert not excluded_files
-    assert not warnings  # No warning message for ignored files
-    assert tokens > 0
+    assert len(selected_candidates) == 2
+    assert all(c.is_included for c in selected_candidates)
+    assert not warnings
 
 
-def test_select_and_prepare_files_for_ai_unsupported_extension(
+def test_select_files_by_token_limit_unsupported_extension(
     mock_dependencies: dict[str, Any], mock_procurement: Procurement
 ) -> None:
     """Test that files with unsupported extensions are excluded."""
     service = AnalysisService(**mock_dependencies)
-    files = [("file1.txt", b"content1"), ("file2.pdf", b"content2")]
+    candidates = [
+        AIFileCandidate(original_path="file1.txt", original_content=b"content1", exclusion_reason="Unsupported"),
+        AIFileCandidate(original_path="file2.pdf", original_content=b"content2"),
+    ]
     service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
-    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
+    selected_candidates, warnings = service._select_files_by_token_limit(candidates, mock_procurement)
 
-    assert len(selected_files) == 1
-    assert selected_files[0][0] == "file2.pdf"
-    assert len(excluded_files) == 1
-    assert "file1.txt" in excluded_files
-
-
-def test_select_and_prepare_files_for_ai_token_limit_exceeded(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test that files are excluded when the token limit is exceeded."""
-    service = AnalysisService(**mock_dependencies)
-    service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 100
-    # Prioritized file first
-    files = [("edital.pdf", b"content1"), ("anexo.pdf", b"content2")]
-
-    def count_tokens_side_effect(prompt: str, files: list) -> tuple[int, int, int]:
-        # Base prompt with warning for both files
-        if "edital.pdf" in prompt and "anexo.pdf" in prompt:
-            return (30, 0, 0)
-        # Base prompt with warning for one file
-        if "anexo.pdf" in prompt:
-            return (20, 0, 0)
-        # Final calculation with selected files
-        if files:
-            # If it's the check for the second file, make it exceed the limit
-            if len(files) > 1:
-                return (110, 0, 0)
-            # The prompt will have a warning for the second file
-            if "anexo.pdf" in prompt:
-                return (20 + 50, 0, 0)  # warning + file1
-        # Token count for a single file
-        if files and "edital" in files[0][0]:
-            return (50, 0, 0)
-        if files and "anexo" in files[0][0]:
-            return (70, 0, 0)  # This one is larger
-        # Base prompt
-        return (10, 0, 0)
-
-    service.ai_provider.count_tokens_for_analysis.side_effect = count_tokens_side_effect
-
-    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
-
-    assert len(selected_files) == 1
-    assert selected_files[0][0] == "edital.pdf"
-    assert len(excluded_files) == 1
-    assert "anexo.pdf" in excluded_files
-    assert len(warnings) == 1
-    assert "tokens foi excedido" in warnings[0]
-    assert "anexo.pdf" in warnings[0]
-    assert "edital.pdf" not in warnings[0]
-
-
-def test_select_and_prepare_files_for_ai_warning_exceeds_limit(
-    mock_dependencies: dict[str, Any], mock_procurement: Procurement
-) -> None:
-    """Test case where the base prompt plus the warning message for all files exceeds the token limit."""
-    service = AnalysisService(**mock_dependencies)
-    service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 50
-    files = [("file1.pdf", b"c1"), ("file2.pdf", b"c2")]
-
-    # Mock the token count for a prompt with a warning about all files to be over the limit
-    service.ai_provider.count_tokens_for_analysis.return_value = (60, 0, 0)
-
-    selected_files, excluded_files, warnings, tokens = service._select_and_prepare_files_for_ai(files, mock_procurement)
-
-    assert len(selected_files) == 0
-    assert len(excluded_files) == 2
-    assert "file1.pdf" in excluded_files
-    assert "file2.pdf" in excluded_files
-    assert tokens == 60
+    assert len(selected_candidates) == 2
+    assert sum(1 for c in selected_candidates if c.is_included) == 1
+    assert selected_candidates[1].is_included
 
 
 def test_upload_analysis_report(mock_dependencies: dict[str, Any]) -> None:
@@ -202,16 +140,15 @@ def test_upload_analysis_report(mock_dependencies: dict[str, Any]) -> None:
     assert b'"risk_score": 5' in call_args["content"]
 
 
-def test_process_and_save_file_records(mock_dependencies: dict[str, Any]) -> None:
+def test_process_and_save_file_records(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
     """Test the happy path for _process_and_save_file_records."""
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
-    gcs_base_path = "test/path"
-    all_files = [("file1.pdf", b"content1")]
-    included_files = [("file1.pdf", b"content1")]
-    excluded_files: dict[str, str] = {}
+    candidates = [
+        AIFileCandidate(original_path="file1.pdf", original_content=b"content1", is_included=True),
+    ]
 
-    service._process_and_save_file_records(analysis_id, gcs_base_path, all_files, included_files, excluded_files)
+    service._process_and_save_file_records(analysis_id, mock_procurement, candidates)
 
     service.gcs_provider.upload_file.assert_called_once()
     service.file_record_repo.save_file_record.assert_called_once()
@@ -618,6 +555,7 @@ def test_analyze_procurement_reuse_existing(
         Decimal("0.5"),
         Decimal("3.5"),
     )
+    service.ai_provider.get_structured_analysis.return_value = (mock_existing_analysis.ai_analysis, 100, 50, 10)
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
         service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
@@ -670,6 +608,7 @@ def test_analyze_procurement_reuse_existing_with_gcs_prefix(
         Decimal("0.5"),
         Decimal("3.5"),
     )
+    service.ai_provider.get_structured_analysis.return_value = (mock_existing_analysis.ai_analysis, 100, 50, 10)
 
     with patch.object(service, "_get_modality", return_value="text") as mock_get_modality:
         service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
@@ -723,9 +662,20 @@ def test_get_modality(mock_dependencies: dict[str, Any]) -> None:
     service = AnalysisService(**mock_dependencies)
     assert service._get_modality([("file.pdf", b"")]) == Modality.TEXT
     assert service._get_modality([("file.mp4", b"")]) == Modality.VIDEO
+    assert service._get_modality([("file.mov", b"")]) == Modality.VIDEO
+    assert service._get_modality([("file.avi", b"")]) == Modality.VIDEO
+    assert service._get_modality([("file.mkv", b"")]) == Modality.VIDEO
     assert service._get_modality([("file.mp3", b"")]) == Modality.AUDIO
+    assert service._get_modality([("file.wav", b"")]) == Modality.AUDIO
+    assert service._get_modality([("file.flac", b"")]) == Modality.AUDIO
+    assert service._get_modality([("file.ogg", b"")]) == Modality.AUDIO
     assert service._get_modality([("file.jpg", b"")]) == Modality.IMAGE
+    assert service._get_modality([("file.jpeg", b"")]) == Modality.IMAGE
+    assert service._get_modality([("file.png", b"")]) == Modality.IMAGE
+    assert service._get_modality([("file.gif", b"")]) == Modality.IMAGE
+    assert service._get_modality([("file.bmp", b"")]) == Modality.IMAGE
     assert service._get_modality([("file.pdf", b""), ("file.mp4", b"")]) == Modality.VIDEO
+    assert service._get_modality([("file", b"")]) == Modality.TEXT
 
 
 def test_analyze_procurement_ai_fails(mock_dependencies: dict[str, Any], mock_procurement: Procurement) -> None:
@@ -749,8 +699,9 @@ def test_analyze_procurement_no_supported_files(
     """Test analyze_procurement when no supported files are found."""
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
-    service.procurement_repo.process_procurement_documents.return_value = [("file.txt", b"content")]
+    service.procurement_repo.process_procurement_documents.return_value = [("file.unsupported", b"content")]
     service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
+    service.ai_provider.get_structured_analysis.return_value = (MagicMock(), 0, 0, 0)
 
     service.analyze_procurement(mock_procurement, 1, analysis_id)
 

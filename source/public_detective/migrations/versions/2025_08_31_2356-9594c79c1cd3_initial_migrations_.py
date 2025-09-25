@@ -105,7 +105,7 @@ def upgrade() -> None:
             included_in_analysis BOOLEAN NOT NULL,
             exclusion_reason VARCHAR,
             prioritization_logic VARCHAR,
-            converted_gcs_path VARCHAR
+            converted_gcs_paths TEXT[]
         );
         CREATE TABLE {history_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),

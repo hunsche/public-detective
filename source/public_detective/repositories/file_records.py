@@ -1,5 +1,7 @@
 """This module defines the repository for file records management."""
 
+from typing import Any
+
 from public_detective.models.file_records import NewFileRecord
 from public_detective.providers.logging import Logger, LoggingProvider
 from sqlalchemy import Engine, text
@@ -46,16 +48,16 @@ class FileRecordsRepository:
             INSERT INTO file_records (
                 analysis_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
-                prioritization_logic, converted_gcs_path
+                prioritization_logic, converted_gcs_paths
             ) VALUES (
                 :analysis_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
-                :prioritization_logic, :converted_gcs_path
+                :prioritization_logic, :converted_gcs_paths
             );
         """
         )
 
-        params = record.model_dump()
+        params = record.model_dump(exclude_none=False)
 
         with self.engine.connect() as conn:
             conn.execute(sql, params)
@@ -63,7 +65,7 @@ class FileRecordsRepository:
 
         self.logger.info("File record saved successfully.")
 
-    def get_all_file_records_by_analysis_id(self, analysis_id: str) -> list:
+    def get_all_file_records_by_analysis_id(self, analysis_id: str) -> list[dict[str, Any]]:
         """Retrieves all file records for a given analysis ID.
 
         Args:
@@ -79,5 +81,5 @@ class FileRecordsRepository:
             """
         )
         with self.engine.connect() as conn:
-            result = conn.execute(sql, {"analysis_id": analysis_id}).fetchall()
-        return result
+            result = conn.execute(sql, {"analysis_id": analysis_id}).mappings().all()
+        return [dict(row) for row in result]

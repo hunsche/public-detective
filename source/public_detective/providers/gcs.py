@@ -3,7 +3,7 @@
 It encapsulates the logic for interacting with GCS, such as uploading
 and downloading files.
 """
-import os
+
 from typing import cast
 
 from google.auth.credentials import AnonymousCredentials

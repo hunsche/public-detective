@@ -4,16 +4,18 @@ import uuid
 import zipfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
 from alembic.config import Config
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 
 @pytest.fixture(scope="function")
-def db_session() -> Generator:
+def db_session() -> Generator[Engine, Any, None]:
     os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
     os.environ.pop("GCP_GCS_BUCKET_PROCUREMENTS", None)
     os.environ["GCP_PROJECT"] = "public-detective"
@@ -85,7 +87,7 @@ def db_session() -> Generator:
 
 
 @pytest.fixture
-def integration_dependencies(db_session):
+def integration_dependencies(db_session: Engine) -> dict[str, Any]:
     """Provides real dependencies for integration tests."""
     from public_detective.providers.ai import AiProvider
     from public_detective.providers.gcs import GcsProvider

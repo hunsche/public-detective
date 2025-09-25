@@ -1,90 +1,115 @@
 """This module contains E2E tests for file extension handling."""
+
 import json
 import os
 import uuid
-from pathlib import Path
+from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 import pytest
 from docx import Document
 from openpyxl import Workbook
 from PIL import Image
-from reportlab.lib.pagesizes import letter
-from reportlab.pdfgen import canvas
-from sqlalchemy import text
-from sqlalchemy.engine import Engine
-
 from public_detective.models.procurements import Procurement
 from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.procurements import ProcurementsRepository
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from sqlalchemy import text
+from sqlalchemy.engine import Engine
+
 from tests.e2e.conftest import MockPNCP, run_command
 
 
 # Helper functions to generate files
-def create_txt(path: Path, content: str = "This is a test text file."):
+def create_txt(path: Path, content: str = "This is a test text file.") -> None:
     """Creates a simple text file."""
     path.write_text(content)
 
 
-def create_pdf(path: Path, content: str = "This is a test PDF file."):
-    """Creates a simple PDF file."""
-    c = canvas.Canvas(str(path), pagesize=letter)
-    c.drawString(100, 750, content)
-    c.save()
+def create_doc(path: Path, content: str = "This is a test DOC file.") -> None:
+    """Creates a simple DOC file (by saving as DOCX, LibreOffice will handle it)."""
+    document = Document()
+    document.add_paragraph(content)
+    document.save(str(path))
 
 
-def create_docx(path: Path, content: str = "This is a test DOCX file."):
+def create_docx(path: Path, content: str = "This is a test DOCX file.") -> None:
     """Creates a simple DOCX file."""
     document = Document()
     document.add_paragraph(content)
-    document.save(path)
+    document.save(str(path))
 
 
-def create_xlsx(path: Path):
+def create_xls(path: Path) -> None:
+    """Creates a simple XLS file (by saving as XLSX)."""
+    workbook = Workbook()
+    sheet = workbook.active
+    if sheet:
+        sheet["A1"] = "This is a test XLS file."
+    workbook.save(str(path))
+
+
+def create_xlsx(path: Path) -> None:
     """Creates a simple XLSX file."""
     workbook = Workbook()
     sheet = workbook.active
-    sheet["A1"] = "This is a test XLSX file."
-    workbook.save(path)
+    if sheet:
+        sheet.title = "Sheet1"
+        sheet["A1"] = "This is a test XLSX file on Sheet1."
+    sheet2 = workbook.create_sheet(title="Sheet2")
+    sheet2["A1"] = "This is a test XLSX file on Sheet2."
+    workbook.save(str(path))
 
 
-def create_jpg(path: Path):
+def create_jpg(path: Path) -> None:
     """Creates a simple JPG image."""
     img = Image.new("RGB", (100, 100), color="red")
     img.save(path, "jpeg")
 
 
-def create_png(path: Path):
+def create_png(path: Path) -> None:
     """Creates a simple PNG image."""
     img = Image.new("RGB", (100, 100), color="green")
     img.save(path, "png")
 
 
-FILE_GENERATORS = {
+def create_pdf(path: Path, content: str = "This is a valid PDF file.") -> None:
+    """Creates a simple, valid PDF file."""
+    c = canvas.Canvas(str(path), pagesize=letter)
+    c.drawString(100, 750, content)
+    c.save()
+
+
+FILE_GENERATORS: dict[str, Callable[..., None]] = {
     ".txt": create_txt,
     ".pdf": create_pdf,
+    ".doc": create_doc,
     ".docx": create_docx,
+    ".xls": create_xls,
     ".xlsx": create_xlsx,
     ".jpg": create_jpg,
     ".png": create_png,
 }
 
-EXTENSIONS_TO_TEST = [".txt", ".pdf", ".docx", ".xlsx", ".jpg", ".png"]
-DOCX_EXTENSIONS = [".docx"]
+EXTENSIONS_TO_TEST = [".txt", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png"]
+DOC_EXTENSIONS = [".doc", ".docx"]
 IMAGE_EXTENSIONS = [".jpg", ".png"]
-SPREADSHEET_EXTENSIONS = [".xlsx"]
+SPREADSHEET_EXTENSIONS = [".xls", ".xlsx"]
 
 
 @pytest.mark.parametrize("extension", EXTENSIONS_TO_TEST)
 def test_file_extension_processing(
     db_session: Engine,
-    e2e_pubsub: tuple,
+    e2e_pubsub: tuple[Any, Any],
     tmp_path: Path,
     extension: str,
     mock_pncp_server: MockPNCP,
-):
+) -> None:
     """
     Tests the full E2E processing for various file extensions by running the
     worker as a subprocess and using a mock PNCP server to provide the files.
@@ -107,7 +132,7 @@ def test_file_extension_processing(
     procurement_control_number = f"file-ext-test-{uuid.uuid4().hex[:6]}"
 
     mock_pncp_server.file_content = local_file_path.read_bytes()
-    mock_pncp_server.file_metadata = [
+    mock_pncp_server.file_metadata = [  # type: ignore
         {
             "id": str(file_id),
             "url": f"{mock_pncp_server.url}/pncp-api/v1/contratacoes/{file_id}/arquivos/{file_name}",
@@ -197,9 +222,7 @@ def test_file_extension_processing(
     print(f"Published message for analysis_id: {analysis_id}")
 
     # 5. Run the worker as a subprocess
-    worker_command = (
-        f"poetry run python -m public_detective.worker --max-messages 1 --timeout 15"
-    )
+    worker_command = "poetry run python -m public_detective.worker --max-messages 1 --timeout 15"
     run_command(worker_command)
 
     # 6. Assertions
@@ -214,9 +237,7 @@ def test_file_extension_processing(
 
         file_record = (
             connection.execute(
-                text(
-                    "SELECT * FROM file_records WHERE analysis_id = :analysis_id AND file_name = :file_name"
-                ),
+                text("SELECT * FROM file_records WHERE analysis_id = :analysis_id AND file_name = :file_name"),
                 {"analysis_id": analysis_id, "file_name": file_name},
             )
             .mappings()
@@ -230,15 +251,18 @@ def test_file_extension_processing(
         assert file_record["gcs_path"].startswith(gcs_test_prefix)
         assert gcs_client.bucket(bucket_name).blob(file_record["gcs_path"]).exists()
 
-        if extension in DOCX_EXTENSIONS:
-            converted_pdf_path = file_record["converted_gcs_path"]
-            assert converted_pdf_path is not None, "DOCX should have a converted PDF path"
-            assert converted_pdf_path.endswith(".pdf")
-            assert gcs_client.bucket(bucket_name).blob(converted_pdf_path).exists()
-            print(f"Verified PDF conversion for {extension} at {converted_pdf_path}")
-        elif extension in IMAGE_EXTENSIONS or extension in SPREADSHEET_EXTENSIONS:
-            assert (
-                file_record["converted_gcs_path"] is None
-            ), f"Images and spreadsheets should not have a converted path, but {extension} did."
+        if extension in DOC_EXTENSIONS:
+            converted_paths = file_record["converted_gcs_paths"]
+            assert converted_paths is not None
+            assert len(converted_paths) == 1
+            assert converted_paths[0].endswith(".pdf")
+            assert gcs_client.bucket(bucket_name).blob(converted_paths[0]).exists()
+        elif extension in SPREADSHEET_EXTENSIONS:
+            converted_paths = file_record["converted_gcs_paths"]
+            assert converted_paths is not None
+            assert len(converted_paths) > 0
+            for path in converted_paths:
+                assert path.endswith(".csv")
+                assert gcs_client.bucket(bucket_name).blob(path).exists()
         else:
-            assert file_record["converted_gcs_path"] is None, f"Extension {extension} should not have a converted path."
+            assert file_record["converted_gcs_paths"] is None

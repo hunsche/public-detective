@@ -36,7 +36,6 @@ class FileRecord(BaseModel):
             why (e.g., 'Unsupported file extension.').
         prioritization_logic: The keyword or logic used to prioritize this
             file (e.g., 'edital', 'termo de referencia').
-        converted_gcs_path: The GCS path of the converted PDF file, if any.
     """
 
     id: UUID
@@ -51,7 +50,7 @@ class FileRecord(BaseModel):
     included_in_analysis: bool
     exclusion_reason: str | None
     prioritization_logic: str | None
-    converted_gcs_path: str | None
+    converted_gcs_paths: list[str] | None = None
 
 
 class NewFileRecord(BaseModel):
@@ -71,4 +70,4 @@ class NewFileRecord(BaseModel):
     included_in_analysis: bool
     exclusion_reason: str | None
     prioritization_logic: str | None
-    converted_gcs_path: str | None = None
+    converted_gcs_paths: list[str] | None = None
