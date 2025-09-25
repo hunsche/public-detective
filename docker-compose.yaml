@@ -14,6 +14,11 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d public_detective"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   pubsub:
     image: google/cloud-sdk:emulators
@@ -76,8 +81,12 @@ services:
         echo 'Initialization complete.';
       "
     depends_on:
-      - pubsub
-      - gcs
+      postgres:
+        condition: service_healthy
+      pubsub:
+        condition: service_started
+      gcs:
+        condition: service_started
 
 
 volumes:

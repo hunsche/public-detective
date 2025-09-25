@@ -67,6 +67,7 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procu
         mock_procurement  # Simulate finding an existing hash
     )
 
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
     # Act
     service._pre_analyze_procurement(mock_procurement, raw_data)
 
@@ -80,6 +81,7 @@ def test_pre_analyze_procurement_hash_exists_with_files(mock_dependencies: dict,
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("file.pdf", b"content")]
     service.procurement_repo.get_procurement_by_hash.return_value = mock_procurement
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
     service._pre_analyze_procurement(mock_procurement, {})
 
@@ -90,6 +92,7 @@ def test_pre_analyze_procurement_no_supported_files(mock_dependencies: dict, moc
     """Test _pre_analyze_procurement when no supported files are found."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = [("file.txt", b"content")]
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
     service._pre_analyze_procurement(mock_procurement, {})
 
@@ -128,7 +131,8 @@ def test_pre_analyze_procurement_happy_path(
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.get_procurement_by_hash.return_value = None
     service.procurement_repo.get_latest_version.return_value = 1
-    service.ai_provider.count_tokens_for_analysis.return_value = (100, 50, 10)
+    # Mock the return value for the new logic in _select_and_prepare_files_for_ai
+    service.ai_provider.count_tokens_for_analysis.return_value = (100, 0, 0)
     mock_pricing_service.return_value.calculate.return_value = (
         MagicMock(),
         MagicMock(),
@@ -141,7 +145,9 @@ def test_pre_analyze_procurement_happy_path(
     service.procurement_repo.save_procurement_version.assert_called_once()
     service.analysis_repo.save_pre_analysis.assert_called_once()
     call_kwargs = service.analysis_repo.save_pre_analysis.call_args[1]
-    assert call_kwargs["thinking_tokens_used"] == 10
+    assert call_kwargs["input_tokens_used"] == 100
+    assert call_kwargs["output_tokens_used"] == 0
+    assert call_kwargs["thinking_tokens_used"] == 0
     service.status_history_repo.create_record.assert_called_once()
 
 
@@ -149,6 +155,7 @@ def test_pre_analyze_procurement_no_files(mock_dependencies: dict, mock_procurem
     """Test _pre_analyze_procurement when no files are found."""
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.process_procurement_documents.return_value = []
+    service.ai_provider.count_tokens_for_analysis.return_value = (10, 0, 0)
 
     service._pre_analyze_procurement(mock_procurement, {})
 

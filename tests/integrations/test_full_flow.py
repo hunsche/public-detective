@@ -155,6 +155,7 @@ def test_full_flow_integration(integration_test_setup: None, db_session: Engine)
     # 2. Run analyze command
     with (
         patch.object(ai_provider, "get_structured_analysis", return_value=(gemini_response_fixture, 100, 50, 10)),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(10, 0, 0)),
         patch.object(analysis_service, "_get_modality", return_value="text"),
     ):
         with patch.object(procurement_repo, "process_procurement_documents", return_value=[("doc.pdf", b"content")]):

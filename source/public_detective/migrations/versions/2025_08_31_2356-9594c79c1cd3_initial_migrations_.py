@@ -104,7 +104,8 @@ def upgrade() -> None:
             nesting_level INTEGER NOT NULL,
             included_in_analysis BOOLEAN NOT NULL,
             exclusion_reason VARCHAR,
-            prioritization_logic VARCHAR
+            prioritization_logic VARCHAR,
+            converted_gcs_paths TEXT[]
         );
         CREATE TABLE {history_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),

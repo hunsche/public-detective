@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -25,18 +26,32 @@ from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.services.converter import ConverterService
 from public_detective.services.pricing_service import Modality, PricingService
 
 
-class AnalysisService:
-    """Orchestrates the entire procurement analysis pipeline.
+@dataclass
+class AIFileCandidate:
+    """Represents a file being considered for AI analysis."""
 
-    This service is the central component responsible for coordinating all the
-    steps involved in analyzing a public procurement. It fetches procurement
-    documents, prepares them for AI analysis by applying business rules,
-    invokes the AI model, and persists all results and metadata to the
-    database and Google Cloud Storage.
-    """
+    original_path: str
+    original_content: bytes
+    ai_path: str = ""
+    ai_content: bytes = b""
+    converted_gcs_paths: list[str] | None = None
+    is_included: bool = False
+    exclusion_reason: str | None = None
+
+    def __post_init__(self) -> None:
+        """Set the ai_path and ai_content if they're not provided."""
+        if not self.ai_path:
+            self.ai_path = self.original_path
+        if not self.ai_content:
+            self.ai_content = self.original_content
+
+
+class AnalysisService:
+    """Orchestrates the entire procurement analysis pipeline."""
 
     procurement_repo: ProcurementsRepository
     analysis_repo: AnalysisRepository
@@ -45,6 +60,7 @@ class AnalysisService:
     budget_ledger_repo: BudgetLedgerRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
+    converter_service: ConverterService
     pubsub_provider: PubSubProvider | None
     logger: Logger
     config: Config
@@ -58,6 +74,7 @@ class AnalysisService:
         ".xlsx",
         ".xls",
         ".csv",
+        ".txt",
         ".mp4",
         ".mov",
         ".avi",
@@ -75,6 +92,8 @@ class AnalysisService:
     _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
     _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
     _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".bmp")
+    _DOCX_EXTENSIONS = (".docx", ".doc", ".rtf")
+    _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls")
     _FILE_PRIORITY_ORDER = [
         "edital",
         "termo de referencia",
@@ -85,8 +104,6 @@ class AnalysisService:
         "contrato",
         "ata de registro",
     ]
-    _MAX_FILES_FOR_AI = 10
-    _MAX_SIZE_BYTES_FOR_AI = 20 * 1024 * 1024
 
     def __init__(
         self,
@@ -118,6 +135,7 @@ class AnalysisService:
         self.budget_ledger_repo = budget_ledger_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
+        self.converter_service = ConverterService()
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -126,15 +144,11 @@ class AnalysisService:
     def _get_modality(self, files: list[tuple[str, bytes]]) -> Modality:
         """Determines the modality of an analysis based on file extensions.
 
-        The modality is determined by the first file with a non-text modality.
-        If no non-text files are found, the modality is TEXT.
-
         Args:
-            files: A list of tuples, where each tuple contains the file path
-                and its content.
+            files: A list of tuples containing the file path and content.
 
         Returns:
-            The determined modality.
+            The modality of the analysis.
         """
         for path, _ in files:
             ext = os.path.splitext(path)[1].lower()
@@ -156,8 +170,8 @@ class AnalysisService:
 
         Args:
             analysis_id: The ID of the analysis to update.
-            status: The new status to set for the analysis.
-            details: Optional details about the status change.
+            status: The new status of the analysis.
+            details: Additional details about the status change.
         """
         self.analysis_repo.update_analysis_status(analysis_id, status)
         self.status_history_repo.create_record(analysis_id, status, details)
@@ -165,16 +179,9 @@ class AnalysisService:
     def process_analysis_from_message(self, analysis_id: UUID, max_output_tokens: int | None = None) -> None:
         """Processes a single analysis request received from a message queue.
 
-        This method is typically called by a worker that is consuming messages
-        from a Pub/Sub subscription. It retrieves the analysis and associated
-        procurement data, then orchestrates the full analysis pipeline.
-
         Args:
-            analysis_id: The unique ID of the analysis to be processed.
-            max_output_tokens: An optional token limit for the AI analysis.
-
-        Raises:
-            AnalysisError: If the analysis pipeline fails.
+            analysis_id: The ID of the analysis to process.
+            max_output_tokens: The maximum number of output tokens for the AI model.
         """
         try:
             analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
@@ -212,103 +219,36 @@ class AnalysisService:
     ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
-        This method performs the following steps:
-        1.  Fetches all document files associated with the procurement.
-        2.  Applies business rules to select a subset of files for AI analysis.
-        3.  Calculates a hash of the selected files to check for idempotency.
-        4.  If a previous analysis with the same hash exists, it aborts.
-        5.  Invokes the AI provider to get a structured analysis of the files.
-        6.  Saves the analysis result to the `procurement_analyses` table.
-        7.  Saves a detailed record for each original file to the `file_records`
-            table, including its GCS path and analysis inclusion status.
-
         Args:
-            procurement: The procurement object to be analyzed.
-            version_number: The version of the procurement being analyzed.
-            analysis_id: The unique ID of the analysis to be processed.
-            max_output_tokens: An optional token limit for the AI analysis.
-
-        Raises:
-            Exception: If the analysis pipeline fails.
+            procurement: The procurement to analyze.
+            version_number: The version number of the procurement.
+            analysis_id: The ID of the analysis.
+            max_output_tokens: The maximum number of output tokens for the AI model.
         """
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
 
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-
         if not all_original_files:
             self.logger.warning(f"No files found for {control_number}. Aborting.")
             return
 
-        files_for_ai, excluded_files, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        all_candidates = self._prepare_ai_candidates(all_original_files, procurement)
+        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
 
+        files_for_ai: list[tuple[str, bytes]] = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
         if not files_for_ai:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
+            self._process_and_save_file_records(analysis_id, procurement, final_candidates)
             return
 
         document_hash = self._calculate_hash(files_for_ai)
-        existing_analysis = self.analysis_repo.get_analysis_by_hash(document_hash)
         modality = self._get_modality(files_for_ai)
-
-        if existing_analysis:
-            self.logger.info(f"Found existing analysis with hash {document_hash}. Reusing results.")
-            # Create the GCS paths based on the new analysis timestamp
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            gcs_base_path = f"{control_number}/{timestamp}"
-            if self.config.GCP_GCS_TEST_PREFIX:
-                gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
-
-            # Copy results from the existing analysis
-            reused_result = AnalysisResult(
-                procurement_control_number=control_number,
-                version_number=version_number,
-                ai_analysis=Analysis(
-                    risk_score=existing_analysis.ai_analysis.risk_score,
-                    risk_score_rationale=existing_analysis.ai_analysis.risk_score_rationale,
-                    procurement_summary=existing_analysis.ai_analysis.procurement_summary,
-                    analysis_summary=existing_analysis.ai_analysis.analysis_summary,
-                    red_flags=existing_analysis.ai_analysis.red_flags,
-                    seo_keywords=existing_analysis.ai_analysis.seo_keywords,
-                ),
-                warnings=existing_analysis.warnings,
-                document_hash=document_hash,
-                original_documents_gcs_path=f"{gcs_base_path}/files/",
-                processed_documents_gcs_path=f"{gcs_base_path}/analysis_report.json",
-            )
-            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
-                existing_analysis.input_tokens_used,
-                existing_analysis.output_tokens_used,
-                existing_analysis.thinking_tokens_used,
-                modality=modality,
-            )
-            self.analysis_repo.save_analysis(
-                analysis_id=analysis_id,
-                result=reused_result,
-                input_tokens=existing_analysis.input_tokens_used,
-                output_tokens=existing_analysis.output_tokens_used,
-                thinking_tokens=existing_analysis.thinking_tokens_used,
-                input_cost=input_cost,
-                output_cost=output_cost,
-                thinking_cost=thinking_cost,
-                total_cost=total_cost,
-            )
-
-            # Even if we reuse the analysis, we must record the files for the *new* analysis run
-            self._process_and_save_file_records(
-                analysis_id=analysis_id,
-                gcs_base_path=gcs_base_path,
-                all_files=all_original_files,
-                included_files=files_for_ai,
-                excluded_files=excluded_files,
-            )
-            self.logger.info(f"Successfully reused analysis for {control_number}.")
-            return
 
         try:
             prompt = self._build_analysis_prompt(procurement, warnings)
             ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt,
-                files=files_for_ai,
+                prompt=prompt, files=files_for_ai
             )
 
             timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
@@ -342,13 +282,7 @@ class AnalysisService:
                 total_cost=total_cost,
             )
 
-            self._process_and_save_file_records(
-                analysis_id=analysis_id,
-                gcs_base_path=gcs_base_path,
-                all_files=all_original_files,
-                included_files=files_for_ai,
-                excluded_files=excluded_files,
-            )
+            self._process_and_save_file_records(analysis_id, procurement, final_candidates)
 
             self.logger.info(f"Successfully completed analysis for {control_number}.")
 
@@ -356,178 +290,168 @@ class AnalysisService:
             self.logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
             raise
 
-    def _calculate_hash(self, files: list[tuple[str, bytes]]) -> str:
-        """Calculates a SHA-256 hash from the content of a list of files.
+    def _prepare_ai_candidates(
+        self, all_files: list[tuple[str, bytes]], procurement: Procurement
+    ) -> list[AIFileCandidate]:
+        """Prepares a list of AIFileCandidate objects from raw file data.
 
         Args:
-            files: A list of tuples, where each tuple contains the file path and its content.
+            all_files: A list of tuples containing the file path and content.
+            procurement: The procurement being analyzed.
 
         Returns:
-            The calculated SHA-256 hash.
+            A list of AIFileCandidate objects.
         """
-        hasher = hashlib.sha256()
-        for _, content in sorted(files, key=lambda x: x[0]):
-            hasher.update(content)
-        return hasher.hexdigest()
+        candidates = []
+        for original_path, content in all_files:
+            candidate = AIFileCandidate(original_path=original_path, original_content=content)
+            ext = os.path.splitext(original_path)[1].lower()
 
-    def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
-        """Uploads the analysis report to GCS and returns the full path.
+            if ext not in self._SUPPORTED_EXTENSIONS:
+                candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
+                candidates.append(candidate)
+                continue
+
+            try:
+                if ext in self._DOCX_EXTENSIONS:
+                    converted_content = self.converter_service.doc_to_pdf(content, ext)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(original_path)[0]}.pdf"
+                    gcs_path_base = f"{procurement.pncp_control_number}/converted/{os.path.basename(candidate.ai_path)}"
+                    gcs_path = (
+                        f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_path_base}"
+                        if self.config.GCP_GCS_TEST_PREFIX
+                        else gcs_path_base
+                    )
+                    self.gcs_provider.upload_file(
+                        bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+                        destination_blob_name=gcs_path,
+                        content=converted_content,
+                        content_type="application/pdf",
+                    )
+                    candidate.converted_gcs_paths = [gcs_path]
+                elif ext in self._SPREADSHEET_EXTENSIONS:
+                    converted_sheets = self.converter_service.spreadsheet_to_csvs(content, ext)
+
+                    all_csv_content = []
+                    converted_paths = []
+
+                    for sheet_name, sheet_content in converted_sheets:
+                        base_name = os.path.splitext(os.path.basename(original_path))[0]
+                        csv_filename = f"{base_name}_{sheet_name}"
+                        gcs_path_base = f"{procurement.pncp_control_number}/converted/{csv_filename}"
+                        gcs_path = (
+                            f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_path_base}"
+                            if self.config.GCP_GCS_TEST_PREFIX
+                            else gcs_path_base
+                        )
+                        self.gcs_provider.upload_file(
+                            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+                            destination_blob_name=gcs_path,
+                            content=sheet_content,
+                            content_type="text/csv",
+                        )
+                        converted_paths.append(gcs_path)
+                        all_csv_content.append(sheet_content)
+
+                    candidate.ai_content = b"\n--- NEW SHEET ---\n".join(all_csv_content)
+                    candidate.ai_path = f"{os.path.splitext(original_path)[0]}.csv"
+                    candidate.converted_gcs_paths = converted_paths
+
+            except Exception as e:
+                self.logger.error(f"Failed to process file {original_path}: {e}", exc_info=True)
+                candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+
+            candidates.append(candidate)
+        return candidates
+
+    def _select_files_by_token_limit(
+        self, candidates: list[AIFileCandidate], procurement: Procurement
+    ) -> tuple[list[AIFileCandidate], list[str]]:
+        """Selects which files to include based on the AI model's token limit.
 
         Args:
-            gcs_base_path: The base GCS path for this analysis run.
-            analysis_result: The analysis result to be uploaded.
+            candidates: A list of AIFileCandidate objects to select from.
+            procurement: The procurement being analyzed.
 
         Returns:
-            The full GCS path of the uploaded analysis report.
+            A tuple containing the list of selected candidates and a list of warnings.
         """
-        analysis_report_content = json.dumps(analysis_result.model_dump(), indent=2).encode("utf-8")
-        analysis_report_blob_name = f"{gcs_base_path}/analysis_report.json"
-        self.gcs_provider.upload_file(
-            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-            destination_blob_name=analysis_report_blob_name,
-            content=analysis_report_content,
-            content_type="application/json",
-        )
-        return analysis_report_blob_name
+        candidates.sort(key=lambda c: self._get_priority(c.original_path))
+        max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
+        warnings = []
+
+        base_prompt_text = self._build_analysis_prompt(procurement, [])
+        files_for_ai: list[tuple[str, bytes]] = []
+        for candidate in candidates:
+            if candidate.exclusion_reason:
+                continue
+
+            files_to_test = files_for_ai + [(candidate.ai_path, candidate.ai_content)]
+            tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, files_to_test)
+
+            if tokens <= max_tokens:
+                files_for_ai.append((candidate.ai_path, candidate.ai_content))
+                candidate.is_included = True
+            else:
+                candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
+
+        excluded_names = [os.path.basename(c.original_path) for c in candidates if not c.is_included]
+        if excluded_names:
+            warnings.append(
+                Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=", ".join(excluded_names))
+            )
+
+        return candidates, warnings
 
     def _process_and_save_file_records(
-        self,
-        analysis_id: UUID,
-        gcs_base_path: str,
-        all_files: list[tuple[str, bytes]],
-        included_files: list[tuple[str, bytes]],
-        excluded_files: dict[str, str],
+        self, analysis_id: UUID, procurement: Procurement, candidates: list[AIFileCandidate]
     ) -> None:
-        """Uploads every original file to GCS and saves its metadata record.
-
-        This method saves the metadata record to the database.
-        For each file, it determines if it was included in the AI analysis and
-        records the reason for any exclusion.
+        """Uploads original files to GCS and saves their metadata records.
 
         Args:
-            analysis_id: The ID of the parent analysis run.
-            gcs_base_path: The base GCS path for this analysis run.
-            all_files: A list of all original files (path, content).
-            included_files: The list of files that were sent to the AI.
-            excluded_files: A dictionary mapping excluded file paths to their
-                exclusion reason.
+            analysis_id: The ID of the analysis.
+            procurement: The procurement being analyzed.
+            candidates: A list of AIFileCandidate objects.
         """
-        included_filenames = {f[0] for f in included_files}
+        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
+        gcs_base_path = f"{procurement.pncp_control_number}/{timestamp}"
+        if self.config.GCP_GCS_TEST_PREFIX:
+            gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
 
-        for file_path, file_content in all_files:
-            file_name = os.path.basename(file_path)
+        for candidate in candidates:
+            file_name = os.path.basename(candidate.original_path)
             gcs_path = f"{gcs_base_path}/files/{file_name}"
 
             self.gcs_provider.upload_file(
                 bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
                 destination_blob_name=gcs_path,
-                content=file_content,
+                content=candidate.original_content,
                 content_type="application/octet-stream",
             )
-
-            is_included = file_path in included_filenames
-            exclusion_reason = excluded_files.get(file_path)
 
             file_record = NewFileRecord(
                 analysis_id=analysis_id,
                 file_name=file_name,
                 gcs_path=gcs_path,
                 extension=os.path.splitext(file_name)[1].lstrip("."),
-                size_bytes=len(file_content),
+                size_bytes=len(candidate.original_content),
                 nesting_level=0,
-                included_in_analysis=is_included,
-                exclusion_reason=exclusion_reason,
-                prioritization_logic=self._get_priority_as_string(file_path),
+                included_in_analysis=candidate.is_included,
+                exclusion_reason=candidate.exclusion_reason,
+                prioritization_logic=self._get_priority_as_string(candidate.original_path),
+                converted_gcs_paths=candidate.converted_gcs_paths,
             )
             self.file_record_repo.save_file_record(file_record)
-
-    def _select_and_prepare_files_for_ai(
-        self,
-        all_files: list[tuple[str, bytes]],
-    ) -> tuple[list[tuple[str, bytes]], dict[str, str], list[str]]:
-        """Applies business rules to filter and prioritize files for AI analysis.
-
-        This method implements the core logic for deciding which files are
-        most relevant for analysis, based on file type, keywords in the
-        filename, and constraints on the number of files and total size.
-
-        Args:
-            all_files: A list of all available files for the procurement.
-
-        Returns:
-            A tuple containing:
-            - A list of the selected files (path, content) to be sent to the AI.
-            - A dictionary mapping the path of each excluded file to the reason
-              for its exclusion.
-            - A list of warning messages to be included in the AI prompt.
-        """
-        warnings = []
-        excluded_files = {}
-
-        # Filter by supported extensions
-        supported_files, unsupported_files = [], []
-        for path, content in all_files:
-            if path.lower().endswith(self._SUPPORTED_EXTENSIONS):
-                supported_files.append((path, content))
-            else:
-                unsupported_files.append(path)
-        for path in unsupported_files:
-            excluded_files[path] = ExclusionReason.UNSUPPORTED_EXTENSION
-
-        # Sort by priority
-        supported_files.sort(key=lambda item: self._get_priority(item[0]))
-
-        # Filter by max number of files
-        if len(supported_files) > self._MAX_FILES_FOR_AI:
-            files_to_exclude = supported_files[self._MAX_FILES_FOR_AI :]
-            for path, _ in files_to_exclude:
-                excluded_files[path] = ExclusionReason.FILE_LIMIT_EXCEEDED.format(max_files=self._MAX_FILES_FOR_AI)
-
-            warnings.append(
-                Warnings.FILE_LIMIT_EXCEEDED.format(
-                    max_files=self._MAX_FILES_FOR_AI,
-                    ignored_files=", ".join(p for p, _ in files_to_exclude),
-                )
-            )
-            selected_files = supported_files[: self._MAX_FILES_FOR_AI]
-        else:
-            selected_files = supported_files
-
-        # Filter by size
-        final_files = []
-        current_size = 0
-        files_excluded_by_size = []
-        max_size_mb = self._MAX_SIZE_BYTES_FOR_AI / 1024 / 1024
-
-        for path, content in selected_files:
-            if current_size + len(content) > self._MAX_SIZE_BYTES_FOR_AI:
-                excluded_files[path] = ExclusionReason.TOTAL_SIZE_LIMIT_EXCEEDED.format(max_size_mb=max_size_mb)
-                files_excluded_by_size.append(path)
-            else:
-                final_files.append((path, content))
-                current_size += len(content)
-
-        if files_excluded_by_size:
-            warnings.append(
-                Warnings.TOTAL_SIZE_LIMIT_EXCEEDED.format(
-                    max_size_mb=max_size_mb,
-                    ignored_files=", ".join(files_excluded_by_size),
-                )
-            )
-
-        for warning_msg in warnings:
-            self.logger.warning(warning_msg)
-
-        return final_files, excluded_files, warnings
 
     def _get_priority(self, file_path: str) -> int:
         """Determines the priority of a file based on keywords in its name.
 
         Args:
-            file_path: The path of the file to be prioritized.
+            file_path: The path of the file to prioritize.
 
         Returns:
-            The priority of the file, where a lower number indicates a higher priority.
+            The priority of the file as an integer.
         """
         path_lower = file_path.lower()
         for i, keyword in enumerate(self._FILE_PRIORITY_ORDER):
@@ -539,10 +463,10 @@ class AnalysisService:
         """Returns the priority keyword found in the file path.
 
         Args:
-            file_path: The path of the file to be analyzed.
+            file_path: The path of the file to prioritize.
 
         Returns:
-            The priority keyword found in the file path, or a default message if no keyword is found.
+            The priority keyword found in the file path.
         """
         path_lower = file_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
@@ -556,11 +480,11 @@ class AnalysisService:
         """Constructs the prompt for the AI, including contextual warnings.
 
         Args:
-            procurement: The procurement object to be analyzed.
-            warnings: A list of warnings to be included in the prompt.
+            procurement: The procurement to build the prompt for.
+            warnings: A list of warnings to include in the prompt.
 
         Returns:
-            The constructed prompt for the AI.
+            The prompt for the AI.
         """
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
         warnings_section = ""
@@ -623,20 +547,45 @@ class AnalysisService:
         encontrabilidade desta análise.
         """
 
+    def _calculate_hash(self, files: list[tuple[str, bytes]]) -> str:
+        """Calculates a SHA-256 hash from the content of a list of files.
+
+        Args:
+            files: A list of tuples containing the file path and content.
+
+        Returns:
+            The SHA-256 hash of the file content.
+        """
+        hasher = hashlib.sha256()
+        for _, content in sorted(files, key=lambda x: x[0]):
+            hasher.update(content)
+        return hasher.hexdigest()
+
+    def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
+        """Uploads the analysis report to GCS and returns the full path.
+
+        Args:
+            gcs_base_path: The base path in GCS to upload the report to.
+            analysis_result: The analysis result to upload.
+
+        Returns:
+            The full path to the uploaded analysis report.
+        """
+        analysis_report_content = json.dumps(analysis_result.model_dump(), indent=2).encode("utf-8")
+        analysis_report_blob_name = f"{gcs_base_path}/analysis_report.json"
+        self.gcs_provider.upload_file(
+            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
+            destination_blob_name=analysis_report_blob_name,
+            content=analysis_report_content,
+            content_type="application/json",
+        )
+        return analysis_report_blob_name
+
     def run_specific_analysis(self, analysis_id: UUID) -> None:
         """Triggers an analysis for a specific ID by publishing a message.
 
-        This method is intended to be called by a user-facing interface (like
-        a CLI). It finds a 'PENDING_ANALYSIS' record and publishes a message
-        to the procurement topic, which will be picked up by a worker to
-        execute the actual analysis.
-
         Args:
-            analysis_id: The ID of the analysis to be triggered.
-
-        Raises:
-            AnalysisError: If an unexpected error occurs during the process.
-            ValueError: If the Pub/Sub provider has not been configured.
+            analysis_id: The ID of the analysis to trigger.
         """
         try:
             self.logger.info(f"Running specific analysis for analysis_id: {analysis_id}")
@@ -680,26 +629,17 @@ class AnalysisService:
     ) -> None:
         """Runs the pre-analysis job for a given date range.
 
-        This method scans for new procurements within the specified date
-        range, processes them in batches, and creates 'PENDING_ANALYSIS'
-        records for each new, unique procurement.
-
         Args:
-            start_date: The start date of the range to scan.
-            end_date: The end date of the range to scan.
+            start_date: The start date of the date range.
+            end_date: The end date of the date range.
             batch_size: The number of procurements to process in each batch.
-            sleep_seconds: The time to sleep between batches to avoid API
-                rate limiting.
-            max_messages: An optional limit on the number of pre-analysis
-                tasks to create.
-
-        Raises:
-            AnalysisError: If an unexpected error occurs during the pre-analysis process.
+            sleep_seconds: The number of seconds to sleep between batches.
+            max_messages: The maximum number of messages to publish.
         """
         try:
             self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
             current_date = start_date
-            messages_published_count = 0  # Initialize counter
+            messages_published_count = 0
             while current_date <= end_date:
                 self.logger.info(f"Processing date: {current_date}")
                 procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
@@ -720,10 +660,10 @@ class AnalysisService:
                     for procurement, raw_data in batch:
                         try:
                             self._pre_analyze_procurement(procurement, raw_data)
-                            messages_published_count += 1  # Increment count on successful pre-analysis
+                            messages_published_count += 1
                             if max_messages is not None and messages_published_count >= max_messages:
                                 self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
-                                return  # Exit the function
+                                return
                         except Exception as e:
                             self.logger.error(
                                 f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
@@ -742,19 +682,14 @@ class AnalysisService:
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict) -> None:
         """Performs the pre-analysis for a single procurement.
 
-        This involves:
-        1.  Processing documents to get a list of files for AI analysis.
-        2.  Calculating a hash of the procurement's content to check for
-            idempotency against existing versions.
-        3.  If it's a new version, saving it to the database.
-        4.  Creating a new 'PENDING_ANALYSIS' record.
-
         Args:
-            procurement: The procurement to be pre-analyzed.
-            raw_data: The raw JSON data of the procurement.
+            procurement: The procurement to pre-analyze.
+            raw_data: The raw data of the procurement.
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        files_for_ai, _, warnings = self._select_and_prepare_files_for_ai(all_original_files)
+        all_candidates = self._prepare_ai_candidates(all_original_files, procurement)
+        final_candidates, _ = self._select_files_by_token_limit(all_candidates, procurement)
+        files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
         raw_data_str = json.dumps(raw_data, sort_keys=True)
         all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
@@ -776,8 +711,11 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        prompt = self._build_analysis_prompt(procurement, warnings)
-        input_tokens, output_tokens, thinking_tokens = self.ai_provider.count_tokens_for_analysis(prompt, files_for_ai)
+        base_prompt_text = self._build_analysis_prompt(procurement, [])
+        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, files_for_ai)
+
+        output_tokens = 0
+        thinking_tokens = 0
         modality = self._get_modality(files_for_ai)
         input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
             input_tokens, output_tokens, thinking_tokens, modality=modality
@@ -809,16 +747,12 @@ class AnalysisService:
     ) -> None:
         """Runs the ranked analysis job.
 
-        This method fetches all pending analyses, calculates their estimated
-        cost, and triggers them in ranked order until the specified or calculated
-        provided budget is exhausted or the message limit is reached.
-
         Args:
-            use_auto_budget: Flag to determine if automatic budget calculation should be used.
-            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
-            zero_vote_budget_percent: The percentage of the budget to be used for procurements with zero votes.
-            budget: The manual budget for the analysis run.
-            max_messages: An optional limit on the number of analyses to trigger.
+            use_auto_budget: Whether to use the auto-budget calculation.
+            budget_period: The period for the auto-budget calculation.
+            zero_vote_budget_percent: The percentage of the budget to use for zero-vote analyses.
+            budget: The manual budget to use.
+            max_messages: The maximum number of messages to publish.
         """
         if use_auto_budget:
             if not budget_period:
@@ -898,23 +832,13 @@ class AnalysisService:
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
         """Retries failed or stale analyses.
 
-        This method identifies analyses that have failed or have been in
-        progress for too long, and triggers a new analysis for them,
-        respecting an exponential backoff strategy.
-
         Args:
-            initial_backoff_hours: The base duration to wait before the first
-                retry.
-            max_retries: The maximum number of times an analysis will be
-                retried.
-            timeout_hours: The number of hours after which an 'IN_PROGRESS'
-                task is considered stale.
+            initial_backoff_hours: The initial backoff in hours.
+            max_retries: The maximum number of retries.
+            timeout_hours: The timeout in hours.
 
         Returns:
-            The number of analyses that were successfully triggered for retry.
-
-        Raises:
-            AnalysisError: If an unexpected error occurs during the process.
+            The number of analyses retried.
         """
         try:
             analyses_to_retry = self.analysis_repo.get_analyses_to_retry(max_retries, timeout_hours)
@@ -928,7 +852,6 @@ class AnalysisService:
 
                 if now >= next_retry_time:
                     self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
-                    # Modality for retries is not available, so we assume TEXT
                     modality = Modality.TEXT
                     input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
                         analysis.input_tokens_used,
@@ -959,30 +882,26 @@ class AnalysisService:
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """Retrieves the overall status of a procurement.
 
-        This method queries the database to get a consolidated view of the
-        latest analysis status for a given procurement, including its risk
-        score and the date of the last update.
-
         Args:
-            procurement_control_number: The unique control number of the
-                procurement.
+            procurement_control_number: The control number of the procurement.
 
         Returns:
-            A dictionary containing the overall status information, or None if
-            no analysis is found for the given procurement.
+            The overall status of the procurement.
         """
         self.logger.info(f"Fetching overall status for procurement {procurement_control_number}.")
-        status_info = self.analysis_repo.get_procurement_overall_status(procurement_control_number)
+        status_info: dict[str, Any] | None = self.analysis_repo.get_procurement_overall_status(
+            procurement_control_number
+        )
         if not status_info:
             self.logger.warning(f"No overall status found for procurement {procurement_control_number}.")
             return None
-        return status_info  # type: ignore
+        return status_info
 
     def _calculate_auto_budget(self, budget_period: str) -> Decimal:
         """Calculates the budget for the current run based on donation history and spending pace.
 
         Args:
-            budget_period: The period for auto-budget calculation ('daily', 'weekly', 'monthly').
+            budget_period: The period for the auto-budget calculation.
 
         Returns:
             The calculated budget for the current run.

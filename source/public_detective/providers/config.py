@@ -53,6 +53,7 @@ class Config(BaseSettings):
     GCP_GEMINI_HOST: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
+    GCP_GEMINI_MAX_INPUT_TOKENS: int = 1048576
     GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("7.750969275")
     GCP_GEMINI_TEXT_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
     GCP_GEMINI_TEXT_OUTPUT_COST: Decimal = Decimal("62.0077542")
