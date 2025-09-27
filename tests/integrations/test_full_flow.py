@@ -22,6 +22,7 @@ from public_detective.models.analyses import Analysis
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.providers.ai import AiProvider
+from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.logging import LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
@@ -38,9 +39,9 @@ from sqlalchemy.engine import Engine
 
 @pytest.fixture(scope="function")
 def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  # noqa: F841
-    project_id = "public-detective"
-    os.environ["GCP_PROJECT"] = project_id
-    os.environ["GCP_GCS_BUCKET_PROCUREMENTS"] = "procurements"
+    config = ConfigProvider.get_config()
+    project_id = config.GCP_PROJECT
+    bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
 
     run_id = uuid.uuid4().hex
     topic_name = f"procurements-topic-{run_id}"
@@ -66,7 +67,7 @@ def integration_test_setup(db_session: Engine) -> Generator[None, None, None]:  
     finally:
         logger = LoggingProvider().get_logger()
         try:
-            bucket = gcs_client.bucket(os.environ["GCP_GCS_BUCKET_PROCUREMENTS"])
+            bucket = gcs_client.bucket(bucket_name)
             blobs_to_delete = list(bucket.list_blobs(prefix=gcs_prefix))
             for blob in blobs_to_delete:
                 blob.delete()
