@@ -17,8 +17,6 @@ from sqlalchemy.engine import Engine
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Engine, Any, None]:
     os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
-    os.environ.pop("GCP_GCS_BUCKET_PROCUREMENTS", None)
-    os.environ["GCP_PROJECT"] = "public-detective"
 
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
