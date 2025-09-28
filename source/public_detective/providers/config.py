@@ -11,6 +11,7 @@ from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
+# pylint: disable=invalid-name
 class Config(BaseSettings):
     """A Pydantic model for managing application settings.
 
@@ -45,14 +46,13 @@ class Config(BaseSettings):
     GCP_SERVICE_ACCOUNT_CREDENTIALS: str | None = None
     GCP_GCS_HOST: str | None = None
     GCP_GCS_BUCKET_PROCUREMENTS: str = "procurements"
-    GCP_GCS_TEST_PREFIX: str | None = None
     GCP_PUBSUB_HOST: str | None = None
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_GEMINI_HOST: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
-    GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 8192
+    GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 65535
     GCP_GEMINI_MAX_INPUT_TOKENS: int = 1048576
     GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("7.750969275")
     GCP_GEMINI_TEXT_INPUT_LONG_COST: Decimal = Decimal("15.50193855")

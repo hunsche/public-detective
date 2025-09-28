@@ -13,9 +13,11 @@ import re
 import tarfile
 import tempfile
 import zipfile
+from dataclasses import dataclass
 from datetime import date
 from http import HTTPStatus
 from urllib.parse import urljoin
+from uuid import UUID
 
 import py7zr
 import rarfile
@@ -33,6 +35,26 @@ from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
 from pydantic import ValidationError
 from sqlalchemy import Engine, text
+
+
+@dataclass
+class ProcessedFile:
+    """Represents a single, processed file ready for analysis.
+
+    Attributes:
+        source_document_id: The unique ID of the source `ProcurementDocument`
+            from the PNCP API from which this file originated.
+        relative_path: The path of the file, relative to its source. For a
+            standalone file, this is just the filename. For a file inside an
+            archive, it includes the archive's path structure.
+        content: The raw byte content of the file.
+        raw_document_metadata: The raw JSON dictionary of the source document.
+    """
+
+    source_document_id: str
+    relative_path: str
+    content: bytes
+    raw_document_metadata: dict
 
 
 class ProcurementsRepository:
@@ -177,65 +199,94 @@ class ProcurementsRepository:
 
         return Procurement.model_validate(result)
 
-    def process_procurement_documents(self, procurement: Procurement) -> list[tuple[str, bytes]]:
+    def get_procurement_uuid(self, pncp_control_number: str, version_number: int) -> UUID | None:
+        """Retrieves the UUID for a specific version of a procurement.
+
+        Args:
+            pncp_control_number: The control number of the procurement.
+            version_number: The specific version to retrieve.
+
+        Returns:
+            The procurement's UUID if found, otherwise `None`.
+        """
+        sql = text(
+            "SELECT procurement_id FROM procurements "
+            "WHERE pncp_control_number = :pncp_control_number AND version_number = :version_number"
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql, {"pncp_control_number": pncp_control_number, "version_number": version_number}
+            ).scalar_one_or_none()
+        return result
+
+    def process_procurement_documents(self, procurement: Procurement) -> list[ProcessedFile]:
         """Downloads and processes all documents for a given procurement.
 
         This method orchestrates the entire document handling pipeline:
         1. Fetches metadata for all associated documents from the PNCP API.
         2. Downloads the content of each document.
         3. Recursively extracts files from any archives (ZIP, RAR, etc.).
-        4. Collects all non-archive files into a final list.
+        4. Collects all non-archive files into a final list of `ProcessedFile` objects.
 
         Args:
             procurement: The procurement whose documents are to be processed.
 
         Returns:
-            A list of tuples, where each tuple contains the file path and its
-            byte content for a final, non-archive file.
+            A list of `ProcessedFile` objects, each containing the file content
+            and metadata about its origin.
         """
         documents_to_download = self._get_all_documents_metadata(procurement)
         if not documents_to_download:
             return []
 
-        final_files: list[tuple[str, bytes]] = []
+        final_files: list[ProcessedFile] = []
 
-        for doc in documents_to_download:
+        for doc, raw_doc_metadata in documents_to_download:
             content = self._download_file_content(doc.url)
             if not content:
                 continue
 
             original_filename = self._determine_original_filename(doc.url) or doc.title
+            synthetic_document_id = (
+                f"{doc.cnpj}-{doc.procurement_year}-" f"{doc.procurement_sequence}-{doc.document_sequence}"
+            )
 
             self._recursive_file_processing(
+                source_document_id=synthetic_document_id,
                 content=content,
                 current_path=original_filename,
                 nesting_level=0,
                 file_collection=final_files,
+                raw_document_metadata=raw_doc_metadata,
             )
 
         return final_files
 
     def _recursive_file_processing(
         self,
+        source_document_id: str,
         content: bytes,
         current_path: str,
         nesting_level: int,
-        file_collection: list[tuple[str, bytes]],
+        file_collection: list[ProcessedFile],
+        raw_document_metadata: dict,
     ) -> None:
         """Recursively processes file content, handling nested archives.
 
         This method checks if the given content is an archive (ZIP, RAR,
         etc.). If it is, it extracts the contents and calls itself for each
         member. If it's not an archive, it adds the content to the final
-        `file_collection`.
+        `file_collection` as a `ProcessedFile` object.
 
         Args:
+            source_document_id: The ID of the source `ProcurementDocument`.
             content: The byte content of the file to process.
             current_path: The path of the file being processed, including
                 any parent archive names.
             nesting_level: The current depth of recursion.
-            file_collection: A list where final, non-archive files are
+            file_collection: A list where final `ProcessedFile` objects are
                 collected.
+            raw_document_metadata: The raw JSON dictionary of the source document.
         """
         lower_path = current_path.lower()
         handler = None
@@ -255,16 +306,18 @@ class ProcurementsRepository:
                 for member_name, member_content in nested_files:
                     new_path = os.path.join(current_path, member_name)
                     self._recursive_file_processing(
-                        member_content,
-                        new_path,
-                        nesting_level + 1,
-                        file_collection,
+                        source_document_id=source_document_id,
+                        content=member_content,
+                        current_path=new_path,
+                        nesting_level=nesting_level + 1,
+                        file_collection=file_collection,
+                        raw_document_metadata=raw_document_metadata,
                     )
             except Exception as e:
                 self.logger.warning(f"Could not process archive '{current_path}': {e}. Treating " "as a single file.")
-                file_collection.append((current_path, content))
+                file_collection.append(ProcessedFile(source_document_id, current_path, content, raw_document_metadata))
         else:
-            file_collection.append((current_path, content))
+            file_collection.append(ProcessedFile(source_document_id, current_path, content, raw_document_metadata))
 
     def create_zip_from_files(self, files: list[tuple[str, bytes]], control_number: str) -> bytes | None:
         """Creates a single, flat ZIP archive in memory from a list of files.
@@ -283,10 +336,10 @@ class ProcurementsRepository:
         self.logger.info(f"Creating final ZIP archive with {len(files)} files for " f"{control_number}...")
         zip_stream = io.BytesIO()
         try:
-            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zf:
+            with zipfile.ZipFile(zip_stream, "w", zipfile.ZIP_DEFLATED) as zip_file:
                 for file_path, content in files:
                     safe_path = re.sub(r'[<>:"/\\|?*]', "_", file_path)
-                    zf.writestr(safe_path, content)
+                    zip_file.writestr(safe_path, content)
             zip_bytes = zip_stream.getvalue()
             self.logger.info(f"Successfully created final ZIP archive of {len(zip_bytes)} bytes.")
             return zip_bytes
@@ -356,8 +409,8 @@ class ProcurementsRepository:
             for root, _, files in os.walk(tmpdir):
                 for filename in files:
                     filepath = os.path.join(root, filename)
-                    with open(filepath, "rb") as f:
-                        file_content = f.read()
+                    with open(filepath, "rb") as file:
+                        file_content = file.read()
                     relative_path = os.path.relpath(filepath, tmpdir)
                     extracted.append((relative_path, file_content))
         return extracted
@@ -385,7 +438,7 @@ class ProcurementsRepository:
                             extracted.append((member_info.name, file_content))
         return extracted
 
-    def _get_all_documents_metadata(self, procurement: Procurement) -> list[ProcurementDocument]:
+    def _get_all_documents_metadata(self, procurement: Procurement) -> list[tuple[ProcurementDocument, dict]]:
         """Fetches metadata for all of a procurement's documents from the API.
 
         This method retrieves the list of all documents associated with a
@@ -397,8 +450,8 @@ class ProcurementsRepository:
             procurement: The procurement for which to fetch document metadata.
 
         Returns:
-            A list of `ProcurementDocument` models, or an empty list if
-            an error occurs.
+            A list of tuples, where each tuple contains the parsed `ProcurementDocument`
+            model and its raw JSON data. Returns an empty list if an error occurs.
         """
         try:
             endpoint = (
@@ -410,14 +463,15 @@ class ProcurementsRepository:
             if response.status_code == HTTPStatus.NO_CONTENT:
                 return []
             response.raise_for_status()
+            raw_docs = response.json()
 
-            all_docs = [ProcurementDocument.model_validate(doc) for doc in response.json()]
-            active_docs = [doc for doc in all_docs if doc.is_active]
+            all_docs = [(ProcurementDocument.model_validate(doc), doc) for doc in raw_docs]
+            active_docs = [(doc, raw) for doc, raw in all_docs if doc.is_active]
 
             if len(active_docs) < len(all_docs):
                 self.logger.info(f"Filtered out {len(all_docs) - len(active_docs)} inactive documents.")
 
-            active_docs.sort(key=lambda doc: doc.document_type_id != DocumentType.BID_NOTICE)
+            active_docs.sort(key=lambda item: item[0].document_type_id != DocumentType.BID_NOTICE)
             self.logger.info(f"Found metadata for {len(active_docs)} active document(s).")
             return active_docs
         except (requests.RequestException, ValidationError) as e:

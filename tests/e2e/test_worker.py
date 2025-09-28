@@ -74,7 +74,8 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
                     version_number,
                     status,
                     created_at,
-                    updated_at
+                    updated_at,
+                    analysis_prompt
                 )
                 VALUES (
                     :analysis_id,
@@ -82,7 +83,8 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
                     :version_number,
                     'PENDING_ANALYSIS',
                     NOW(),
-                    NOW()
+                    NOW(),
+                    'test prompt'
                 )"""
             ),
             {

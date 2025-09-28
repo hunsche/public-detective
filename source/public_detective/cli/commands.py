@@ -20,6 +20,7 @@ from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 
@@ -50,6 +51,7 @@ def analyze(analysis_id: UUID) -> None:
         ai_provider = AiProvider(Analysis)
 
         analysis_repo = AnalysisRepository(engine=db_engine)
+        source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
@@ -58,6 +60,7 @@ def analyze(analysis_id: UUID) -> None:
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
+            source_document_repo=source_document_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
             budget_ledger_repo=budget_ledger_repo,
@@ -156,6 +159,7 @@ def pre_analyze(
     ai_provider = AiProvider(Analysis)
 
     analysis_repo = AnalysisRepository(engine=db_engine)
+    source_document_repo = SourceDocumentsRepository(engine=db_engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
     procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
     status_history_repo = StatusHistoryRepository(engine=db_engine)
@@ -164,6 +168,7 @@ def pre_analyze(
     service = AnalysisService(
         procurement_repo=procurement_repo,
         analysis_repo=analysis_repo,
+        source_document_repo=source_document_repo,
         file_record_repo=file_record_repo,
         status_history_repo=status_history_repo,
         budget_ledger_repo=budget_ledger_repo,
@@ -230,6 +235,7 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
         ai_provider = AiProvider(Analysis)
 
         analysis_repo = AnalysisRepository(engine=db_engine)
+        source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
@@ -238,6 +244,7 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
+            source_document_repo=source_document_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
             budget_ledger_repo=budget_ledger_repo,
@@ -312,6 +319,7 @@ def trigger_ranked_analysis(
         ai_provider = AiProvider(Analysis)
 
         analysis_repo = AnalysisRepository(engine=db_engine)
+        source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
         procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
         status_history_repo = StatusHistoryRepository(engine=db_engine)
@@ -320,6 +328,7 @@ def trigger_ranked_analysis(
         service = AnalysisService(
             procurement_repo=procurement_repo,
             analysis_repo=analysis_repo,
+            source_document_repo=source_document_repo,
             file_record_repo=file_record_repo,
             status_history_repo=status_history_repo,
             budget_ledger_repo=budget_ledger_repo,

@@ -16,6 +16,7 @@ def analysis_service_fixture() -> dict:
     """
     mock_procurement_repo = MagicMock()
     mock_analysis_repo = MagicMock(spec=AnalysisRepository)
+    mock_source_document_repo = MagicMock()
     mock_file_record_repo = MagicMock()
     mock_status_history_repo = MagicMock()
     mock_ai_provider = MagicMock()
@@ -26,6 +27,7 @@ def analysis_service_fixture() -> dict:
     service = AnalysisService(
         procurement_repo=mock_procurement_repo,
         analysis_repo=mock_analysis_repo,
+        source_document_repo=mock_source_document_repo,
         file_record_repo=mock_file_record_repo,
         status_history_repo=mock_status_history_repo,
         budget_ledger_repo=mock_budget_ledger_repo,
@@ -33,10 +35,10 @@ def analysis_service_fixture() -> dict:
         gcs_provider=mock_gcs_provider,
         pubsub_provider=mock_pubsub_provider,
     )
-
     return {
         "service": service,
         "analysis_repo": mock_analysis_repo,
+        "pubsub_provider": mock_pubsub_provider,
     }
 
 
@@ -81,6 +83,7 @@ def test_retry_analyses_triggers_eligible_analysis(analysis_service_fixture: dic
         input_tokens_used=100,
         output_tokens_used=50,
         thinking_tokens_used=10,
+        analysis_prompt="Test prompt",
         ai_analysis=mock_ai_analysis,
     )
     analysis_repo.get_analyses_to_retry.return_value = [eligible_analysis]
@@ -125,6 +128,7 @@ def test_retry_analyses_skips_ineligible_analysis_due_to_backoff(analysis_servic
         document_hash="hash123",
         input_tokens_used=100,
         output_tokens_used=50,
+        analysis_prompt="Test prompt",
         ai_analysis=mock_ai_analysis,
     )
     analysis_repo.get_analyses_to_retry.return_value = [ineligible_analysis]
@@ -181,6 +185,7 @@ def test_retry_analyses_too_soon(analysis_service_fixture: dict) -> None:
         status="ANALYSIS_FAILED",
         retry_count=1,
         updated_at=now - timedelta(hours=1),  # backoff is 6 * 2 = 12 hours
+        analysis_prompt="Test prompt",
         ai_analysis=Analysis(
             risk_score=5,
             risk_score_rationale="Rationale",

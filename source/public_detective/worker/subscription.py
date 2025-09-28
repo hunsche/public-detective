@@ -29,6 +29,7 @@ from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 from pydantic import ValidationError
@@ -84,6 +85,7 @@ class Subscription:
             ai_provider = AiProvider(Analysis)
 
             analysis_repo = AnalysisRepository(engine=db_engine)
+            source_document_repo = SourceDocumentsRepository(engine=db_engine)
             file_record_repo = FileRecordsRepository(engine=db_engine)
             self.procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
 
@@ -92,6 +94,7 @@ class Subscription:
             self.analysis_service = AnalysisService(
                 procurement_repo=self.procurement_repo,
                 analysis_repo=analysis_repo,
+                source_document_repo=source_document_repo,
                 file_record_repo=file_record_repo,
                 status_history_repo=status_history_repo,
                 budget_ledger_repo=budget_ledger_repo,

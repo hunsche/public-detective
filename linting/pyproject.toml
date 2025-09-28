@@ -1,0 +1,13 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-linters"
+version = "1.0.0"
+
+[tool.setuptools]
+packages = ["local_linters"]
+
+[project.entry-points."flake8.extension"]
+NHC = "local_linters.flake8_no_hash_comments:NoHashCommentsPlugin"

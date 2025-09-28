@@ -47,6 +47,7 @@ def test_parse_row_to_model_with_seo_keywords(analysis_repository: AnalysisRepos
         "risk_score_rationale",
         "red_flags",
         "seo_keywords",
+        "analysis_prompt",
     ]
     red_flags_list: list = []
     seo_keywords_list = ["keyword1", "keyword2"]
@@ -56,6 +57,7 @@ def test_parse_row_to_model_with_seo_keywords(analysis_repository: AnalysisRepos
         "High risk",
         json.dumps(red_flags_list),
         seo_keywords_list,
+        "Test prompt",
     )
 
     # Act
@@ -79,6 +81,7 @@ def test_parse_row_to_model_with_json_string(analysis_repository: AnalysisReposi
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     red_flags_list = [
         {
@@ -93,6 +96,7 @@ def test_parse_row_to_model_with_json_string(analysis_repository: AnalysisReposi
         8,
         "High risk",
         json.dumps(red_flags_list),  # red_flags as a JSON string
+        "Test prompt",
     )
 
     # Act
@@ -122,6 +126,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     red_flags_list = [
         {
@@ -136,6 +141,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
         5,
         "Medium risk",
         red_flags_list,  # red_flags as a Python list
+        "Test prompt",
     )
 
     # Act
@@ -196,6 +202,7 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         procurement_control_number="PNCP-123",
         version_number=1,
         document_hash="test-hash",
+        analysis_prompt="Test prompt",
         ai_analysis={
             "risk_score": 8,
             "risk_score_rationale": "High risk",
@@ -357,12 +364,14 @@ def test_parse_row_to_model_with_none_red_flags(analysis_repository: AnalysisRep
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     row_tuple = (
         "12345",
         8,
         "High risk",
         None,
+        "Test prompt",
     )
 
     # Act
@@ -484,6 +493,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
         "risk_score_rationale",
         "red_flags",
         "warnings",
+        "analysis_prompt",
     ]
     row_tuple = (
         "12345",
@@ -491,6 +501,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
         "High risk",
         "[]",
         ["Warning 1", "Warning 2"],
+        "Test prompt",
     )
 
     # Act
@@ -566,6 +577,7 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         thinking_cost=Decimal("0.1"),
         total_cost=Decimal("0.6"),
         retry_count=1,
+        analysis_prompt="Test prompt",
     )
 
     assert isinstance(returned_id, UUID)

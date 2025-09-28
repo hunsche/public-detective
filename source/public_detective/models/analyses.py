@@ -120,6 +120,7 @@ class AnalysisResult(BaseModel):
     document_hash: str | None = None
     original_documents_gcs_path: str | None = None
     processed_documents_gcs_path: str | None = None
+    analysis_prompt: str
     input_tokens_used: int | None = None
     output_tokens_used: int | None = None
     thinking_tokens_used: int | None = None

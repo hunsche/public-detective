@@ -94,6 +94,7 @@ To get a local copy up and running, follow these simple steps.
 -   Python 3.12
 -   Poetry
 -   Docker
+-   **`antiword`**: Required by the `textract` library to extract text from legacy `.doc` files.
 
 ### ⚙️ Installation
 

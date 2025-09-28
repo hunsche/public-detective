@@ -20,6 +20,7 @@ def upgrade() -> None:
     """Upgrades the database to the latest version."""
     procurements_table = get_qualified_name("procurements")
     procurement_analyses_table = get_qualified_name("procurement_analyses")
+    source_documents_table = get_qualified_name("procurement_source_documents")
     file_records_table = get_qualified_name("file_records")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
@@ -43,7 +44,7 @@ def upgrade() -> None:
             procurement_id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            pncp_control_number VARCHAR NOT NULL,
+            pncp_control_number TEXT NOT NULL,
             proposal_opening_date TIMESTAMPTZ,
             proposal_closing_date TIMESTAMPTZ,
             object_description TEXT NOT NULL,
@@ -66,7 +67,7 @@ def upgrade() -> None:
             analysis_id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            procurement_control_number VARCHAR(255) NOT NULL,
+            procurement_control_number TEXT NOT NULL,
             version_number INTEGER NOT NULL,
             analysis_date TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             status {procurement_analysis_status_type} NOT NULL,
@@ -80,8 +81,8 @@ def upgrade() -> None:
             seo_keywords TEXT[],
             warnings TEXT[],
             document_hash VARCHAR(64),
-            original_documents_gcs_path VARCHAR,
-            processed_documents_gcs_path VARCHAR,
+            original_documents_gcs_path TEXT,
+            processed_documents_gcs_path TEXT,
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
             thinking_tokens_used INTEGER,
@@ -89,23 +90,38 @@ def upgrade() -> None:
             cost_output_tokens DECIMAL(28, 18),
             cost_thinking_tokens DECIMAL(28, 18),
             total_cost DECIMAL(28, 18),
+            analysis_prompt TEXT,
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)
+        );
+        CREATE TABLE {source_documents_table} (
+            id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
+            created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+            analysis_id UUID NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
+            synthetic_id TEXT NOT NULL,
+            title TEXT NOT NULL,
+            publication_date TIMESTAMPTZ,
+            document_type_name TEXT,
+            url TEXT,
+            raw_metadata JSONB NOT NULL,
+            UNIQUE (analysis_id, synthetic_id)
         );
         CREATE TABLE {file_records_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            analysis_id UUID NOT NULL REFERENCES {procurement_analyses_table}(analysis_id),
-            file_name VARCHAR NOT NULL,
-            gcs_path VARCHAR NOT NULL,
-            extension VARCHAR,
+            source_document_id UUID NOT NULL REFERENCES {source_documents_table}(id),
+            file_name TEXT NOT NULL,
+            gcs_path TEXT NOT NULL,
+            extension TEXT,
             size_bytes INTEGER NOT NULL,
             nesting_level INTEGER NOT NULL,
             included_in_analysis BOOLEAN NOT NULL,
-            exclusion_reason VARCHAR,
-            prioritization_logic VARCHAR,
-            converted_gcs_paths TEXT[]
+            exclusion_reason TEXT,
+        prioritization_logic TEXT NOT NULL,
+        prepared_content_gcs_uris TEXT[],
+            raw_document_metadata JSONB
         );
         CREATE TABLE {history_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
@@ -117,7 +133,7 @@ def upgrade() -> None:
         CREATE TABLE {votes_table} (
             vote_id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-            procurement_control_number VARCHAR NOT NULL,
+            procurement_control_number TEXT NOT NULL,
             version_number INTEGER NOT NULL,
             user_id UUID NOT NULL,
             vote_type {vote_type} NOT NULL,
@@ -127,9 +143,9 @@ def upgrade() -> None:
         );
         CREATE TABLE {donations_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
-            donor_identifier VARCHAR NOT NULL,
+            donor_identifier TEXT NOT NULL,
             amount DECIMAL(28, 18) NOT NULL,
-            transaction_id VARCHAR,
+            transaction_id TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE TABLE {budget_ledgers_table} (
@@ -159,9 +175,12 @@ def upgrade() -> None:
             ON {procurement_analyses_table} (votes_count DESC, input_tokens_used ASC);
         CREATE INDEX idx_procurement_analyses_document_hash
             ON {procurement_analyses_table} (document_hash);
+        -- Indexes for procurement_source_documents table
+        CREATE INDEX idx_source_documents_analysis_id
+            ON {source_documents_table} (analysis_id);
         -- Indexes for file_records table
-        CREATE INDEX idx_file_records_analysis_id
-            ON {file_records_table} (analysis_id);
+        CREATE INDEX idx_file_records_source_document_id
+            ON {file_records_table} (source_document_id);
         -- Indexes for procurement_analysis_status_history table
         CREATE INDEX idx_procurement_analysis_status_history_analysis_id
             ON {history_table} (analysis_id);
@@ -188,6 +207,8 @@ def downgrade() -> None:
     procurements_table = get_qualified_name("procurements")
     procurement_analyses_table_dropped = get_qualified_name("procurement_analyses_dropped")
     procurement_analyses_table = get_qualified_name("procurement_analyses")
+    source_documents_table_dropped = get_qualified_name("procurement_source_documents_dropped")
+    source_documents_table = get_qualified_name("procurement_source_documents")
     file_records_table_dropped = get_qualified_name("file_records_dropped")
     file_records_table = get_qualified_name("file_records")
     history_table_dropped = get_qualified_name("procurement_analysis_status_history_dropped")
@@ -204,6 +225,7 @@ def downgrade() -> None:
 
     op.execute(f"ALTER TABLE {procurements_table} RENAME TO {procurements_table_dropped};")
     op.execute(f"ALTER TABLE {procurement_analyses_table} RENAME TO {procurement_analyses_table_dropped};")
+    op.execute(f"ALTER TABLE {source_documents_table} RENAME TO {source_documents_table_dropped};")
     op.execute(f"ALTER TABLE {file_records_table} RENAME TO {file_records_table_dropped};")
     op.execute(f"ALTER TABLE {history_table} RENAME TO {history_table_dropped};")
     op.execute(f"ALTER TABLE {votes_table} RENAME TO {votes_table_dropped};")

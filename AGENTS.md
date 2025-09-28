@@ -186,6 +186,7 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
 
 ## 5. Code Philosophy
 
+- **No Abbreviations:** Variable names must be fully spelled out and descriptive. Avoid abbreviations (e.g., use `procurement` instead of `proc`, `candidate` instead of `c`) to maximize readability and create self-documenting code.
 - **No Inline Comments:** Code should be self-documenting through clear variable and method names. Use docstrings for classes and methods, not `#` comments.
 - **Class Property Typing:** All instance properties (i.e., attributes assigned to `self`) must be explicitly typed at the class level. This improves readability and allows for better static analysis.
 

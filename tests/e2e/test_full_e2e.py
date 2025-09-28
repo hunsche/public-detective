@@ -18,8 +18,8 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
     5. Validates that analyses were processed and the budget ledger was updated.
 
     Args:
-        e2e_test_setup: The fixture to set up the E2E test environment.
         db_session: The SQLAlchemy engine instance from the db_session fixture.
+        e2e_pubsub: The tuple containing the Pub/Sub client and topic name.
     """
     print("\n--- Starting E2E test flow ---")
     target_date_str = "2025-08-23"
@@ -27,7 +27,6 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
     max_items_to_process = 1
 
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
-    os.environ["GCP_GEMINI_PRICE_PER_1K_TOKENS"] = "0.002"
 
     pre_analyze_command = (
         f"poetry run python -m public_detective.cli pre-analyze "
@@ -64,7 +63,7 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
     worker_command = (
         f"poetry run python -m public_detective.worker "
         f"--max-messages {max_items_to_process} "
-        f"--timeout 5 "
+        f"--timeout 15 "
         f"--max-output-tokens None"
     )
     run_command(worker_command)

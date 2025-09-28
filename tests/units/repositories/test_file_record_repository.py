@@ -10,9 +10,14 @@ from public_detective.repositories.file_records import FileRecordsRepository
 def test_save_file_record() -> None:
     """Test the save_file_record method."""
     engine = MagicMock()
+    mock_connection = engine.connect().__enter__()
+    mock_result = mock_connection.execute.return_value
+    expected_uuid = uuid4()
+    mock_result.scalar_one.return_value = expected_uuid
+
     repo = FileRecordsRepository(engine)
     record = NewFileRecord(
-        analysis_id=uuid4(),
+        source_document_id=uuid4(),
         file_name="test.pdf",
         gcs_path="test/path",
         extension="pdf",
@@ -20,13 +25,15 @@ def test_save_file_record() -> None:
         nesting_level=0,
         included_in_analysis=True,
         exclusion_reason=None,
-        prioritization_logic="edital",
-        converted_gcs_paths=None,
+        prioritization_logic="Test logic",
+        prepared_content_gcs_uris=None,
     )
 
-    with patch.object(repo.engine, "connect") as mock_connect:
-        repo.save_file_record(record)
-        mock_connect.assert_called_once()
+    result_uuid = repo.save_file_record(record)
+
+    mock_connection.execute.assert_called_once()
+    mock_connection.commit.assert_called_once()
+    assert result_uuid == expected_uuid
 
 
 def test_get_all_file_records_by_analysis_id() -> None:

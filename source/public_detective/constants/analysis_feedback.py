@@ -6,6 +6,7 @@ class ExclusionReason:
 
     UNSUPPORTED_EXTENSION: str = "Extensão de arquivo não suportada."
     TOKEN_LIMIT_EXCEEDED: str = "Arquivo excluído porque o limite de {max_tokens} tokens foi excedido."
+    CONVERSION_FAILED: str = "Falha ao converter o arquivo."
     TOTAL_SIZE_LIMIT_EXCEEDED: str = (
         "Arquivo excluído porque o tamanho total dos arquivos excedeu o limite de {max_size_mb:.1f} MB."
     )

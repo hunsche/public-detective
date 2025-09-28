@@ -4,7 +4,7 @@ import hashlib
 import json
 import os
 import time
-from dataclasses import dataclass
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -12,10 +12,11 @@ from uuid import UUID
 
 from public_detective.constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 from public_detective.exceptions.analysis import AnalysisError
-from public_detective.models.analyses import Analysis, AnalysisResult
+from public_detective.models.analyses import AnalysisResult
 from public_detective.models.file_records import NewFileRecord
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
+from public_detective.models.source_documents import NewSourceDocument
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
 from public_detective.providers.gcs import GcsProvider
@@ -24,30 +25,43 @@ from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
-from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
+from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.converter import ConverterService
 from public_detective.services.pricing_service import Modality, PricingService
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
-@dataclass
-class AIFileCandidate:
+class AIFileCandidate(BaseModel):
     """Represents a file being considered for AI analysis."""
 
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    synthetic_id: str
+    raw_document_metadata: dict
     original_path: str
     original_content: bytes
     ai_path: str = ""
-    ai_content: bytes = b""
-    converted_gcs_paths: list[str] | None = None
+    ai_content: bytes | list[bytes] = b""
+    ai_gcs_uris: list[str] = Field(default_factory=list)
+    prepared_content_gcs_uris: list[str] | None = None
     is_included: bool = False
     exclusion_reason: str | None = None
+    file_record_id: UUID | None = None
 
-    def __post_init__(self) -> None:
-        """Set the ai_path and ai_content if they're not provided."""
+    @model_validator(mode="after")
+    def set_ai_defaults(self) -> "AIFileCandidate":
+        """Set the ai_path and ai_content if they're not provided.
+
+        Returns:
+            AIFileCandidate: The instance itself, with `ai_path` and `ai_content` updated if they were not provided.
+        """
         if not self.ai_path:
             self.ai_path = self.original_path
         if not self.ai_content:
             self.ai_content = self.original_content
+        return self
 
 
 class AnalysisService:
@@ -55,6 +69,7 @@ class AnalysisService:
 
     procurement_repo: ProcurementsRepository
     analysis_repo: AnalysisRepository
+    source_document_repo: SourceDocumentsRepository
     file_record_repo: FileRecordsRepository
     status_history_repo: StatusHistoryRepository
     budget_ledger_repo: BudgetLedgerRepository
@@ -73,6 +88,7 @@ class AnalysisService:
         ".rtf",
         ".xlsx",
         ".xls",
+        ".xlsb",
         ".csv",
         ".txt",
         ".mp4",
@@ -88,12 +104,16 @@ class AnalysisService:
         ".png",
         ".gif",
         ".bmp",
+        ".html",
+        ".xml",
+        ".json",
+        ".txt",
+        ".md",
     )
     _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
     _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
     _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".bmp")
-    _DOCX_EXTENSIONS = (".docx", ".doc", ".rtf")
-    _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls")
+    _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".xlsb")
     _FILE_PRIORITY_ORDER = [
         "edital",
         "termo de referencia",
@@ -109,6 +129,7 @@ class AnalysisService:
         self,
         procurement_repo: ProcurementsRepository,
         analysis_repo: AnalysisRepository,
+        source_document_repo: SourceDocumentsRepository,
         file_record_repo: FileRecordsRepository,
         status_history_repo: StatusHistoryRepository,
         budget_ledger_repo: BudgetLedgerRepository,
@@ -121,6 +142,7 @@ class AnalysisService:
         Args:
             procurement_repo: The repository for procurement data.
             analysis_repo: The repository for analysis data.
+            source_document_repo: The repository for source document data.
             file_record_repo: The repository for file record data.
             status_history_repo: The repository for status history data.
             budget_ledger_repo: The repository for budget ledger data.
@@ -130,6 +152,7 @@ class AnalysisService:
         """
         self.procurement_repo = procurement_repo
         self.analysis_repo = analysis_repo
+        self.source_document_repo = source_document_repo
         self.file_record_repo = file_record_repo
         self.status_history_repo = status_history_repo
         self.budget_ledger_repo = budget_ledger_repo
@@ -141,17 +164,17 @@ class AnalysisService:
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
 
-    def _get_modality(self, files: list[tuple[str, bytes]]) -> Modality:
+    def _get_modality(self, candidates: list[AIFileCandidate]) -> Modality:
         """Determines the modality of an analysis based on file extensions.
 
         Args:
-            files: A list of tuples containing the file path and content.
+            candidates: A list of AIFileCandidate objects.
 
         Returns:
             The modality of the analysis.
         """
-        for path, _ in files:
-            ext = os.path.splitext(path)[1].lower()
+        for candidate in candidates:
+            ext = os.path.splitext(candidate.ai_path)[1].lower()
             if ext in self._VIDEO_EXTENSIONS:
                 return Modality.VIDEO
             if ext in self._AUDIO_EXTENSIONS:
@@ -228,35 +251,43 @@ class AnalysisService:
         control_number = procurement.pncp_control_number
         self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
 
-        all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        if not all_original_files:
+        procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, version_number)
+        if not procurement_id:
+            raise AnalysisError(f"Could not find procurement UUID for {control_number} v{version_number}")
+
+        processed_files = self.procurement_repo.process_procurement_documents(procurement)
+        if not processed_files:
             self.logger.warning(f"No files found for {control_number}. Aborting.")
             return
 
-        all_candidates = self._prepare_ai_candidates(all_original_files, procurement)
-        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
+        all_candidates = self._prepare_ai_candidates(processed_files)
 
-        files_for_ai: list[tuple[str, bytes]] = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
-        if not files_for_ai:
+        source_docs_map = self._process_and_save_source_documents(analysis_id, all_candidates)
+        self._upload_and_save_initial_records(procurement_id, analysis_id, all_candidates, source_docs_map)
+
+        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
+        self._update_selected_file_records(final_candidates)
+
+        files_for_ai_uris = [
+            uri for candidate in final_candidates if candidate.is_included for uri in candidate.ai_gcs_uris
+        ]
+        if not files_for_ai_uris:
             self.logger.error(f"No supported files left after filtering for {control_number}.")
-            self._process_and_save_file_records(analysis_id, procurement, final_candidates)
             return
 
-        document_hash = self._calculate_hash(files_for_ai)
-        modality = self._get_modality(files_for_ai)
+        files_for_hash = [
+            (candidate.ai_path, candidate.ai_content) for candidate in final_candidates if candidate.is_included
+        ]
+        document_hash = self._calculate_hash(files_for_hash)
+        modality = self._get_modality(final_candidates)
 
         try:
-            prompt = self._build_analysis_prompt(procurement, warnings)
+            prompt = self._build_analysis_prompt(procurement, final_candidates, warnings)
             ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt, files=files_for_ai
+                prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
             )
 
-            timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-            gcs_base_path = f"{control_number}/{timestamp}"
-            if self.config.GCP_GCS_TEST_PREFIX:
-                gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
-
-            analysis_report_gcs_path = self._upload_analysis_report(gcs_base_path, ai_analysis)
+            gcs_base_path = f"{procurement_id}/{analysis_id}"
 
             final_result = AnalysisResult(
                 procurement_control_number=control_number,
@@ -264,8 +295,9 @@ class AnalysisService:
                 ai_analysis=ai_analysis,
                 warnings=warnings,
                 document_hash=document_hash,
-                original_documents_gcs_path=f"{gcs_base_path}/files/",
-                processed_documents_gcs_path=analysis_report_gcs_path,
+                original_documents_gcs_path=gcs_base_path,
+                processed_documents_gcs_path=None,
+                analysis_prompt=prompt,
             )
             input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
                 input_tokens, output_tokens, thinking_tokens, modality=modality
@@ -282,30 +314,30 @@ class AnalysisService:
                 total_cost=total_cost,
             )
 
-            self._process_and_save_file_records(analysis_id, procurement, final_candidates)
-
             self.logger.info(f"Successfully completed analysis for {control_number}.")
 
         except Exception as e:
             self.logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
             raise
 
-    def _prepare_ai_candidates(
-        self, all_files: list[tuple[str, bytes]], procurement: Procurement
-    ) -> list[AIFileCandidate]:
+    def _prepare_ai_candidates(self, all_files: list[ProcessedFile]) -> list[AIFileCandidate]:
         """Prepares a list of AIFileCandidate objects from raw file data.
 
         Args:
-            all_files: A list of tuples containing the file path and content.
-            procurement: The procurement being analyzed.
+            all_files: A list of `ProcessedFile` objects from the repository.
 
         Returns:
             A list of AIFileCandidate objects.
         """
         candidates = []
-        for original_path, content in all_files:
-            candidate = AIFileCandidate(original_path=original_path, original_content=content)
-            ext = os.path.splitext(original_path)[1].lower()
+        for processed_file in all_files:
+            candidate = AIFileCandidate(
+                synthetic_id=processed_file.source_document_id,
+                raw_document_metadata=processed_file.raw_document_metadata,
+                original_path=processed_file.relative_path,
+                original_content=processed_file.content,
+            )
+            ext = os.path.splitext(processed_file.relative_path)[1].lower()
 
             if ext not in self._SUPPORTED_EXTENSIONS:
                 candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
@@ -313,53 +345,50 @@ class AnalysisService:
                 continue
 
             try:
-                if ext in self._DOCX_EXTENSIONS:
-                    converted_content = self.converter_service.doc_to_pdf(content, ext)
+                if ext == ".docx":
+                    converted_content = self.converter_service.docx_to_html(processed_file.content)
+                    candidate.ai_content = converted_content.encode("utf-8")
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.html"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".rtf":
+                    converted_content = self.converter_service.rtf_to_text(processed_file.content)
+                    candidate.ai_content = converted_content.encode("utf-8")
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".doc":
+                    converted_content = self.converter_service.doc_to_text(processed_file.content)
+                    candidate.ai_content = converted_content.encode("utf-8")
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".bmp":
+                    converted_content = self.converter_service.bmp_to_png(processed_file.content)
                     candidate.ai_content = converted_content
-                    candidate.ai_path = f"{os.path.splitext(original_path)[0]}.pdf"
-                    gcs_path_base = f"{procurement.pncp_control_number}/converted/{os.path.basename(candidate.ai_path)}"
-                    gcs_path = (
-                        f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_path_base}"
-                        if self.config.GCP_GCS_TEST_PREFIX
-                        else gcs_path_base
-                    )
-                    self.gcs_provider.upload_file(
-                        bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-                        destination_blob_name=gcs_path,
-                        content=converted_content,
-                        content_type="application/pdf",
-                    )
-                    candidate.converted_gcs_paths = [gcs_path]
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.png"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".gif":
+                    converted_content = self.converter_service.gif_to_mp4(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.mp4"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext in (".xml", ".json"):
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext in self._SPREADSHEET_EXTENSIONS:
-                    converted_sheets = self.converter_service.spreadsheet_to_csvs(content, ext)
-
+                    converted_sheets = self.converter_service.spreadsheet_to_csvs(processed_file.content, ext)
                     all_csv_content = []
                     converted_paths = []
-
                     for sheet_name, sheet_content in converted_sheets:
-                        base_name = os.path.splitext(os.path.basename(original_path))[0]
-                        csv_filename = f"{base_name}_{sheet_name}"
-                        gcs_path_base = f"{procurement.pncp_control_number}/converted/{csv_filename}"
-                        gcs_path = (
-                            f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_path_base}"
-                            if self.config.GCP_GCS_TEST_PREFIX
-                            else gcs_path_base
-                        )
-                        self.gcs_provider.upload_file(
-                            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-                            destination_blob_name=gcs_path,
-                            content=sheet_content,
-                            content_type="text/csv",
-                        )
-                        converted_paths.append(gcs_path)
+                        base_name = os.path.splitext(os.path.basename(processed_file.relative_path))[0]
+                        csv_filename = f"{base_name}_{sheet_name}.csv"
+                        converted_paths.append(csv_filename)
                         all_csv_content.append(sheet_content)
 
-                    candidate.ai_content = b"\n--- NEW SHEET ---\n".join(all_csv_content)
-                    candidate.ai_path = f"{os.path.splitext(original_path)[0]}.csv"
-                    candidate.converted_gcs_paths = converted_paths
+                    candidate.ai_content = all_csv_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.csv"
+                    candidate.prepared_content_gcs_uris = converted_paths
 
             except Exception as e:
-                self.logger.error(f"Failed to process file {original_path}: {e}", exc_info=True)
+                self.logger.error(f"Failed to process file {processed_file.relative_path}: {e}", exc_info=True)
                 candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
 
             candidates.append(candidate)
@@ -377,26 +406,28 @@ class AnalysisService:
         Returns:
             A tuple containing the list of selected candidates and a list of warnings.
         """
-        candidates.sort(key=lambda c: self._get_priority(c.original_path))
+        candidates.sort(key=lambda candidate: self._get_priority(candidate.original_path))
         max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
         warnings = []
 
-        base_prompt_text = self._build_analysis_prompt(procurement, [])
-        files_for_ai: list[tuple[str, bytes]] = []
+        base_prompt_text = self._build_analysis_prompt(procurement, candidates, [])
+        files_for_ai_uris: list[str] = []
         for candidate in candidates:
             if candidate.exclusion_reason:
                 continue
 
-            files_to_test = files_for_ai + [(candidate.ai_path, candidate.ai_content)]
-            tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, files_to_test)
+            uris_to_test = files_for_ai_uris + candidate.ai_gcs_uris
+            tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, uris_to_test)
 
             if tokens <= max_tokens:
-                files_for_ai.append((candidate.ai_path, candidate.ai_content))
+                files_for_ai_uris.extend(candidate.ai_gcs_uris)
                 candidate.is_included = True
             else:
                 candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
 
-        excluded_names = [os.path.basename(c.original_path) for c in candidates if not c.is_included]
+        excluded_names = [
+            os.path.basename(candidate.original_path) for candidate in candidates if not candidate.is_included
+        ]
         if excluded_names:
             warnings.append(
                 Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=", ".join(excluded_names))
@@ -404,45 +435,125 @@ class AnalysisService:
 
         return candidates, warnings
 
-    def _process_and_save_file_records(
-        self, analysis_id: UUID, procurement: Procurement, candidates: list[AIFileCandidate]
-    ) -> None:
-        """Uploads original files to GCS and saves their metadata records.
+    def _process_and_save_source_documents(
+        self,
+        analysis_id: UUID,
+        candidates: list[AIFileCandidate],
+    ) -> dict[str, UUID]:
+        """Saves unique source documents to the database.
 
         Args:
-            analysis_id: The ID of the analysis.
-            procurement: The procurement being analyzed.
-            candidates: A list of AIFileCandidate objects.
+            analysis_id: The ID of the current analysis.
+            candidates: A list of all file candidates.
+
+        Returns:
+            A dictionary mapping synthetic source document IDs to their new database UUIDs.
         """
-        timestamp = datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S")
-        gcs_base_path = f"{procurement.pncp_control_number}/{timestamp}"
-        if self.config.GCP_GCS_TEST_PREFIX:
-            gcs_base_path = f"{self.config.GCP_GCS_TEST_PREFIX}/{gcs_base_path}"
+        source_docs_map: dict[str, UUID] = {}
+        unique_source_docs = {c.synthetic_id: c.raw_document_metadata for c in candidates}
 
+        for synthetic_id, raw_meta in unique_source_docs.items():
+            doc_model = NewSourceDocument(
+                analysis_id=analysis_id,
+                synthetic_id=str(synthetic_id),
+                title=raw_meta.get("titulo", "N/A"),
+                publication_date=raw_meta.get("dataPublicacaoPncp"),
+                document_type_name=raw_meta.get("tipoDocumentoNome"),
+                url=raw_meta.get("url"),
+                raw_metadata=raw_meta,
+            )
+            db_id = self.source_document_repo.save_source_document(doc_model)
+            source_docs_map[synthetic_id] = db_id
+        return source_docs_map
+
+    def _update_selected_file_records(self, candidates: list[AIFileCandidate]) -> None:
+        """Updates the database records for files that were selected for analysis.
+
+        Args:
+            candidates: The list of candidates after the selection process.
+        """
+        selected_file_ids = [
+            candidate.file_record_id for candidate in candidates if candidate.is_included and candidate.file_record_id
+        ]
+        if selected_file_ids:
+            self.file_record_repo.set_files_as_included(selected_file_ids)
+
+    def _upload_and_save_initial_records(
+        self,
+        procurement_id: UUID,
+        analysis_id: UUID,
+        candidates: list[AIFileCandidate],
+        source_docs_map: dict[str, UUID],
+    ) -> None:
+        """Uploads all files to GCS and saves their initial metadata records.
+
+        This method uploads both original and prepared files, populates the
+        candidate objects with real GCS URIs, and saves the initial file
+        record to the database with `included_in_analysis` set to False.
+
+        Args:
+            procurement_id: The database UUID of the procurement.
+            analysis_id: The ID of the current analysis.
+            candidates: A list of AIFileCandidate objects to upload and save.
+            source_docs_map: A map of synthetic source IDs to database UUIDs.
+        """
+        bucket_name = self.config.GCP_GCS_BUCKET_PROCUREMENTS
         for candidate in candidates:
-            file_name = os.path.basename(candidate.original_path)
-            gcs_path = f"{gcs_base_path}/files/{file_name}"
+            source_document_db_id = source_docs_map[candidate.synthetic_id]
+            base_gcs_path = f"{procurement_id}/{analysis_id}/{source_document_db_id}"
 
+            # Upload original file
+            original_gcs_path = f"{base_gcs_path}/{os.path.basename(candidate.original_path)}"
             self.gcs_provider.upload_file(
-                bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-                destination_blob_name=gcs_path,
+                bucket_name=bucket_name,
+                destination_blob_name=original_gcs_path,
                 content=candidate.original_content,
                 content_type="application/octet-stream",
             )
 
+            # Upload prepared files and set final GCS URIs
+            final_converted_uris = []
+            if candidate.prepared_content_gcs_uris:
+                if isinstance(candidate.ai_content, list):
+                    for i, prepared_path in enumerate(candidate.prepared_content_gcs_uris):
+                        prepared_gcs_path = f"{base_gcs_path}/prepared_content/{prepared_path}"
+                        self.gcs_provider.upload_file(
+                            bucket_name=bucket_name,
+                            destination_blob_name=prepared_gcs_path,
+                            content=candidate.ai_content[i],
+                            content_type="text/csv",
+                        )
+                        final_converted_uris.append(f"gs://{bucket_name}/{prepared_gcs_path}")
+                else:
+                    prepared_gcs_path = f"{base_gcs_path}/prepared_content/{os.path.basename(candidate.ai_path)}"
+                    self.gcs_provider.upload_file(
+                        bucket_name=bucket_name,
+                        destination_blob_name=prepared_gcs_path,
+                        content=candidate.ai_content,
+                        content_type="application/octet-stream",
+                    )
+                    final_converted_uris.append(f"gs://{bucket_name}/{prepared_gcs_path}")
+
+                candidate.ai_gcs_uris = final_converted_uris
+                candidate.prepared_content_gcs_uris = final_converted_uris
+            else:
+                candidate.ai_gcs_uris = [f"gs://{bucket_name}/{original_gcs_path}"]
+
+            # Save initial file record
             file_record = NewFileRecord(
-                analysis_id=analysis_id,
-                file_name=file_name,
-                gcs_path=gcs_path,
-                extension=os.path.splitext(file_name)[1].lstrip("."),
+                source_document_id=source_document_db_id,
+                file_name=os.path.basename(candidate.original_path),
+                gcs_path=original_gcs_path,
+                extension=os.path.splitext(candidate.original_path)[1].lstrip("."),
                 size_bytes=len(candidate.original_content),
-                nesting_level=0,
-                included_in_analysis=candidate.is_included,
+                nesting_level=candidate.original_path.count(os.sep),
+                included_in_analysis=False,  # Always False initially
                 exclusion_reason=candidate.exclusion_reason,
                 prioritization_logic=self._get_priority_as_string(candidate.original_path),
-                converted_gcs_paths=candidate.converted_gcs_paths,
+                prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
             )
-            self.file_record_repo.save_file_record(file_record)
+            # Store the new record's ID back on the candidate for the update step
+            candidate.file_record_id = self.file_record_repo.save_file_record(file_record)
 
     def _get_priority(self, file_path: str) -> int:
         """Determines the priority of a file based on keywords in its name.
@@ -476,17 +587,49 @@ class AnalysisService:
         no_priority_message: str = PrioritizationLogic.NO_PRIORITY
         return no_priority_message
 
-    def _build_analysis_prompt(self, procurement: Procurement, warnings: list[str]) -> str:
+    def _build_analysis_prompt(
+        self,
+        procurement: Procurement,
+        candidates: list[AIFileCandidate],
+        warnings: list[str],
+    ) -> str:
         """Constructs the prompt for the AI, including contextual warnings.
 
         Args:
             procurement: The procurement to build the prompt for.
+            candidates: The list of file candidates for the analysis.
             warnings: A list of warnings to include in the prompt.
 
         Returns:
             The prompt for the AI.
         """
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
+
+        # Group files by their source document
+        source_doc_files = defaultdict(list)
+        for candidate in candidates:
+            if candidate.is_included:
+                source_doc_files[candidate.synthetic_id].append(candidate)
+
+        # Build the document context section
+        document_context_parts = []
+        for _source_id, files in source_doc_files.items():
+            # All files in this group share the same raw metadata
+            meta = files[0].raw_document_metadata
+            title = meta.get("titulo", "N/A")
+            doc_type = meta.get("tipoDocumentoNome", "N/A")
+            pub_date = meta.get("dataPublicacaoPncp", "N/A")
+
+            file_list = "\n".join([f"- `{os.path.basename(f.ai_path)}`" for f in files])
+
+            context_part = (
+                f"**Fonte do Documento:** {title} (Tipo: {doc_type}, Publicado em: {pub_date})\n"
+                f"**Arquivos extraídos desta fonte:**\n{file_list}"
+            )
+            document_context_parts.append(context_part)
+
+        document_context_section = "\n\n---\n\n".join(document_context_parts)
+
         warnings_section = ""
         if warnings:
             warnings_text = "\n- ".join(warnings)
@@ -504,11 +647,16 @@ class AnalysisService:
         possíveis irregularidades no processo de licitação.
         {warnings_section}
         Primeiro, revise os metadados da licitação em formato JSON para obter o
-        contexto. Em seguida, inspecione todos os arquivos anexados.
+        contexto geral. Em seguida, use a lista de documentos e arquivos para
+        entender a origem de cada anexo.
 
         --- METADADOS DA LICITAÇÃO (JSON) ---
         {procurement_json}
         --- FIM DOS METADADOS ---
+
+        --- CONTEXTO DOS DOCUMENTOS ANEXADOS ---
+        {document_context_section}
+        --- FIM DO CONTEXTO ---
 
         Com base em todas as informações disponíveis, analise a licitação em
         busca de irregularidades nas seguintes categorias. Para cada achado,
@@ -547,7 +695,7 @@ class AnalysisService:
         encontrabilidade desta análise.
         """
 
-    def _calculate_hash(self, files: list[tuple[str, bytes]]) -> str:
+    def _calculate_hash(self, files: list[tuple[str, bytes | list[bytes]]]) -> str:
         """Calculates a SHA-256 hash from the content of a list of files.
 
         Args:
@@ -558,28 +706,12 @@ class AnalysisService:
         """
         hasher = hashlib.sha256()
         for _, content in sorted(files, key=lambda x: x[0]):
-            hasher.update(content)
+            if isinstance(content, list):
+                for item in content:
+                    hasher.update(item)
+            else:
+                hasher.update(content)
         return hasher.hexdigest()
-
-    def _upload_analysis_report(self, gcs_base_path: str, analysis_result: Analysis) -> str:
-        """Uploads the analysis report to GCS and returns the full path.
-
-        Args:
-            gcs_base_path: The base path in GCS to upload the report to.
-            analysis_result: The analysis result to upload.
-
-        Returns:
-            The full path to the uploaded analysis report.
-        """
-        analysis_report_content = json.dumps(analysis_result.model_dump(), indent=2).encode("utf-8")
-        analysis_report_blob_name = f"{gcs_base_path}/analysis_report.json"
-        self.gcs_provider.upload_file(
-            bucket_name=self.config.GCP_GCS_BUCKET_PROCUREMENTS,
-            destination_blob_name=analysis_report_blob_name,
-            content=analysis_report_content,
-            content_type="application/json",
-        )
-        return analysis_report_blob_name
 
     def run_specific_analysis(self, analysis_id: UUID) -> None:
         """Triggers an analysis for a specific ID by publishing a message.
@@ -687,12 +819,12 @@ class AnalysisService:
             raw_data: The raw data of the procurement.
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        all_candidates = self._prepare_ai_candidates(all_original_files, procurement)
+        all_candidates = self._prepare_ai_candidates(all_original_files)
         final_candidates, _ = self._select_files_by_token_limit(all_candidates, procurement)
         files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
         raw_data_str = json.dumps(raw_data, sort_keys=True)
-        all_files_content = b"".join(content for _, content in sorted(all_original_files, key=lambda x: x[0]))
+        all_files_content = b"".join(file.content for file in sorted(all_original_files, key=lambda x: x.relative_path))
         procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
@@ -711,12 +843,13 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        base_prompt_text = self._build_analysis_prompt(procurement, [])
-        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, files_for_ai)
+        base_prompt_text = self._build_analysis_prompt(procurement, final_candidates, [])
+        uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
+        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, uris_for_token_count)
 
         output_tokens = 0
         thinking_tokens = 0
-        modality = self._get_modality(files_for_ai)
+        modality = self._get_modality(final_candidates)
         input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
             input_tokens, output_tokens, thinking_tokens, modality=modality
         )
@@ -871,6 +1004,7 @@ class AnalysisService:
                         thinking_cost=thinking_cost,
                         total_cost=total_cost,
                         retry_count=analysis.retry_count + 1,
+                        analysis_prompt=analysis.analysis_prompt,
                     )
                     self.run_specific_analysis(new_analysis_id)
                     retried_count += 1

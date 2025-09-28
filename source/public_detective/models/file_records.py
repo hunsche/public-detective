@@ -19,7 +19,7 @@ class FileRecord(BaseModel):
     processed during an analysis run.
 
     Attributes:
-        id: The unique identifier for the file record.
+        file_record_id: The unique identifier for the file record.
         created_at: The timestamp when the record was created.
         updated_at: The timestamp when the record was last updated.
         analysis_id: A foreign key linking this file to the specific
@@ -38,7 +38,7 @@ class FileRecord(BaseModel):
             file (e.g., 'edital', 'termo de referencia').
     """
 
-    id: UUID
+    file_record_id: UUID
     created_at: datetime
     updated_at: datetime
     analysis_id: UUID
@@ -61,7 +61,7 @@ class NewFileRecord(BaseModel):
     information that is collected before a record is persisted.
     """
 
-    analysis_id: UUID
+    source_document_id: UUID
     file_name: str
     gcs_path: str
     extension: str | None
@@ -69,5 +69,5 @@ class NewFileRecord(BaseModel):
     nesting_level: int
     included_in_analysis: bool
     exclusion_reason: str | None
-    prioritization_logic: str | None
-    converted_gcs_paths: list[str] | None = None
+    prioritization_logic: str
+    prepared_content_gcs_uris: list[str] | None

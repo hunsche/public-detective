@@ -70,12 +70,14 @@ def setup_analysis(
                     analysis_id, procurement_control_number, version_number,
                     status, retry_count, updated_at, document_hash,
                     input_tokens_used, output_tokens_used, thinking_tokens_used,
-                    cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost
+                    cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
+                    analysis_prompt
                 ) VALUES (
                     :analysis_id, :procurement_id, :version_number,
                     :status, :retry_count, :updated_at, 'hash',
                     :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
-                    :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost
+                    :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
+                    'Test prompt'
                 )
                 """
             ),

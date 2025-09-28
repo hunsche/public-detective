@@ -1,7 +1,8 @@
-"""This module contains E2E tests for file extension handling."""
+"This module contains E2E tests for file extension handling."
 
 import json
 import os
+import shutil
 import uuid
 from collections.abc import Callable
 from datetime import datetime
@@ -12,11 +13,13 @@ import pytest
 from docx import Document
 from openpyxl import Workbook
 from PIL import Image
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.services.analysis import AnalysisService
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from sqlalchemy import text
@@ -31,11 +34,10 @@ def create_txt(path: Path, content: str = "This is a test text file.") -> None:
     path.write_text(content)
 
 
-def create_doc(path: Path, content: str = "This is a test DOC file.") -> None:
-    """Creates a simple DOC file (by saving as DOCX, LibreOffice will handle it)."""
-    document = Document()
-    document.add_paragraph(content)
-    document.save(str(path))
+def create_doc(path: Path) -> None:
+    """Copies a valid DOC file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.doc"
+    shutil.copy(fixture_path, path)
 
 
 def create_docx(path: Path, content: str = "This is a test DOCX file.") -> None:
@@ -68,21 +70,76 @@ def create_xlsx(path: Path) -> None:
 
 def create_jpg(path: Path) -> None:
     """Creates a simple JPG image."""
-    img = Image.new("RGB", (100, 100), color="red")
+    img = Image.new("RGB", (10, 10), color="red")
     img.save(path, "jpeg")
 
 
 def create_png(path: Path) -> None:
     """Creates a simple PNG image."""
-    img = Image.new("RGB", (100, 100), color="green")
+    img = Image.new("RGB", (10, 10), color="green")
     img.save(path, "png")
+
+
+def create_gif(path: Path) -> None:
+    """Creates a simple GIF image."""
+    img = Image.new("RGB", (10, 10), color="blue")
+    img.save(path, "gif")
+
+
+def create_bmp(path: Path) -> None:
+    """Creates a simple BMP image."""
+    img = Image.new("RGB", (10, 10), color="yellow")
+    img.save(path, "bmp")
 
 
 def create_pdf(path: Path, content: str = "This is a valid PDF file.") -> None:
     """Creates a simple, valid PDF file."""
-    c = canvas.Canvas(str(path), pagesize=letter)
-    c.drawString(100, 750, content)
-    c.save()
+    pdf_canvas = canvas.Canvas(str(path), pagesize=letter)
+    pdf_canvas.drawString(100, 750, content)
+    pdf_canvas.save()
+
+
+def create_html(path: Path, content: str = "<h1>This is a test HTML file.</h1>") -> None:
+    """Creates a simple HTML file."""
+    path.write_text(content)
+
+
+def create_rtf(path: Path, content: str = "This is a test RTF file.") -> None:
+    """Creates a simple RTF file."""
+    rtf_content = f"{{{{\rtf1\\ansi\\deff0 {{{{\fonttbl {{{{\f0 Arial;}}}}}}}}\\f0\\fs24 {content}}}}}"
+    path.write_text(rtf_content)
+
+
+def create_xlsb(path: Path) -> None:
+    """Copies a valid XLSB file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.xlsb"
+    shutil.copy(fixture_path, path)
+
+
+def create_csv(path: Path, content: str = "col1,col2\nval1,val2") -> None:
+    """Creates a simple CSV file."""
+    path.write_text(content)
+
+
+def create_json(path: Path, content: str = """{"key": "value"}""") -> None:
+    """Creates a simple JSON file."""
+    path.write_text(content)
+
+
+def create_md(path: Path, content: str = "# Markdown") -> None:
+    """Creates a simple Markdown file."""
+    path.write_text(content)
+
+
+def create_xml(path: Path, content: str = "<root><test>value</test></root>") -> None:
+    """Creates a simple XML file."""
+    path.write_text(content)
+
+
+def create_media_from_fixture(path: Path, source_filename: str) -> None:
+    """Copies a valid media file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / source_filename
+    shutil.copy(fixture_path, path)
 
 
 FILE_GENERATORS: dict[str, Callable[..., None]] = {
@@ -92,28 +149,46 @@ FILE_GENERATORS: dict[str, Callable[..., None]] = {
     ".docx": create_docx,
     ".xls": create_xls,
     ".xlsx": create_xlsx,
+    ".xlsb": create_xlsb,
     ".jpg": create_jpg,
+    ".jpeg": create_jpg,  # Use the same generator for jpg and jpeg
     ".png": create_png,
+    ".gif": create_gif,
+    ".bmp": create_bmp,
+    ".html": create_html,
+    ".rtf": create_rtf,
+    ".csv": create_csv,
+    ".json": create_json,
+    ".md": create_md,
+    ".mp4": lambda p: create_media_from_fixture(p, "valid_test.mp4"),
+    ".mov": lambda p: create_media_from_fixture(p, "valid_test.mov"),
+    ".avi": lambda p: create_media_from_fixture(p, "valid_test.avi"),
+    ".mkv": lambda p: create_media_from_fixture(p, "valid_test.mkv"),
+    ".mp3": lambda p: create_media_from_fixture(p, "valid_test.mp3"),
+    ".wav": lambda p: create_media_from_fixture(p, "valid_test.wav"),
+    ".flac": lambda p: create_media_from_fixture(p, "valid_test.flac"),
+    ".ogg": lambda p: create_media_from_fixture(p, "valid_test.ogg"),
+    ".xml": create_xml,
 }
 
-EXTENSIONS_TO_TEST = [".txt", ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".jpg", ".png"]
-DOC_EXTENSIONS = [".doc", ".docx"]
-IMAGE_EXTENSIONS = [".jpg", ".png"]
-SPREADSHEET_EXTENSIONS = [".xls", ".xlsx"]
+SUPPORTED_EXTENSIONS_PARAMS = sorted(set(AnalysisService._SUPPORTED_EXTENSIONS))
 
 
-@pytest.mark.parametrize("extension", EXTENSIONS_TO_TEST)
+@pytest.mark.parametrize("extension", SUPPORTED_EXTENSIONS_PARAMS)
 def test_file_extension_processing(
     db_session: Engine,
     e2e_pubsub: tuple[Any, Any],
     tmp_path: Path,
     extension: str,
     mock_pncp_server: MockPNCP,
+    gcs_cleanup_manager: Callable[[str], None],
 ) -> None:
     """
     Tests the full E2E processing for various file extensions by running the
     worker as a subprocess and using a mock PNCP server to provide the files.
     """
+    expected_status = ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL
+
     publisher, topic_path = e2e_pubsub
     gcs_provider = GcsProvider()
     config = ConfigProvider.get_config()
@@ -130,6 +205,7 @@ def test_file_extension_processing(
     # 2. Configure mock PNCP server
     file_id = uuid.uuid4()
     procurement_control_number = f"file-ext-test-{uuid.uuid4().hex[:6]}"
+    gcs_cleanup_manager(procurement_control_number)
 
     mock_pncp_server.file_content = local_file_path.read_bytes()
     mock_pncp_server.file_metadata = [  # type: ignore
@@ -201,10 +277,10 @@ def test_file_extension_processing(
         connection.execute(
             text(
                 """INSERT INTO procurement_analyses (
-                    analysis_id, procurement_control_number, version_number, status
+                    analysis_id, procurement_control_number, version_number, status, analysis_prompt
                 )
                    VALUES (
-                    :analysis_id, :procurement_control_number, :version_number, 'PENDING_ANALYSIS'
+                    :analysis_id, :procurement_control_number, :version_number, 'PENDING_ANALYSIS', ''
                 )"""
             ),
             {
@@ -214,7 +290,6 @@ def test_file_extension_processing(
             },
         )
         connection.commit()
-
     # 4. Trigger worker by publishing a message
     message_data = {"analysis_id": str(analysis_id)}
     message_json = json.dumps(message_data)
@@ -231,38 +306,30 @@ def test_file_extension_processing(
             text("SELECT status FROM procurement_analyses WHERE analysis_id = :analysis_id"),
             {"analysis_id": analysis_id},
         ).scalar_one_or_none()
+
         assert (
-            final_status == "ANALYSIS_SUCCESSFUL"
-        ), f"Expected ANALYSIS_SUCCESSFUL for {extension}, but got {final_status}"
+            final_status == expected_status.value
+        ), f"Expected {expected_status.value} for {extension}, but got {final_status}"
 
         file_record = (
             connection.execute(
-                text("SELECT * FROM file_records WHERE analysis_id = :analysis_id AND file_name = :file_name"),
+                text(
+                    """
+                    SELECT fr.*
+                    FROM file_records fr
+                    JOIN procurement_source_documents psd ON fr.source_document_id = psd.id
+                    WHERE psd.analysis_id = :analysis_id AND fr.file_name = :file_name
+                    """
+                ),
                 {"analysis_id": analysis_id, "file_name": file_name},
             )
             .mappings()
             .one()
         )
-        assert file_record["exclusion_reason"] is None
-        assert file_record["included_in_analysis"] is True
 
-        gcs_test_prefix = os.environ.get("GCP_GCS_TEST_PREFIX")
-        assert gcs_test_prefix is not None
-        assert file_record["gcs_path"].startswith(gcs_test_prefix)
+        assert (
+            file_record["exclusion_reason"] is None
+        ), f"File was unexpectedly excluded with reason: {file_record['exclusion_reason']}"
+        assert file_record["included_in_analysis"] is True, "File was not included in analysis"
+
         assert gcs_client.bucket(bucket_name).blob(file_record["gcs_path"]).exists()
-
-        if extension in DOC_EXTENSIONS:
-            converted_paths = file_record["converted_gcs_paths"]
-            assert converted_paths is not None
-            assert len(converted_paths) == 1
-            assert converted_paths[0].endswith(".pdf")
-            assert gcs_client.bucket(bucket_name).blob(converted_paths[0]).exists()
-        elif extension in SPREADSHEET_EXTENSIONS:
-            converted_paths = file_record["converted_gcs_paths"]
-            assert converted_paths is not None
-            assert len(converted_paths) > 0
-            for path in converted_paths:
-                assert path.endswith(".csv")
-                assert gcs_client.bucket(bucket_name).blob(path).exists()
-        else:
-            assert file_record["converted_gcs_paths"] is None

@@ -147,26 +147,26 @@ class AnalysisRepository:
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
                 total_cost = :total_cost,
-                updated_at = now()
-            WHERE analysis_id = :analysis_id;
+                analysis_prompt = :analysis_prompt
+        WHERE analysis_id = :analysis_id;
         """
         )
-
-        red_flags_json = json.dumps([rf.model_dump() for rf in result.ai_analysis.red_flags])
-
         params = {
             "analysis_id": analysis_id,
-            "document_hash": result.document_hash,
-            "risk_score": result.ai_analysis.risk_score,
-            "risk_score_rationale": result.ai_analysis.risk_score_rationale,
-            "procurement_summary": result.ai_analysis.procurement_summary,
-            "analysis_summary": result.ai_analysis.analysis_summary,
-            "red_flags": red_flags_json,
-            "seo_keywords": result.ai_analysis.seo_keywords,
+            "risk_score": result.ai_analysis.risk_score if result.ai_analysis else 0,
+            "risk_score_rationale": result.ai_analysis.risk_score_rationale if result.ai_analysis else "",
+            "procurement_summary": result.ai_analysis.procurement_summary if result.ai_analysis else "",
+            "analysis_summary": result.ai_analysis.analysis_summary if result.ai_analysis else "",
+            "red_flags": json.dumps(
+                [flag.model_dump(mode="json") for flag in result.ai_analysis.red_flags] if result.ai_analysis else []
+            ),
+            "seo_keywords": result.ai_analysis.seo_keywords if result.ai_analysis else [],
             "warnings": result.warnings,
+            "document_hash": result.document_hash,
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
             "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
+            "analysis_prompt": result.analysis_prompt,
             "input_tokens_used": input_tokens,
             "output_tokens_used": output_tokens,
             "thinking_tokens_used": thinking_tokens,
@@ -224,7 +224,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
-                total_cost
+                total_cost,
+                analysis_prompt
             FROM procurement_analyses
             WHERE document_hash = :document_hash AND status = :status
             LIMIT 1;
@@ -258,6 +259,7 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
+        analysis_prompt: str = "",
     ) -> UUID:
         """Saves a new, pending analysis record to the database.
 
@@ -278,6 +280,7 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
+            analysis_prompt: The prompt used for the analysis.
 
         Returns:
             The newly created `analysis_id` for the record.
@@ -288,11 +291,13 @@ class AnalysisRepository:
             INSERT INTO procurement_analyses (
                 procurement_control_number, version_number, status, document_hash,
                 input_tokens_used, output_tokens_used, thinking_tokens_used,
-                cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost
+                cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
+                analysis_prompt
             ) VALUES (
                 :procurement_control_number, :version_number, :status, :document_hash,
                 :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
-                :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost
+                :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
+                :analysis_prompt
             )
             RETURNING analysis_id;
             """
@@ -309,6 +314,7 @@ class AnalysisRepository:
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
+            "analysis_prompt": analysis_prompt,
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
@@ -353,7 +359,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
-                total_cost
+                total_cost,
+                analysis_prompt
             FROM procurement_analyses
             WHERE analysis_id = :analysis_id
             LIMIT 1;
@@ -436,7 +443,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
-                total_cost
+                total_cost,
+                analysis_prompt
             FROM procurement_analyses
             WHERE
                 (
@@ -478,6 +486,7 @@ class AnalysisRepository:
         thinking_cost: Decimal,
         total_cost: Decimal,
         retry_count: int,
+        analysis_prompt: str,
     ) -> UUID:
         """Saves a new, pending analysis record for a retry attempt.
 
@@ -497,6 +506,7 @@ class AnalysisRepository:
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
             retry_count: The new retry count for this analysis attempt.
+            analysis_prompt: The prompt from the original analysis.
 
         Returns:
             The newly created `analysis_id` for the record.
@@ -511,12 +521,12 @@ class AnalysisRepository:
                 procurement_control_number, version_number, status, document_hash,
                 input_tokens_used, output_tokens_used, thinking_tokens_used,
                 cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
-                retry_count
+                retry_count, analysis_prompt
             ) VALUES (
                 :procurement_control_number, :version_number, :status, :document_hash,
                 :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
                 :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
-                :retry_count
+                :retry_count, :analysis_prompt
             )
             RETURNING analysis_id;
             """
@@ -534,6 +544,7 @@ class AnalysisRepository:
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
             "retry_count": retry_count,
+            "analysis_prompt": analysis_prompt,
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
@@ -557,34 +568,42 @@ class AnalysisRepository:
         sql = text(
             """
             SELECT
-                analysis_id,
-                procurement_control_number,
-                version_number,
-                status,
-                retry_count,
-                risk_score,
-                risk_score_rationale,
-                procurement_summary,
-                analysis_summary,
-                red_flags,
-                seo_keywords,
-                warnings,
-                document_hash,
-                original_documents_gcs_path,
-                processed_documents_gcs_path,
-                input_tokens_used,
-                output_tokens_used,
-                thinking_tokens_used,
-                created_at,
-                updated_at,
-                votes_count,
-                cost_input_tokens,
-                cost_output_tokens,
-                cost_thinking_tokens,
-                total_cost
-            FROM procurement_analyses
-            WHERE status = :pending_status
-            ORDER BY votes_count DESC, input_tokens_used ASC;
+                procurement_analyses.analysis_id,
+                procurement_analyses.procurement_control_number,
+                procurement_analyses.version_number,
+                procurement_analyses.status,
+                procurement_analyses.retry_count,
+                procurement_analyses.risk_score,
+                procurement_analyses.risk_score_rationale,
+                procurement_analyses.procurement_summary,
+                procurement_analyses.analysis_summary,
+                procurement_analyses.red_flags,
+                procurement_analyses.seo_keywords,
+                procurement_analyses.warnings,
+                procurement_analyses.document_hash,
+                procurement_analyses.original_documents_gcs_path,
+                procurement_analyses.processed_documents_gcs_path,
+                procurement_analyses.analysis_prompt,
+                procurement_analyses.input_tokens_used,
+                procurement_analyses.output_tokens_used,
+                procurement_analyses.thinking_tokens_used,
+                procurement_analyses.created_at,
+                procurement_analyses.updated_at,
+                procurement_analyses.cost_input_tokens,
+                procurement_analyses.cost_output_tokens,
+                procurement_analyses.cost_thinking_tokens,
+                procurement_analyses.total_cost,
+                COUNT(votes.vote_id) AS votes_count
+            FROM
+                procurement_analyses
+            LEFT JOIN votes ON procurement_analyses.procurement_control_number = votes.procurement_control_number
+                AND procurement_analyses.version_number = votes.version_number
+            WHERE procurement_analyses.status = :pending_status
+            GROUP BY
+                procurement_analyses.analysis_id
+            ORDER BY
+                votes_count DESC,
+                procurement_analyses.input_tokens_used ASC;
             """
         )
         params = {"pending_status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value}
@@ -613,51 +632,6 @@ class AnalysisRepository:
         """
         sql = text(  # pragma: no cover
             """
-            WITH latest_procurement AS (
-              SELECT
-                pncp_control_number,
-                MAX(version_number) AS latest_version
-              FROM procurements
-              WHERE pncp_control_number = :pncp_control_number
-              GROUP BY pncp_control_number
-            ),
-            analysis_status_per_version AS (
-              SELECT
-                procurement_analyses.procurement_control_number,
-                procurement_analyses.version_number,
-                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_SUCCESSFUL') AS version_has_success,
-                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_IN_PROGRESS') AS version_has_in_progress,
-                BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_FAILED')     AS version_has_failed,
-                BOOL_OR(procurement_analyses.status::text = 'PENDING_ANALYSIS')    AS version_has_pending
-              FROM procurement_analyses
-              WHERE procurement_analyses.procurement_control_number = :pncp_control_number
-              GROUP BY
-                procurement_analyses.procurement_control_number,
-                procurement_analyses.version_number
-            ),
-            any_previous_version_analyzed AS (
-              SELECT
-                latest_procurement.pncp_control_number,
-                BOOL_OR(analysis_status_per_version.version_has_success) AS has_success_in_previous_versions
-              FROM latest_procurement
-              JOIN analysis_status_per_version
-                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
-               AND analysis_status_per_version.version_number < latest_procurement.latest_version
-              GROUP BY latest_procurement.pncp_control_number
-            ),
-            latest_version_status_rollup AS (
-              SELECT
-                latest_procurement.pncp_control_number,
-                latest_procurement.latest_version,
-                COALESCE(analysis_status_per_version.version_has_success, false)     AS latest_version_has_success,
-                COALESCE(analysis_status_per_version.version_has_in_progress, false) AS latest_version_has_in_progress,
-                COALESCE(analysis_status_per_version.version_has_failed, false)      AS latest_version_has_failed,
-                COALESCE(analysis_status_per_version.version_has_pending, false)     AS latest_version_has_pending
-              FROM latest_procurement
-              LEFT JOIN analysis_status_per_version
-                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
-               AND analysis_status_per_version.version_number = latest_procurement.latest_version
-            )
             SELECT
               latest_version_status_rollup.pncp_control_number AS procurement_id,
               latest_version_status_rollup.latest_version,
@@ -674,8 +648,66 @@ class AnalysisRepository:
                 THEN 'PENDING'
                 ELSE 'NOT_ANALYZED'
               END AS overall_status
-            FROM latest_version_status_rollup
-            LEFT JOIN any_previous_version_analyzed
+            FROM (
+              SELECT
+                latest_procurement.pncp_control_number,
+                latest_procurement.latest_version,
+                COALESCE(analysis_status_per_version.version_has_success, false)     AS latest_version_has_success,
+                COALESCE(analysis_status_per_version.version_has_in_progress, false) AS latest_version_has_in_progress,
+                COALESCE(analysis_status_per_version.version_has_failed, false)      AS latest_version_has_failed,
+                COALESCE(analysis_status_per_version.version_has_pending, false)     AS latest_version_has_pending
+              FROM (
+                SELECT
+                  pncp_control_number,
+                  MAX(version_number) AS latest_version
+                FROM procurements
+                WHERE pncp_control_number = :pncp_control_number
+                GROUP BY pncp_control_number
+              ) AS latest_procurement
+              LEFT JOIN (
+                SELECT
+                  procurement_analyses.procurement_control_number,
+                  procurement_analyses.version_number,
+                  BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_SUCCESSFUL') AS version_has_success,
+                  BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_IN_PROGRESS') AS version_has_in_progress,
+                  BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_FAILED')     AS version_has_failed,
+                  BOOL_OR(procurement_analyses.status::text = 'PENDING_ANALYSIS')    AS version_has_pending
+                FROM procurement_analyses
+                WHERE procurement_analyses.procurement_control_number = :pncp_control_number
+                GROUP BY
+                  procurement_analyses.procurement_control_number,
+                  procurement_analyses.version_number
+              ) AS analysis_status_per_version
+                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
+               AND analysis_status_per_version.version_number = latest_procurement.latest_version
+            ) AS latest_version_status_rollup
+            LEFT JOIN (
+              SELECT
+                latest_procurement.pncp_control_number,
+                BOOL_OR(analysis_status_per_version.version_has_success) AS has_success_in_previous_versions
+              FROM (
+                SELECT
+                  pncp_control_number,
+                  MAX(version_number) AS latest_version
+                FROM procurements
+                WHERE pncp_control_number = :pncp_control_number
+                GROUP BY pncp_control_number
+              ) AS latest_procurement
+              JOIN (
+                SELECT
+                  procurement_analyses.procurement_control_number,
+                  procurement_analyses.version_number,
+                  BOOL_OR(procurement_analyses.status::text = 'ANALYSIS_SUCCESSFUL') AS version_has_success
+                FROM procurement_analyses
+                WHERE procurement_analyses.procurement_control_number = :pncp_control_number
+                GROUP BY
+                  procurement_analyses.procurement_control_number,
+                  procurement_analyses.version_number
+              ) AS analysis_status_per_version
+                ON analysis_status_per_version.procurement_control_number = latest_procurement.pncp_control_number
+               AND analysis_status_per_version.version_number < latest_procurement.latest_version
+              GROUP BY latest_procurement.pncp_control_number
+            ) AS any_previous_version_analyzed
               ON any_previous_version_analyzed.pncp_control_number = latest_version_status_rollup.pncp_control_number;
             """
         )

@@ -6,7 +6,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 
 import pytest
@@ -145,14 +145,12 @@ def e2e_pubsub() -> Generator[tuple[PublisherClient, str], None, None]:
             pass
 
 
-def _setup_environment(run_id: str) -> tuple[str, str]:
+def _setup_environment(run_id: str) -> str:
     config = ConfigProvider.get_config()
     schema_name = f"test_schema_{run_id}"
-    gcs_test_prefix = f"test-run-{run_id}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
-    os.environ["GCP_GCS_TEST_PREFIX"] = gcs_test_prefix
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{config.POSTGRES_HOST}:8085"
-    return schema_name, gcs_test_prefix
+    return schema_name
 
 
 def _setup_credentials(run_id: str) -> tuple[str | None, Path]:
@@ -198,24 +196,36 @@ def _run_migrations(engine: Engine) -> None:
         pytest.fail(f"Alembic upgrade failed: {e}")
 
 
-def _cleanup_gcs(gcs_test_prefix: str) -> None:
+@pytest.fixture(scope="function")
+def gcs_cleanup_manager() -> Generator[Callable[[str], None], None, None]:
+    """A fixture to manage GCS cleanup for E2E tests."""
+    prefixes_to_delete = []
+
+    def register_prefix(prefix: str) -> None:
+        """Registers a GCS prefix to be deleted after the test."""
+        prefixes_to_delete.append(prefix)
+
+    yield register_prefix
+
     config = ConfigProvider.get_config()
     gcs_client = Client(project=config.GCP_PROJECT)
     bucket = gcs_client.bucket(config.GCP_GCS_BUCKET_PROCUREMENTS)
     if not bucket.exists():
         return
-    try:
-        for blob in bucket.list_blobs(prefix=gcs_test_prefix):
-            blob.delete()
-    except exceptions.NotFound:
-        pass
+
+    for prefix in prefixes_to_delete:
+        try:
+            for blob in bucket.list_blobs(prefix=prefix):
+                blob.delete()
+        except exceptions.NotFound:
+            pass
 
 
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Engine, None, None]:
     """Configures a fully isolated environment for a single E2E test function."""
     run_id = uuid.uuid4().hex[:8]
-    schema_name, gcs_test_prefix = _setup_environment(run_id)
+    schema_name = _setup_environment(run_id)
     original_credentials, temp_credentials_path = _setup_credentials(run_id)
     engine = _create_engine(schema_name)
     _wait_for_db(engine)
@@ -225,7 +235,6 @@ def db_session() -> Generator[Engine, None, None]:
         connection.commit()
 
     _run_migrations(engine)
-    _cleanup_gcs(gcs_test_prefix)
 
     yield engine
 
@@ -236,8 +245,6 @@ def db_session() -> Generator[Engine, None, None]:
         os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
     else:
         os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_credentials
-
-    _cleanup_gcs(gcs_test_prefix)
 
     with engine.connect() as connection:
         connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))

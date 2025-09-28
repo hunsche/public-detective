@@ -9,7 +9,6 @@ of the AI's response.
 import json
 from mimetypes import guess_type
 from typing import Generic, TypeVar
-from uuid import uuid4
 
 from google import genai
 from google.genai import types
@@ -55,7 +54,7 @@ class AiProvider(Generic[PydanticModel]):
         )
 
     def get_structured_analysis(
-        self, prompt: str, files: list[tuple[str, bytes]], max_output_tokens: int | None = None
+        self, prompt: str, file_uris: list[str], max_output_tokens: int | None = None
     ) -> tuple[PydanticModel, int, int, int]:
         """Sends a file for analysis and parses the response.
 
@@ -65,9 +64,8 @@ class AiProvider(Generic[PydanticModel]):
 
         Args:
             prompt: The instructional prompt for the AI model.
-            files: A list of tuples, where each tuple contains:
-                - The file path (for display name and mime type guessing).
-                - The byte content of the file.
+            file_uris: A list of GCS URIs (e.g., gs://bucket/object) for the
+                files to be included in the analysis.
             max_output_tokens: An optional integer to set the token limit.
                 If `None`, no limit is applied.
 
@@ -80,17 +78,16 @@ class AiProvider(Generic[PydanticModel]):
             - The number of thinking tokens used.
         """
         file_parts: list[types.Part] = []
-        for file_display_name, file_content in files:
-            gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
-            mime_type = guess_type(file_display_name)[0] or "application/octet-stream"
+        for gcs_uri in file_uris:
+            mime_type = guess_type(gcs_uri)[0] or "application/octet-stream"
             file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
 
         all_parts = [types.Part(text=prompt), *file_parts]
-        contents = types.Content(role="user", parts=all_parts)
+        request_contents = types.Content(role="user", parts=all_parts)
 
         response = self.client.models.generate_content(
             model=self.config.GCP_GEMINI_MODEL,
-            contents=contents,
+            contents=request_contents,
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
                 response_schema=self.output_schema,
@@ -111,30 +108,28 @@ class AiProvider(Generic[PydanticModel]):
 
         return validated_response, input_tokens, output_tokens, thinking_tokens
 
-    def count_tokens_for_analysis(self, prompt: str, files: list[tuple[str, bytes]]) -> tuple[int, int, int]:
+    def count_tokens_for_analysis(self, prompt: str, file_uris: list[str]) -> tuple[int, int, int]:
         """Calculates the number of tokens for a given prompt and files.
 
         Args:
             prompt: The instructional prompt for the AI model.
-            files: A list of tuples, where each tuple contains:
-                - The file path (for display name and mime type guessing).
-                - The byte content of the file.
+            file_uris: A list of GCS URIs (e.g., gs://bucket/object) for the
+                files to be included in the analysis.
 
         Returns:
             A tuple containing the total number of input tokens, 0 for output
             tokens, and 0 for thinking tokens.
         """
         file_parts: list[types.Part] = []
-        for file_display_name, file_content in files:
-            gcs_uri = self._upload_file_to_gcs(file_content, file_display_name)
-            mime_type = guess_type(file_display_name)[0]
+        for gcs_uri in file_uris:
+            mime_type = guess_type(gcs_uri)[0]
             if not mime_type:
                 mime_type = "application/octet-stream"
             file_parts.append(types.Part.from_uri(file_uri=gcs_uri, mime_type=mime_type))
 
         all_parts = [types.Part(text=prompt), *file_parts]
-        contents = types.Content(role="user", parts=all_parts)
-        response = self.client.models.count_tokens(model=self.config.GCP_GEMINI_MODEL, contents=contents)
+        request_contents = types.Content(role="user", parts=all_parts)
+        response = self.client.models.count_tokens(model=self.config.GCP_GEMINI_MODEL, contents=request_contents)
         token_count = response.total_tokens
         self.logger.info(f"Estimated token count: {token_count}")
         return token_count or 0, 0, 0
@@ -178,30 +173,3 @@ class AiProvider(Generic[PydanticModel]):
             raise ValueError(
                 "AI model returned a response that could not be parsed into the " "expected structure."
             ) from e
-
-    def _upload_file_to_gcs(self, content: bytes, display_name: str) -> str:
-        """Uploads file content to GCS and returns the GCS URI.
-
-        Args:
-            content: The raw byte content of the file to be uploaded.
-            display_name: The name of the file, used to determine content type
-                          and the object name in GCS.
-
-        Returns:
-            The GCS URI of the uploaded file (e.g., gs://bucket-name/object-name).
-        """
-        bucket_name = self.config.GCP_GCS_BUCKET_PROCUREMENTS
-
-        object_name = f"ai-uploads/{uuid4()}/{display_name}"
-        content_type = guess_type(display_name)[0] or "application/octet-stream"
-
-        self.gcs_provider.upload_file(
-            bucket_name=bucket_name,
-            destination_blob_name=object_name,
-            content=content,
-            content_type=content_type,
-        )
-
-        gcs_uri = f"gs://{bucket_name}/{object_name}"
-        self.logger.info(f"File uploaded to {gcs_uri}")
-        return gcs_uri

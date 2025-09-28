@@ -35,7 +35,6 @@ def mock_ai_provider(monkeypatch: MonkeyPatch) -> Generator[tuple[MagicMock, Mag
         mock_gcs_instance = MagicMock()
         mock_config_instance = MagicMock()
 
-        # This simulates the chained calls like client.models.generate_content
         mock_models_api = MagicMock()
         mock_client_instance.models = mock_models_api
         mock_genai_client.return_value = mock_client_instance
@@ -48,7 +47,6 @@ def mock_ai_provider(monkeypatch: MonkeyPatch) -> Generator[tuple[MagicMock, Mag
         mock_config_instance.GCP_LOCATION = "us-central1"
         mock_config_instance.GCP_GEMINI_MODEL = "gemini-test"
 
-        # Yield the mock for the 'models' attribute, which is what's used in the provider
         yield mock_models_api, mock_gcs_instance, mock_config_instance
 
 
@@ -62,21 +60,18 @@ def create_mock_response(
     mock_candidate = MagicMock()
     mock_content = MagicMock()
 
-    # The text is nested inside a Part inside a Content inside a Candidate
     mock_part = MagicMock()
     mock_part.text = text
     mock_content.parts = [mock_part]
     mock_candidate.content = mock_content
     mock_response.candidates = [mock_candidate]
 
-    # Mock the usage_metadata
     mock_usage = MagicMock()
     mock_usage.prompt_token_count = prompt_token_count
     mock_usage.candidates_token_count = candidates_token_count
     mock_usage.thoughts_token_count = thoughts_token_count
     mock_response.usage_metadata = mock_usage
 
-    # Add a mock for the text property for direct access
     type(mock_response).text = text
 
     return mock_response
@@ -85,7 +80,7 @@ def create_mock_response(
 def test_get_structured_analysis(
     mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
-    mock_models_api, mock_gcs_instance, _ = mock_ai_provider
+    mock_models_api, _, _ = mock_ai_provider
 
     mock_response = create_mock_response(
         text="""{"risk_score": 8, "summary": "Test summary"}""",
@@ -95,11 +90,9 @@ def test_get_structured_analysis(
     )
     mock_models_api.generate_content.return_value = mock_response
 
-    mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/file1.pdf"
-
     ai_provider = AiProvider(output_schema=MockOutputSchema)
     result, input_tokens, output_tokens, thinking_tokens = ai_provider.get_structured_analysis(
-        prompt="test prompt", files=[("file1.pdf", b"content")]
+        prompt="test prompt", file_uris=["gs://test-bucket/file1.pdf"]
     )
 
     assert isinstance(result, MockOutputSchema)
@@ -107,7 +100,6 @@ def test_get_structured_analysis(
     assert input_tokens == 10
     assert output_tokens == 20
     assert thinking_tokens == 5
-    mock_gcs_instance.upload_file.assert_called_once()
     mock_models_api.generate_content.assert_called_once()
 
 
@@ -124,7 +116,7 @@ def test_get_structured_analysis_with_max_tokens(
     mock_models_api.generate_content.return_value = mock_response
 
     ai_provider = AiProvider(output_schema=MockOutputSchema)
-    ai_provider.get_structured_analysis(prompt="test prompt", files=[], max_output_tokens=500)
+    ai_provider.get_structured_analysis(prompt="test prompt", file_uris=[], max_output_tokens=500)
 
     _, kwargs = mock_models_api.generate_content.call_args
     generation_config = kwargs.get("config")
@@ -148,7 +140,7 @@ def test_get_structured_analysis_uses_valid_schema(
     )
 
     ai_provider = AiProvider(output_schema=AnalysisWithValidation)
-    ai_provider.get_structured_analysis(prompt="test prompt", files=[])
+    ai_provider.get_structured_analysis(prompt="test prompt", file_uris=[])
 
     _, kwargs = mock_models_api.generate_content.call_args
     generation_config = kwargs.get("config")
@@ -228,20 +220,6 @@ def test_parse_response_parsing_error(
         ai_provider._parse_and_validate_response(mock_response)
 
 
-def test_upload_file_to_gcs(
-    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
-) -> None:
-    _, mock_gcs_instance, _ = mock_ai_provider
-    mock_gcs_instance.upload_file.return_value = "gs://test-bucket/ai-uploads/some-uuid/test.pdf"
-
-    ai_provider = AiProvider(MockOutputSchema)
-    gcs_uri = ai_provider._upload_file_to_gcs(b"content", "test.pdf")
-
-    assert "gs://test-bucket/ai-uploads/" in gcs_uri
-    assert gcs_uri.endswith("/test.pdf")
-    mock_gcs_instance.upload_file.assert_called_once()
-
-
 def test_count_tokens_for_analysis(
     mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock],
 ) -> None:
@@ -251,26 +229,24 @@ def test_count_tokens_for_analysis(
 
     ai_provider = AiProvider(MockOutputSchema)
     prompt = "test prompt"
-    files = [("file1.pdf", b"content1"), ("file2.txt", b"content2")]
+    file_uris = ["gs://bucket/file1.pdf", "gs://bucket/file2.txt"]
 
-    input_tokens, output_tokens, thinking_tokens = ai_provider.count_tokens_for_analysis(prompt, files)
+    input_tokens, output_tokens, thinking_tokens = ai_provider.count_tokens_for_analysis(prompt, file_uris)
 
     assert input_tokens == 123
     assert output_tokens == 0
     assert thinking_tokens == 0
     mock_models_api.count_tokens.assert_called_once()
     _, kwargs = mock_models_api.count_tokens.call_args
-    contents = kwargs["contents"]
-    assert isinstance(contents, types.Content)
-    assert contents.role == "user"
-    assert contents.parts is not None
-    assert len(contents.parts) == 3
-    assert contents.parts[0].text == prompt
-    assert contents.parts[1].file_data is not None
-    assert contents.parts[1].file_data.mime_type == "application/pdf"
-    assert contents.parts[1].file_data.file_uri is not None
-    assert "gs://" in contents.parts[1].file_data.file_uri
-    assert contents.parts[2].file_data is not None
-    assert contents.parts[2].file_data.mime_type == "text/plain"
-    assert contents.parts[2].file_data.file_uri is not None
-    assert "gs://" in contents.parts[2].file_data.file_uri
+    request_contents = kwargs["contents"]
+    assert isinstance(request_contents, types.Content)
+    assert request_contents.role == "user"
+    assert request_contents.parts is not None
+    assert len(request_contents.parts) == 3
+    assert request_contents.parts[0].text == prompt
+    assert request_contents.parts[1].file_data is not None
+    assert request_contents.parts[1].file_data.mime_type == "application/pdf"
+    assert request_contents.parts[1].file_data.file_uri == "gs://bucket/file1.pdf"
+    assert request_contents.parts[2].file_data is not None
+    assert request_contents.parts[2].file_data.mime_type == "text/plain"
+    assert request_contents.parts[2].file_data.file_uri == "gs://bucket/file2.txt"
