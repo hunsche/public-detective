@@ -12,7 +12,7 @@ import textract
 import xlrd
 from PIL import Image
 from public_detective.providers.logging import Logger, LoggingProvider
-from pyxlsb import open_workbook as open_xlsb
+import pyxlsb
 from striprtf.striprtf import rtf_to_text
 
 
@@ -146,7 +146,7 @@ class ConverterService:
                     csv_content = output.getvalue().encode("utf-8")
                     output_files.append((f"{sheet_name}.csv", csv_content))
             elif original_extension == ".xlsb":
-                with open_xlsb(io.BytesIO(xls_content)) as workbook:
+                with pyxlsb.open_workbook(io.BytesIO(xls_content)) as workbook:
                     for sheet_name in workbook.sheets:
                         sheet = workbook.get_sheet(sheet_name)
                         output = io.StringIO()
