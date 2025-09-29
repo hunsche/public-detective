@@ -2,10 +2,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
 
-from cli.commands import retry
 from click.testing import CliRunner
 from faker import Faker
-from models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.cli.commands import retry
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
@@ -68,10 +68,16 @@ def setup_analysis(
                 """
                 INSERT INTO procurement_analyses (
                     analysis_id, procurement_control_number, version_number,
-                    status, retry_count, updated_at, document_hash
+                    status, retry_count, updated_at, document_hash,
+                    input_tokens_used, output_tokens_used, thinking_tokens_used,
+                    cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
+                    analysis_prompt
                 ) VALUES (
                     :analysis_id, :procurement_id, :version_number,
-                    :status, :retry_count, :updated_at, 'hash'
+                    :status, :retry_count, :updated_at, 'hash',
+                    :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
+                    :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
+                    'Test prompt'
                 )
                 """
             ),
@@ -82,6 +88,13 @@ def setup_analysis(
                 "status": status.value,
                 "retry_count": retry_count,
                 "updated_at": updated_at,
+                "input_tokens_used": 0,
+                "output_tokens_used": 0,
+                "thinking_tokens_used": 0,
+                "cost_input_tokens": 0.0,
+                "cost_output_tokens": 0.0,
+                "cost_thinking_tokens": 0.0,
+                "total_cost": 0.0,
             },
         )
         conn.commit()
@@ -103,8 +116,8 @@ def test_retry_command_failed_analysis(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -147,8 +160,8 @@ def test_retry_command_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -190,8 +203,8 @@ def test_retry_command_max_retries_exceeded(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 
@@ -216,8 +229,8 @@ def test_retry_command_not_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
     ):
         result = runner.invoke(retry)
 

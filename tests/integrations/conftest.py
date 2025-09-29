@@ -4,16 +4,20 @@ import uuid
 import zipfile
 from collections.abc import Generator
 from pathlib import Path
+from typing import Any
 
 import pytest
 from alembic import command
 from alembic.config import Config
-from providers.config import ConfigProvider
+from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
+from sqlalchemy.engine import Engine
 
 
 @pytest.fixture(scope="function")
-def db_session() -> Generator:
+def db_session() -> Generator[Engine, Any, None]:
+    os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
+
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
     fixture_path = fixture_dir / "Anexos.zip"
     if not fixture_path.exists():
@@ -38,13 +42,13 @@ def db_session() -> Generator:
     engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
     # Wait for the database to be ready before proceeding
-    for _ in range(15):
+    for _ in range(60):
         try:
             with engine.connect() as connection:
                 connection.execute(text("SELECT 1"))
             break
         except Exception:
-            time.sleep(1)
+            time.sleep(2)
     else:
         pytest.fail("Database did not become available in time.")
 
@@ -54,18 +58,20 @@ def db_session() -> Generator:
             connection.commit()
             connection.execute(text(f"CREATE SCHEMA {schema_name}"))
             connection.commit()
+
             connection.execute(text(f"SET search_path TO {schema_name}"))
             connection.commit()
 
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
+        alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
         command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
             truncate_sql = text(
-                "TRUNCATE procurements, procurement_analyses, file_records, "
-                "procurement_analysis_status_history RESTART IDENTITY CASCADE;"
+                f"TRUNCATE {schema_name}.procurements, {schema_name}.procurement_analyses, {schema_name}.file_records, "
+                f"{schema_name}.procurement_analysis_status_history RESTART IDENTITY CASCADE;"
             )
             connection.execute(truncate_sql)
             connection.commit()
@@ -76,3 +82,79 @@ def db_session() -> Generator:
             connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
             connection.commit()
         engine.dispose()
+
+
+@pytest.fixture
+def integration_dependencies(db_session: Engine) -> dict[str, Any]:
+    """Provides real dependencies for integration tests."""
+    from public_detective.providers.ai import AiProvider
+    from public_detective.providers.gcs import GcsProvider
+    from public_detective.providers.pubsub import PubSubProvider
+    from public_detective.repositories.analyses import AnalysisRepository
+    from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+    from public_detective.repositories.file_records import FileRecordsRepository
+    from public_detective.repositories.procurements import ProcurementsRepository
+    from public_detective.repositories.status_history import StatusHistoryRepository
+    from public_detective.repositories.source_documents import SourceDocumentsRepository
+    from public_detective.models.analyses import Analysis
+
+    pubsub_provider = PubSubProvider()
+    procurement_repo = ProcurementsRepository(db_session, pubsub_provider)
+    analysis_repo = AnalysisRepository(db_session)
+    file_record_repo = FileRecordsRepository(db_session)
+    status_history_repo = StatusHistoryRepository(db_session)
+    budget_ledger_repo = BudgetLedgerRepository(db_session)
+    source_document_repo = SourceDocumentsRepository(db_session)
+    ai_provider = AiProvider(output_schema=Analysis)
+    gcs_provider = GcsProvider()
+
+    return {
+        "procurement_repo": procurement_repo,
+        "analysis_repo": analysis_repo,
+        "source_document_repo": source_document_repo,
+        "file_record_repo": file_record_repo,
+        "status_history_repo": status_history_repo,
+        "budget_ledger_repo": budget_ledger_repo,
+        "ai_provider": ai_provider,
+        "gcs_provider": gcs_provider,
+        "pubsub_provider": pubsub_provider,
+    }
+
+
+@pytest.fixture
+def mock_procurement() -> "Procurement":
+    """Fixture to create a standard procurement object for tests."""
+    from public_detective.models.procurements import Procurement
+
+    procurement_data = {
+        "processo": "123",
+        "objetoCompra": "Test Object",
+        "amparoLegal": {"codigo": 1, "nome": "Test", "descricao": "Test"},
+        "srp": False,
+        "orgaoEntidade": {
+            "cnpj": "00000000000191",
+            "razaoSocial": "Test Entity",
+            "poderId": "E",
+            "esferaId": "F",
+        },
+        "anoCompra": 2025,
+        "sequencialCompra": 1,
+        "dataPublicacaoPncp": "2025-01-01T12:00:00",
+        "dataAtualizacao": "2025-01-01T12:00:00",
+        "numeroCompra": "1",
+        "unidadeOrgao": {
+            "ufNome": "Test",
+            "codigoUnidade": "1",
+            "nomeUnidade": "Test",
+            "ufSigla": "TE",
+            "municipioNome": "Test",
+            "codigoIbge": "1",
+        },
+        "modalidadeId": 8,
+        "numeroControlePNCP": "123456789-1-1234-2025",
+        "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
+        "modoDisputaId": 5,
+        "situacaoCompraId": 1,
+        "usuarioNome": "Test User",
+    }
+    return Procurement.model_validate(procurement_data)

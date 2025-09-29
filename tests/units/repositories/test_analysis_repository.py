@@ -1,10 +1,12 @@
 import json
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 import pytest
-from models.analyses import AnalysisResult, RedFlag, RedFlagCategory
-from repositories.analyses import AnalysisRepository
+from public_detective.models.analyses import AnalysisResult, RedFlag, RedFlagCategory
+from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
+from public_detective.repositories.analyses import AnalysisRepository
 
 
 @pytest.fixture
@@ -45,6 +47,7 @@ def test_parse_row_to_model_with_seo_keywords(analysis_repository: AnalysisRepos
         "risk_score_rationale",
         "red_flags",
         "seo_keywords",
+        "analysis_prompt",
     ]
     red_flags_list: list = []
     seo_keywords_list = ["keyword1", "keyword2"]
@@ -54,6 +57,7 @@ def test_parse_row_to_model_with_seo_keywords(analysis_repository: AnalysisRepos
         "High risk",
         json.dumps(red_flags_list),
         seo_keywords_list,
+        "Test prompt",
     )
 
     # Act
@@ -77,6 +81,7 @@ def test_parse_row_to_model_with_json_string(analysis_repository: AnalysisReposi
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     red_flags_list = [
         {
@@ -91,6 +96,7 @@ def test_parse_row_to_model_with_json_string(analysis_repository: AnalysisReposi
         8,
         "High risk",
         json.dumps(red_flags_list),  # red_flags as a JSON string
+        "Test prompt",
     )
 
     # Act
@@ -120,6 +126,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     red_flags_list = [
         {
@@ -134,6 +141,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
         5,
         "Medium risk",
         red_flags_list,  # red_flags as a Python list
+        "Test prompt",
     )
 
     # Act
@@ -149,7 +157,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
     assert result.ai_analysis.red_flags[0].category == RedFlagCategory.DIRECTING
 
 
-@patch("repositories.analyses.LoggingProvider")
+@patch("public_detective.repositories.analyses.LoggingProvider")
 def test_parse_row_to_model_with_invalid_data(
     mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository
 ) -> None:
@@ -189,14 +197,17 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     mock_conn = MagicMock()
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    analysis_id = 123
+    analysis_id = uuid4()
     analysis_result = AnalysisResult(
         procurement_control_number="PNCP-123",
         version_number=1,
         document_hash="test-hash",
+        analysis_prompt="Test prompt",
         ai_analysis={
             "risk_score": 8,
             "risk_score_rationale": "High risk",
+            "procurement_summary": "Test procurement summary",
+            "analysis_summary": "Test analysis summary",
             "red_flags": [],
             "seo_keywords": ["keyword1", "keyword2"],
         },
@@ -206,7 +217,17 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     )
 
     # Act
-    analysis_repository.save_analysis(analysis_id, analysis_result, 100, 50)
+    analysis_repository.save_analysis(
+        analysis_id=analysis_id,
+        result=analysis_result,
+        input_tokens=100,
+        output_tokens=50,
+        thinking_tokens=10,
+        input_cost=Decimal("0.1"),
+        output_cost=Decimal("0.2"),
+        thinking_cost=Decimal("0.05"),
+        total_cost=Decimal("0.35"),
+    )
 
     # Assert
     mock_conn.execute.assert_called_once()
@@ -217,6 +238,9 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     assert params["seo_keywords"] == ["keyword1", "keyword2"]
     assert "UPDATE procurement_analyses" in str(args[0])
     assert "seo_keywords = :seo_keywords" in str(args[0])
+    assert params["thinking_tokens_used"] == 10
+    assert params["cost_thinking_tokens"] == Decimal("0.05")
+    assert params["total_cost"] == Decimal("0.35")
 
 
 def test_parse_row_to_model_empty_row(analysis_repository: AnalysisRepository) -> None:
@@ -277,7 +301,7 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     # Arrange
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = 456
+    mock_result_proxy.scalar_one.return_value = uuid4()
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
@@ -288,10 +312,15 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
         document_hash="pre-analysis-hash",
         input_tokens_used=200,
         output_tokens_used=100,
+        thinking_tokens_used=20,
+        input_cost=Decimal("0.2"),
+        output_cost=Decimal("0.3"),
+        thinking_cost=Decimal("0.1"),
+        total_cost=Decimal("0.6"),
     )
 
     # Assert
-    assert returned_id == 456
+    assert isinstance(returned_id, UUID)
     mock_conn.execute.assert_called_once()
     args, _ = mock_conn.execute.call_args
     params = args[1]
@@ -300,6 +329,9 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     assert params["input_tokens_used"] == 200
     assert params["output_tokens_used"] == 100
     assert params["document_hash"] == "pre-analysis-hash"
+    assert params["thinking_tokens_used"] == 20
+    assert params["cost_thinking_tokens"] == Decimal("0.1")
+    assert params["total_cost"] == Decimal("0.6")
 
 
 def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -> None:
@@ -314,7 +346,7 @@ def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    result = analysis_repository.get_analysis_by_id(999)
+    result = analysis_repository.get_analysis_by_id(uuid4())
 
     assert result is None
 
@@ -332,12 +364,14 @@ def test_parse_row_to_model_with_none_red_flags(analysis_repository: AnalysisRep
         "risk_score",
         "risk_score_rationale",
         "red_flags",
+        "analysis_prompt",
     ]
     row_tuple = (
         "12345",
         8,
         "High risk",
         None,
+        "Test prompt",
     )
 
     # Act
@@ -442,31 +476,6 @@ def test_get_analyses_to_retry_not_found(analysis_repository: AnalysisRepository
 
     # Assert
     assert result == []
-
-
-def test_update_analysis_status(analysis_repository: AnalysisRepository) -> None:
-    """
-    Should execute an UPDATE statement to change the status of an analysis.
-    """
-    # Arrange
-    mock_conn = MagicMock()
-    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
-    from models.procurement_analysis_status import ProcurementAnalysisStatus
-
-    analysis_id = uuid4()
-    new_status = ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS
-
-    # Act
-    analysis_repository.update_analysis_status(analysis_id, new_status)
-
-    # Assert
-    mock_conn.execute.assert_called_once()
-    args, _ = mock_conn.execute.call_args
-    params = args[1]
-    assert params["analysis_id"] == analysis_id
-    assert params["status"] == new_status.value
-    mock_conn.execute.assert_called_once()
-
     mock_conn.execute.assert_called_once()
 
 
@@ -484,6 +493,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
         "risk_score_rationale",
         "red_flags",
         "warnings",
+        "analysis_prompt",
     ]
     row_tuple = (
         "12345",
@@ -491,6 +501,7 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
         "High risk",
         "[]",
         ["Warning 1", "Warning 2"],
+        "Test prompt",
     )
 
     # Act
@@ -501,11 +512,31 @@ def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepositor
     assert result.warnings == ["Warning 1", "Warning 2"]
 
 
-def test_get_analyses_to_retry_found(analysis_repository: AnalysisRepository) -> None:
-    """
-    Should return a list of analyses when records are found to retry.
-    """
-    # Arrange
+@patch("public_detective.repositories.analyses.LoggingProvider")
+def test_update_analysis_status(mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository) -> None:
+    """Should execute an UPDATE statement with the correct parameters."""
+    mock_logger = MagicMock()
+    mock_logging_provider.return_value.get_logger.return_value = mock_logger
+    analysis_repository.logger = mock_logger
+
+    mock_conn = MagicMock()
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+    analysis_id = uuid4()
+    status = ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS
+
+    analysis_repository.update_analysis_status(analysis_id, status)
+
+    mock_conn.execute.assert_called_once()
+    args, _ = mock_conn.execute.call_args
+    params = args[1]
+    assert params["analysis_id"] == analysis_id
+    assert params["status"] == status.value
+    assert "UPDATE procurement_analyses" in str(args[0])
+    assert mock_logger.info.call_count == 2
+
+
+def test_get_analyses_to_retry(analysis_repository: AnalysisRepository) -> None:
+    """Should return a list of analyses to retry."""
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
     mock_row = MagicMock()
@@ -524,40 +555,43 @@ def test_get_analyses_to_retry_found(analysis_repository: AnalysisRepository) ->
     mock_parse.assert_called_once()
 
 
-def test_save_retry_analysis(analysis_repository: AnalysisRepository) -> None:
+def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository) -> None:
     """
-    Should execute an INSERT statement for a retry analysis.
+    Should return the ID of the newly inserted retry analysis record.
     """
-    # Arrange
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = 789
+    mock_result_proxy.scalar_one.return_value = uuid4()
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    # Act
     returned_id = analysis_repository.save_retry_analysis(
         procurement_control_number="PNCP-789",
-        version_number=2,
+        version_number=1,
         document_hash="retry-hash",
-        input_tokens_used=250,
-        output_tokens_used=150,
+        input_tokens_used=200,
+        output_tokens_used=100,
+        thinking_tokens_used=50,
+        input_cost=Decimal("0.2"),
+        output_cost=Decimal("0.3"),
+        thinking_cost=Decimal("0.1"),
+        total_cost=Decimal("0.6"),
         retry_count=1,
+        analysis_prompt="Test prompt",
     )
 
-    # Assert
-    assert returned_id == 789
+    assert isinstance(returned_id, UUID)
     mock_conn.execute.assert_called_once()
     args, _ = mock_conn.execute.call_args
     params = args[1]
+    assert params["procurement_control_number"] == "PNCP-789"
     assert params["retry_count"] == 1
+    assert params["thinking_tokens_used"] == 50
+    assert params["total_cost"] == Decimal("0.6")
 
 
-def test_get_pending_analyses_ranked_found(analysis_repository: AnalysisRepository) -> None:
-    """
-    Should return a list of ranked pending analyses.
-    """
-    # Arrange
+def test_get_pending_analyses_ranked(analysis_repository: AnalysisRepository) -> None:
+    """Should return a list of pending analyses."""
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
     mock_row = MagicMock()
@@ -577,18 +611,13 @@ def test_get_pending_analyses_ranked_found(analysis_repository: AnalysisReposito
 
 
 def test_get_pending_analyses_ranked_not_found(analysis_repository: AnalysisRepository) -> None:
-    """
-    Should return an empty list when no pending analyses are found.
-    """
-    # Arrange
+    """Should return an empty list when no pending analyses are found."""
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
     mock_result_proxy.fetchall.return_value = []
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
-    # Act
     result = analysis_repository.get_pending_analyses_ranked()
 
-    # Assert
     assert result == []

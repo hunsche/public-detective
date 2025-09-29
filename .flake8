@@ -2,16 +2,20 @@
 max-line-length = 120
 max-complexity = 12
 per-file-ignores =
-    migrations/*.py:E501
+    source/public_detective/migrations/*.py:E501,DAR
     source/*.py:C901
     tests/*.py:DAR
-    source/migrations/*.py:DAR
 exclude =
     .git,
     .venv,
     .vscode,
     __pycache__,
-    old,
-    build,
-    dist,
 ignore = E203, W503, DAR401, DAR402
+extend-select = NHC
+min-name-length = 3
+max-name-length = 30
+min-const-length = 3
+max-const-length = 50
+allowed-short-variable-names = i,j,k,_,e
+no-hash-allow-prefixes = #!
+no-hash-allow-substrings = type: ignore,pragma: no cover,allow-comment

@@ -123,3 +123,6 @@ tox.ini
 .env
 .mypy_cache
 .agents-scripts/
+
+# Generated test files
+tests/.tmp

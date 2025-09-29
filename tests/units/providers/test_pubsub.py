@@ -4,53 +4,20 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.api_core.client_options import ClientOptions
-from google.cloud import pubsub_v1
-from providers.pubsub import PubSubProvider
+from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
+from public_detective.providers.pubsub import PubSubProvider
 
 
 @pytest.fixture
 def mock_config_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.pubsub.ConfigProvider.get_config") as mock_get_config:
+    with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_get_config.return_value.GCP_PROJECT = "test-project"
         yield mock_get_config
 
 
 @pytest.fixture
-def mock_logger_provider() -> Generator[MagicMock, None, None]:
-    with patch("providers.pubsub.LoggingProvider") as mock_logging_provider:
-        yield mock_logging_provider
-
-
-@pytest.fixture
-def pubsub_provider(mock_config_provider: MagicMock, mock_logger_provider: MagicMock) -> PubSubProvider:
+def pubsub_provider(mock_config_provider: MagicMock) -> PubSubProvider:
     return PubSubProvider()
-
-
-def test_pubsub_provider_initialization() -> None:
-    """
-    Should initialize the PubSubProvider with a logger, config, and lock.
-    """
-    # Arrange
-    with (
-        patch("providers.pubsub.LoggingProvider") as mock_logging_provider,
-        patch("providers.pubsub.ConfigProvider") as mock_config_provider,
-        patch("threading.Lock") as mock_lock,
-    ):
-        mock_logger = MagicMock()
-        mock_config = MagicMock()
-        mock_lock_instance = MagicMock()
-        mock_logging_provider.return_value.get_logger.return_value = mock_logger
-        mock_config_provider.get_config.return_value = mock_config
-        mock_lock.return_value = mock_lock_instance
-
-        # Act
-        provider = PubSubProvider()
-
-        # Assert
-        assert provider.logger is mock_logger
-        assert provider.config is mock_config
-        assert provider._clients == {}
-        assert provider._client_creation_lock is mock_lock_instance
 
 
 def test_create_client_instance_no_emulator(pubsub_provider: PubSubProvider) -> None:
@@ -85,29 +52,29 @@ def test_create_client_instance_with_emulator(pubsub_provider: PubSubProvider) -
             assert kwargs["client_options"].api_endpoint == emulator_host
 
 
-def test_get_or_create_publisher_client_creates_and_caches_instance(pubsub_provider: PubSubProvider) -> None:
-    """Tests that the publisher client is created only once and then cached."""
-    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
-        # First call should create the client
-        client1 = pubsub_provider._get_or_create_publisher_client()
-        mock_create.assert_called_once_with(pubsub_v1.PublisherClient)
+def test_get_or_create_publisher_client_caches_instance(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the publisher client is created only once and then cached.
 
-        # Second call should return the cached client
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
+    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
+        client1 = pubsub_provider._get_or_create_publisher_client()
         client2 = pubsub_provider._get_or_create_publisher_client()
-        mock_create.assert_called_once()  # Should not be called again
+        mock_create.assert_called_once_with(PublisherClient)
         assert client1 is client2
 
 
-def test_get_or_create_subscriber_client_creates_and_caches_instance(pubsub_provider: PubSubProvider) -> None:
-    """Tests that the subscriber client is created only once and then cached."""
-    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
-        # First call should create the client
-        client1 = pubsub_provider._get_or_create_subscriber_client()
-        mock_create.assert_called_once_with(pubsub_v1.SubscriberClient)
+def test_get_or_create_subscriber_client_caches_instance(pubsub_provider: PubSubProvider) -> None:
+    """Tests that the subscriber client is created only once and then cached.
 
-        # Second call should return the cached client
+    Args:
+        pubsub_provider: The PubSubProvider instance.
+    """
+    with patch.object(pubsub_provider, "_create_client_instance") as mock_create:
+        client1 = pubsub_provider._get_or_create_subscriber_client()
         client2 = pubsub_provider._get_or_create_subscriber_client()
-        mock_create.assert_called_once()  # Should not be called again
+        mock_create.assert_called_once_with(SubscriberClient)
         assert client1 is client2
 
 

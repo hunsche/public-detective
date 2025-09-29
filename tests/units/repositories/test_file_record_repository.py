@@ -1,55 +1,51 @@
-from unittest.mock import MagicMock
+"""This module contains the unit tests for the FileRecordsRepository."""
+
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
-import pytest
-from models.file_records import NewFileRecord
-from repositories.file_records import FileRecordsRepository
+from public_detective.models.file_records import NewFileRecord
+from public_detective.repositories.file_records import FileRecordsRepository
 
 
-@pytest.fixture
-def mock_engine() -> MagicMock:
-    """Fixture for a mocked database engine.
+def test_save_file_record() -> None:
+    """Test the save_file_record method."""
+    engine = MagicMock()
+    mock_connection = engine.connect().__enter__()
+    mock_result = mock_connection.execute.return_value
+    expected_uuid = uuid4()
+    mock_result.scalar_one.return_value = expected_uuid
 
-    Returns:
-        A MagicMock object.
-    """
-    return MagicMock()
-
-
-@pytest.fixture
-def file_records_repository(mock_engine: MagicMock) -> FileRecordsRepository:
-    """
-    Fixture to create a FileRecordsRepository with a mocked database engine.
-
-    Args:
-        mock_engine: The mocked database engine.
-
-    Returns:
-        An instance of FileRecordsRepository.
-    """
-    return FileRecordsRepository(engine=mock_engine)
-
-
-def test_save_file_record(file_records_repository: FileRecordsRepository) -> None:
-    # Arrange
-    mock_conn = MagicMock()
-    file_records_repository.engine.connect.return_value.__enter__.return_value = mock_conn
-
+    repo = FileRecordsRepository(engine)
     record = NewFileRecord(
-        analysis_id=uuid4(),
+        source_document_id=uuid4(),
         file_name="test.pdf",
-        gcs_path="test/gcs/path",
-        extension=".pdf",
-        size_bytes=1234,
+        gcs_path="test/path",
+        extension="pdf",
+        size_bytes=123,
         nesting_level=0,
         included_in_analysis=True,
         exclusion_reason=None,
-        prioritization_logic="high",
+        prioritization_logic="Test logic",
+        prepared_content_gcs_uris=None,
     )
 
-    # Act
-    file_records_repository.save_file_record(record)
+    result_uuid = repo.save_file_record(record)
 
-    # Assert
-    mock_conn.execute.assert_called_once()
-    mock_conn.commit.assert_called_once()
+    mock_connection.execute.assert_called_once()
+    mock_connection.commit.assert_called_once()
+    assert result_uuid == expected_uuid
+
+
+def test_get_all_file_records_by_analysis_id() -> None:
+    """Test the get_all_file_records_by_analysis_id method."""
+    engine = MagicMock()
+    repo = FileRecordsRepository(engine)
+    analysis_id = uuid4()
+
+    with patch.object(repo.engine, "connect") as mock_connect:
+        mock_connect.return_value.__enter__.return_value.execute.return_value.mappings.return_value.all.return_value = [
+            {"id": uuid4()}
+        ]
+        result = repo.get_all_file_records_by_analysis_id(str(analysis_id))
+        assert len(result) == 1
+        mock_connect.assert_called_once()

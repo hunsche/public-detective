@@ -1,3 +1,5 @@
+name: public-detective
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -12,18 +14,29 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d public_detective"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   pubsub:
     image: google/cloud-sdk:emulators
     command: >
       gcloud beta emulators pubsub start
-      --project=public-detective
+      --project=${GCP_PROJECT:-public-detective}
       --host-port=0.0.0.0:8085
       --log-http
     ports:
       - "8085:8085"
     volumes:
       - pubsub_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "gcloud beta emulators pubsub env-init | grep -q PUBSUB_EMULATOR_HOST"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   gcs:
     image: fsouza/fake-gcs-server:latest
@@ -32,50 +45,54 @@ services:
       - "8086:8086"
     volumes:
       - gcs_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider --tries=1 http://localhost:8086/storage/v1/b"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
 
   gcp-init:
     image: google/cloud-sdk:emulators
+    environment:
+      - GCP_PROJECT=${GCP_PROJECT:-public-detective}
+      - GCP_PUBSUB_TOPIC_PROCUREMENTS=${GCP_PUBSUB_TOPIC_PROCUREMENTS:-procurements}
+      - GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS=${GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS:-procurements-dlq}
+      - GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS=${GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS:-procurements-subscription}
+      - GCP_GCS_BUCKET_PROCUREMENTS=${GCP_GCS_BUCKET_PROCUREMENTS:-procurements}
     command: >
       sh -c "
         echo 'Configuring gcloud CLI...';
         gcloud config set auth/disable_credentials true;
-        gcloud config set project public-detective;
+        gcloud config set project $$GCP_PROJECT;
         gcloud config set api_endpoint_overrides/pubsub http://pubsub:8085/ --quiet;
         gcloud config set api_endpoint_overrides/storage http://gcs:8086/storage/v1/ --quiet;
 
-        echo 'Waiting for Pub/Sub emulator to be ready...';
-        until gcloud pubsub topics list > /dev/null 2>&1; do
-          echo -n '.' && sleep 1;
-        done;
-        echo ' Pub/Sub is ready.';
-
-        echo 'Waiting for GCS emulator to be ready...';
-        until curl -s --fail http://gcs:8086/storage/v1/b > /dev/null 2>&1; do
-          echo -n '.' && sleep 1;
-        done;
-        echo ' GCS is ready.';
-
         echo '----------';
         echo 'Creating main topic...';
-        gcloud pubsub topics create procurements || echo 'Topic procurements already exists.';
+        gcloud pubsub topics create $$GCP_PUBSUB_TOPIC_PROCUREMENTS || echo 'Topic $$GCP_PUBSUB_TOPIC_PROCUREMENTS already exists.';
 
         echo 'Creating dead-letter topic...';
-        gcloud pubsub topics create procurements-dlq || echo 'Topic procurements-dlq already exists.';
+        gcloud pubsub topics create $$GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS || echo 'Topic $$GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS already exists.';
 
         echo '----------';
         echo 'Creating main subscription with DLQ policy...';
-        gcloud pubsub subscriptions create procurements-subscription --topic procurements --dead-letter-topic procurements-dlq --max-delivery-attempts 5 || echo 'Subscription procurements-subscription already exists.';
+        gcloud pubsub subscriptions create $$GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS --topic $$GCP_PUBSUB_TOPIC_PROCUREMENTS --dead-letter-topic $$GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS --max-delivery-attempts 5 || echo 'Subscription $$GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS already exists.';
 
         echo '----------';
         echo 'Creating GCS Bucket...';
-        gcloud storage buckets create gs://procurements || echo 'Bucket procurements already exists.';
+        gcloud storage buckets create gs://$$GCP_GCS_BUCKET_PROCUREMENTS || echo 'Bucket $$GCP_GCS_BUCKET_PROCUREMENTS already exists.';
 
         echo '----------';
         echo 'Initialization complete.';
       "
     depends_on:
-      - pubsub
-      - gcs
+      postgres:
+        condition: service_healthy
+      pubsub:
+        condition: service_healthy
+      gcs:
+        condition: service_healthy
 
 
 volumes:

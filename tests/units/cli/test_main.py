@@ -1,15 +1,15 @@
-import subprocess  # nosec B404
-import sys
+"""
+Unit tests for the main CLI entrypoint.
+"""
+from unittest.mock import patch
+
+from public_detective.cli import __main__
 
 
-def test_main_entrypoint() -> None:
+@patch("public_detective.cli.__main__.cli")
+def test_main_entrypoint_call(mock_cli) -> None:
     """
-    Tests that the main entrypoint runs without errors.
+    Tests that the main entrypoint function calls the cli group.
     """
-    result = subprocess.run(
-        [sys.executable, "-m", "source.cli"],  # nosec B603
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert "Usage: python -m source.cli" in result.stderr
+    __main__.main()
+    mock_cli.assert_called_once()

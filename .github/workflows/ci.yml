@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - '.github/badges/coverage.svg'
+      - '.github/badges/**'
   pull_request:
     branches:
       - main
@@ -119,7 +119,7 @@ jobs:
 
       - name: Run tests and generate coverage report
         run: |
-          poetry run pytest --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
+          poetry run pytest -n auto --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
 
       - name: Coverage Comment
         if: github.event_name == 'pull_request'
@@ -127,26 +127,35 @@ jobs:
         with:
           pytest-coverage-path: pytest-coverage.txt
           junitxml-path: junit.xml
-          title: Test Coverage
+          title: Code Coverage
           badge-title: Coverage
           hide-badge: false
           hide-report: false
           create-new-comment: false
           hide-comment: false
 
-      - name: Generate coverage badge
+      - name: Generate code coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         uses: tj-actions/coverage-badge-py@v2
         with:
-          output: .github/badges/coverage.svg
+          output: .github/badges/code-coverage.svg
 
-      - name: Commit and push coverage badge
+      - name: Check docstring coverage
+        run: |
+          poetry run interrogate
+
+      - name: Generate docstring coverage badge
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
-          git add .github/badges/coverage.svg
+          poetry run interrogate --generate-badge .github/badges/docstring-coverage.svg --badge-format svg
+
+      - name: Commit and push coverage badges
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          git add .github/badges/
           if git diff --staged --quiet; then
-            echo "No changes to commit for coverage badge."
+            echo "No changes to commit for coverage badges."
           else
-            git commit -m "chore: update coverage badge"
+            git commit -m "chore: update coverage badges"
             git push
           fi
