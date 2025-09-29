@@ -57,12 +57,14 @@ repos:
           - darglint
       - id: mypy
         name: mypy
-        entry: poetry run mypy
-        language: system
+        entry: mypy
+        language: python
         types_or:
           - python
           - pyi
         require_serial: true
+        additional_dependencies:
+          - types-requests
       - id: vulture
         name: vulture
         language: python
