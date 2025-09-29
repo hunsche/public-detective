@@ -1,10 +1,8 @@
 from decimal import Decimal
+from unittest.mock import MagicMock, patch
 
 import pytest
 from public_detective.services.pricing_service import Modality, PricingService
-
-
-from unittest.mock import MagicMock, patch
 
 
 @pytest.fixture
@@ -41,9 +39,7 @@ def pricing_service():
         (Modality.VIDEO, Decimal("0.004")),
     ],
 )
-def test_calculate_standard_context_modalities(
-    pricing_service, modality, expected_input_cost_per_million
-):
+def test_calculate_standard_context_modalities(pricing_service, modality, expected_input_cost_per_million):
     """Tests cost calculation for different modalities in a standard context."""
     input_tokens = 100_000
     output_tokens = 10_000
@@ -54,12 +50,8 @@ def test_calculate_standard_context_modalities(
     )
 
     expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
-    expected_output = (
-        Decimal(output_tokens) / 1_000_000
-    ) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_COST
-    expected_thinking = (
-        Decimal(thinking_tokens) / 1_000_000
-    ) * pricing_service.config.GCP_GEMINI_THINKING_OUTPUT_COST
+    expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_COST
+    expected_thinking = (Decimal(thinking_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_THINKING_OUTPUT_COST
 
     assert input_cost == expected_input
     assert output_cost == expected_output
@@ -76,9 +68,7 @@ def test_calculate_standard_context_modalities(
         (Modality.VIDEO, Decimal("0.008")),
     ],
 )
-def test_calculate_long_context_modalities(
-    pricing_service, modality, expected_input_cost_per_million
-):
+def test_calculate_long_context_modalities(pricing_service, modality, expected_input_cost_per_million):
     """Tests cost calculation for different modalities in a long context."""
     input_tokens = 250_000
     output_tokens = 10_000
@@ -89,9 +79,7 @@ def test_calculate_long_context_modalities(
     )
 
     expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
-    expected_output = (
-        Decimal(output_tokens) / 1_000_000
-    ) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
+    expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
     expected_thinking = (
         Decimal(thinking_tokens) / 1_000_000
     ) * pricing_service.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST

@@ -34,9 +34,7 @@ def test_extend_ack_deadline_failure(subscription):
 
 def test_debug_pause_eof_error(subscription):
     """Tests that an EOFError in _debug_pause is handled gracefully."""
-    with patch("builtins.input", side_effect=EOFError), patch.object(
-        subscription, "logger"
-    ) as mock_logger:
+    with patch("builtins.input", side_effect=EOFError), patch.object(subscription, "logger") as mock_logger:
         subscription._debug_pause()
         mock_logger.debug.assert_called_with("No TTY available; skipping pause.")
 

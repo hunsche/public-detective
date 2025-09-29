@@ -8,11 +8,11 @@ import tempfile
 import imageio
 import mammoth
 import openpyxl
+import pyxlsb
 import textract
 import xlrd
 from PIL import Image
 from public_detective.providers.logging import Logger, LoggingProvider
-import pyxlsb
 from striprtf.striprtf import rtf_to_text
 
 

@@ -1,8 +1,10 @@
 from __future__ import annotations
-import tokenize
-from typing import Iterable, Tuple, Type
 
-Err = Tuple[int, int, str, Type["NoHashCommentsPlugin"]]
+import tokenize
+from collections.abc import Iterable
+from typing import Tuple, Type
+
+Err = tuple[int, int, str, type["NoHashCommentsPlugin"]]
 
 
 class NoHashCommentsPlugin:

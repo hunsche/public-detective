@@ -226,7 +226,9 @@ def test_recursive_file_processing_archive_exception(mock_extract, repository, c
 
 def test_get_procurement_by_hash_found(repository):
     """Tests checking a hash that exists."""
-    repository.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one_or_none.return_value = 1
+    repository.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one_or_none.return_value = (
+        1
+    )
     assert repository.get_procurement_by_hash("existing_hash") is True
 
 
