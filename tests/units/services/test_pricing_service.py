@@ -1,6 +1,8 @@
 """This module contains the unit tests for the PricingService."""
 
+from collections.abc import Generator
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,122 +10,99 @@ from public_detective.services.pricing_service import Modality, PricingService
 
 
 @pytest.fixture
-def mock_config() -> MagicMock:
-    """Provides a mock Config object with predefined cost values."""
-    mock = MagicMock()
-    mock.GCP_GEMINI_TEXT_INPUT_COST = Decimal("7.750969275")
-    mock.GCP_GEMINI_TEXT_INPUT_LONG_COST = Decimal("15.50193855")
-    mock.GCP_GEMINI_TEXT_OUTPUT_COST = Decimal("62.0077542")
-    mock.GCP_GEMINI_TEXT_OUTPUT_LONG_COST = Decimal("93.0116313")
-    mock.GCP_GEMINI_THINKING_OUTPUT_COST = Decimal("62.0077542")
-    mock.GCP_GEMINI_THINKING_OUTPUT_LONG_COST = Decimal("93.0116313")
-    mock.GCP_GEMINI_AUDIO_INPUT_COST = Decimal("7.750969275")
-    mock.GCP_GEMINI_AUDIO_INPUT_LONG_COST = Decimal("15.50193855")
-    mock.GCP_GEMINI_IMAGE_INPUT_COST = Decimal("7.750969275")
-    mock.GCP_GEMINI_IMAGE_INPUT_LONG_COST = Decimal("15.50193855")
-    mock.GCP_GEMINI_VIDEO_INPUT_COST = Decimal("7.750969275")
-    mock.GCP_GEMINI_VIDEO_INPUT_LONG_COST = Decimal("15.50193855")
-    return mock
+def pricing_service() -> Generator[PricingService, Any, None]:
+    """Provides a PricingService instance with a mocked config."""
+    with patch("public_detective.services.pricing_service.ConfigProvider") as mock_provider:
+        mock_config = MagicMock()
+        # Standard context costs
+        mock_config.GCP_GEMINI_TEXT_INPUT_COST = Decimal("0.0035")
+        mock_config.GCP_GEMINI_AUDIO_INPUT_COST = Decimal("0.002")
+        mock_config.GCP_GEMINI_IMAGE_INPUT_COST = Decimal("0.0025")
+        mock_config.GCP_GEMINI_VIDEO_INPUT_COST = Decimal("0.004")
+        mock_config.GCP_GEMINI_TEXT_OUTPUT_COST = Decimal("0.0015")
+        mock_config.GCP_GEMINI_THINKING_OUTPUT_COST = Decimal("0.0005")
+        # Long context costs
+        mock_config.GCP_GEMINI_TEXT_INPUT_LONG_COST = Decimal("0.007")
+        mock_config.GCP_GEMINI_AUDIO_INPUT_LONG_COST = Decimal("0.004")
+        mock_config.GCP_GEMINI_IMAGE_INPUT_LONG_COST = Decimal("0.005")
+        mock_config.GCP_GEMINI_VIDEO_INPUT_LONG_COST = Decimal("0.008")
+        mock_config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST = Decimal("0.003")
+        mock_config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST = Decimal("0.001")
+        mock_config.GCP_GEMINI_LONG_CONTEXT_THRESHOLD = 128000
+
+        mock_provider.get_config.return_value = mock_config
+        service = PricingService()
+        yield service
 
 
-@patch("public_detective.services.pricing_service.ConfigProvider.get_config")
-def test_calculate_text_short_context(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
-    """Tests cost calculation for a short text context."""
-    # Arrange
-    mock_get_config.return_value = mock_config
-    service = PricingService()
-    input_tokens = 100_000
-    output_tokens = 50_000
-    thinking_tokens = 10_000
-
-    # Act
-    input_cost, output_cost, thinking_cost, total_cost = service.calculate(
-        input_tokens, output_tokens, thinking_tokens, Modality.TEXT
-    )
-
-    # Assert
-    expected_input_cost = (Decimal(input_tokens) / 1_000_000) * mock_config.GCP_GEMINI_TEXT_INPUT_COST
-    expected_output_cost = (Decimal(output_tokens) / 1_000_000) * mock_config.GCP_GEMINI_TEXT_OUTPUT_COST
-    expected_thinking_cost = (Decimal(thinking_tokens) / 1_000_000) * mock_config.GCP_GEMINI_THINKING_OUTPUT_COST
-    expected_total_cost = expected_input_cost + expected_output_cost + expected_thinking_cost
-
-    assert input_cost == expected_input_cost
-    assert output_cost == expected_output_cost
-    assert thinking_cost == expected_thinking_cost
-    assert total_cost == expected_total_cost
-
-
-@patch("public_detective.services.pricing_service.ConfigProvider.get_config")
-def test_calculate_text_long_context(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
-    """Tests cost calculation for a long text context."""
-    # Arrange
-    mock_get_config.return_value = mock_config
-    service = PricingService()
-    input_tokens = 300_000
-    output_tokens = 50_000
-    thinking_tokens = 10_000
-
-    # Act
-    input_cost, output_cost, thinking_cost, total_cost = service.calculate(
-        input_tokens, output_tokens, thinking_tokens, Modality.TEXT
-    )
-
-    # Assert
-    expected_input_cost = (Decimal(input_tokens) / 1_000_000) * mock_config.GCP_GEMINI_TEXT_INPUT_LONG_COST
-    expected_output_cost = (Decimal(output_tokens) / 1_000_000) * mock_config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
-    expected_thinking_cost = (Decimal(thinking_tokens) / 1_000_000) * mock_config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
-    expected_total_cost = expected_input_cost + expected_output_cost + expected_thinking_cost
-
-    assert input_cost == expected_input_cost
-    assert output_cost == expected_output_cost
-    assert thinking_cost == expected_thinking_cost
-    assert total_cost == expected_total_cost
-
-
-@patch("public_detective.services.pricing_service.ConfigProvider.get_config")
-def test_calculate_audio_long_context(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
-    """Tests cost calculation for a long audio context."""
-    # Arrange
-    mock_get_config.return_value = mock_config
-    service = PricingService()
-    input_tokens = 300_000
-    output_tokens = 50_000
-    thinking_tokens = 10_000
-
-    # Act
-    input_cost, output_cost, thinking_cost, total_cost = service.calculate(
-        input_tokens, output_tokens, thinking_tokens, Modality.AUDIO
-    )
-
-    # Assert
-    expected_input_cost = (Decimal(input_tokens) / 1_000_000) * mock_config.GCP_GEMINI_AUDIO_INPUT_LONG_COST
-    expected_output_cost = (Decimal(output_tokens) / 1_000_000) * mock_config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
-    expected_thinking_cost = (Decimal(thinking_tokens) / 1_000_000) * mock_config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
-    expected_total_cost = expected_input_cost + expected_output_cost + expected_thinking_cost
-
-    assert input_cost == expected_input_cost
-    assert output_cost == expected_output_cost
-    assert thinking_cost == expected_thinking_cost
-    assert total_cost == expected_total_cost
-
-
-@patch("public_detective.services.pricing_service.ConfigProvider.get_config")
-def test_calculate_zero_tokens(mock_get_config: MagicMock, mock_config: MagicMock) -> None:
+def test_calculate_zero_tokens(pricing_service: PricingService) -> None:
     """Tests cost calculation with zero tokens."""
-    # Arrange
-    mock_get_config.return_value = mock_config
-    service = PricingService()
-    input_tokens = 0
-    output_tokens = 0
-    thinking_tokens = 0
-
-    # Act
-    input_cost, output_cost, thinking_cost, total_cost = service.calculate(
-        input_tokens, output_tokens, thinking_tokens, Modality.TEXT
-    )
-
-    # Assert
+    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(0, 0, 0, Modality.TEXT)
     assert input_cost == Decimal("0")
     assert output_cost == Decimal("0")
     assert thinking_cost == Decimal("0")
     assert total_cost == Decimal("0")
+
+
+@pytest.mark.parametrize(
+    "modality, expected_input_cost_per_million",
+    [
+        (Modality.TEXT, Decimal("0.0035")),
+        (Modality.AUDIO, Decimal("0.002")),
+        (Modality.IMAGE, Decimal("0.0025")),
+        (Modality.VIDEO, Decimal("0.004")),
+    ],
+)
+def test_calculate_standard_context_modalities(
+    pricing_service: PricingService, modality: Modality, expected_input_cost_per_million: Decimal
+) -> None:
+    """Tests cost calculation for different modalities in a standard context."""
+    input_tokens = 100_000
+    output_tokens = 10_000
+    thinking_tokens = 5_000
+
+    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(
+        input_tokens, output_tokens, thinking_tokens, modality
+    )
+
+    expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
+    expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_COST
+    expected_thinking = (Decimal(thinking_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_THINKING_OUTPUT_COST
+
+    assert input_cost == expected_input
+    assert output_cost == expected_output
+    assert thinking_cost == expected_thinking
+    assert total_cost == expected_input + expected_output + expected_thinking
+
+
+@pytest.mark.parametrize(
+    "modality, expected_input_cost_per_million",
+    [
+        (Modality.TEXT, Decimal("0.007")),
+        (Modality.AUDIO, Decimal("0.004")),
+        (Modality.IMAGE, Decimal("0.005")),
+        (Modality.VIDEO, Decimal("0.008")),
+    ],
+)
+def test_calculate_long_context_modalities(
+    pricing_service: PricingService, modality: Modality, expected_input_cost_per_million: Decimal
+) -> None:
+    """Tests cost calculation for different modalities in a long context."""
+    input_tokens = 250_000
+    output_tokens = 10_000
+    thinking_tokens = 5_000
+
+    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(
+        input_tokens, output_tokens, thinking_tokens, modality
+    )
+
+    expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
+    expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
+    expected_thinking = (
+        Decimal(thinking_tokens) / 1_000_000
+    ) * pricing_service.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
+
+    assert input_cost == expected_input
+    assert output_cost == expected_output
+    assert thinking_cost == expected_thinking
+    assert total_cost == expected_input + expected_output + expected_thinking

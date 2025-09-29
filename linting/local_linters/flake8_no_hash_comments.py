@@ -1,73 +1,71 @@
-from __future__ import annotations
+"""A flake8 plugin to forbid hash comments."""
 
-import tokenize
-from collections.abc import Iterable
-from typing import Tuple, Type
-
-Err = tuple[int, int, str, type["NoHashCommentsPlugin"]]
+import ast
+from typing import Any, Generator
 
 
 class NoHashCommentsPlugin:
+    """A flake8 plugin to forbid hash comments."""
+
     name = "flake8-no-hash-comments"
-    version = "0.1.5"
+    version = "0.1.0"
 
-    allowed_prefixes: tuple[str, ...] = ("#!",)
-    allowlist_substrings: tuple[str, ...] = ()
+    # Define the error code and message.
+    NOHASH_ERROR_CODE = "NHC001"
+    NOHASH_ERROR_MESSAGE = f"{NOHASH_ERROR_CODE} hash comments are not allowed"
 
-    code = "NHC9001"
-    msg = (
-        f"{code} Hash comments are not allowed; code should be self-explanatory "
-        "and docstrings should document behavior and intent"
-    )
+    # A class attribute to store the options.
+    _lines: list[str] = []
 
-    def __init__(self, tree, filename: str, lines: list[str]):
-        self.filename = filename
-        self.lines = lines
+    def __init__(self, tree: ast.AST, filename: str, lines: list[str]):
+        """The constructor, called by flake8.
 
-    @classmethod
-    def add_options(cls, parser) -> None:
-        parser.add_option(
-            "--no-hash-allow-prefixes",
-            default="#!",
-            parse_from_config=True,
-            help="Allowed prefixes for the first line. Default: '#!'. Comma separated.",
-        )
-        parser.add_option(
-            "--no-hash-allow-substrings",
-            default="",
-            parse_from_config=True,
-            help="Allowed substrings inside comments. Comma separated.",
-        )
+        Args:
+            tree: The AST tree of the file.
+            filename: The name of the file being processed.
+            lines: The lines of the file.
+        """
+        self._tree = tree
+        self._filename = filename
+        self._lines = lines
 
     @classmethod
-    def parse_options(cls, options) -> None:
-        def split_csv(s: str) -> tuple[str, ...]:
-            return tuple(x.strip() for x in s.split(",") if x.strip())
+    def add_options(cls, parser: Any) -> None:
+        """A hook to add new options to the flake8 parser.
 
-        cls.allowed_prefixes = split_csv(options.no_hash_allow_prefixes or "")
-        cls.allowlist_substrings = split_csv(options.no_hash_allow_substrings or "")
+        Args:
+            parser: The flake8 option parser.
+        """
+        # This method is called by flake8 to add new options.
+        # We don't need any options for this plugin.
 
-    def run(self) -> Iterable[Err]:
-        try:
-            reader = tokenize.generate_tokens(iter(self.lines).__next__)
+    @classmethod
+    def parse_options(cls, options: Any) -> None:
+        """A hook to parse the options.
 
-            first_line = True
-            for tok_type, tok_str, (lineno, col), _, _ in reader:
-                if tok_type != tokenize.COMMENT:
-                    if tok_type in (tokenize.NL, tokenize.NEWLINE):
-                        first_line = False
+        Args:
+            options: The options parsed by flake8.
+        """
+        # This method is called by flake8 to parse the options.
+        # We don't need any options for this plugin.
+
+    def run(self) -> Generator[tuple[int, int, str, type[Any]], None, None]:
+        """The main method, called by flake8.
+
+        Yields:
+            A tuple containing the line number, column, error message, and plugin type.
+        """
+        for i, line in enumerate(self._lines):
+            line_number = i + 1
+            # We're looking for comments that start with a hash.
+            # We need to be careful not to flag shebangs or encoding declarations.
+            stripped_line = line.strip()
+            if stripped_line.startswith("#"):
+                if stripped_line.startswith("#!") or "coding:" in stripped_line:
                     continue
-
-                text = tok_str or ""
-
-                if "noqa" in text:
-                    continue
-                if first_line and any(text.startswith(p) for p in self.allowed_prefixes):
-                    continue
-                if self.allowlist_substrings and any(s in text for s in self.allowlist_substrings):
-                    continue
-
-                yield (lineno, 0, self.msg, type(self))
-
-        except tokenize.TokenError:
-            return
+                yield (
+                    line_number,
+                    line.find("#"),
+                    self.NOHASH_ERROR_MESSAGE,
+                    type(self),
+                )
