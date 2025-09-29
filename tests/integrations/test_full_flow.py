@@ -69,6 +69,9 @@ def mock_procurement() -> Procurement:
     return Procurement.model_validate(procurement_data)
 
 
+from sqlalchemy import text
+
+
 @pytest.mark.timeout(180)
 def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Procurement) -> None:
     """
@@ -96,12 +99,34 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         pubsub_provider=pubsub_provider,
     )
 
+    procurement_data = mock_procurement.model_dump(by_alias=True)
+
     with (
-        patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
         patch.object(procurement_repo, "process_procurement_documents", return_value=[]),
         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
-        patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
+        patch.object(procurement_repo, "get_latest_version", return_value=0),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(100, 0, 0)),
     ):
-        analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None)
+        analysis_service._pre_analyze_procurement(mock_procurement, procurement_data)
 
-    save_pre_analysis_mock.assert_called_once()
+    # Verify that the analysis and its history were created in the database
+    with db_engine.connect() as conn:
+        result = conn.execute(
+            text(
+                "SELECT COUNT(*) FROM procurement_analyses WHERE procurement_control_number = :control_number"
+            ),
+            {"control_number": mock_procurement.pncp_control_number},
+        ).scalar_one()
+        assert result == 1
+
+        history_result = conn.execute(
+            text(
+                """
+                SELECT COUNT(*) FROM procurement_analysis_status_history h
+                JOIN procurement_analyses a ON h.analysis_id = a.analysis_id
+                WHERE a.procurement_control_number = :control_number
+                """
+            ),
+            {"control_number": mock_procurement.pncp_control_number},
+        ).scalar_one()
+        assert history_result == 1

@@ -823,7 +823,7 @@ class AnalysisService:
         final_candidates, _ = self._select_files_by_token_limit(all_candidates, procurement)
         files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
-        raw_data_str = json.dumps(raw_data, sort_keys=True)
+        raw_data_str = json.dumps(raw_data, sort_keys=True, default=str)
         all_files_content = b"".join(file.content for file in sorted(all_original_files, key=lambda x: x.relative_path))
         procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
 
