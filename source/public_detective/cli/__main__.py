@@ -20,6 +20,7 @@ cli.add_command(pre_analyze)
 cli.add_command(retry)
 cli.add_command(trigger_ranked_analysis)
 
+
 def main() -> None:
     """Main entrypoint for the CLI."""
     cli()

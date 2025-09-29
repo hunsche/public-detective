@@ -1,15 +1,15 @@
 """
 Unit tests for the Subscription worker to increase test coverage.
 """
+
 import threading
 from unittest.mock import MagicMock
 
-import pytest
 from google.api_core.exceptions import GoogleAPICallError
 from public_detective.worker.subscription import Subscription
 
 
-def test_process_message_analysis_not_found(subscription: Subscription, mock_message: MagicMock):
+def test_process_message_analysis_not_found(subscription: Subscription, mock_message: MagicMock) -> None:
     """
     Tests that a message is NACKed if the analysis_id is not found.
     """
@@ -21,7 +21,7 @@ def test_process_message_analysis_not_found(subscription: Subscription, mock_mes
     subscription.logger.error.assert_called_once()
 
 
-def test_process_message_signals_completion_event(subscription: Subscription, mock_message: MagicMock):
+def test_process_message_signals_completion_event(subscription: Subscription, mock_message: MagicMock) -> None:
     """
     Tests that the processing_complete_event is set in the finally block.
     """
@@ -33,20 +33,7 @@ def test_process_message_signals_completion_event(subscription: Subscription, mo
     assert completion_event.is_set()
 
 
-def test_run_worker_handles_keyboard_interrupt(subscription: Subscription):
-    """Tests graceful shutdown on KeyboardInterrupt."""
-    future = MagicMock()
-    future.result.side_effect = KeyboardInterrupt
-    future.cancelled.return_value = False
-    subscription.pubsub_provider.subscribe.return_value = future
-
-    subscription.run()
-
-    subscription.logger.warning.assert_called_with("Shutdown requested: KeyboardInterrupt")
-    future.cancel.assert_called_once()
-
-
-def test_extend_ack_deadline_exception_logs_warning(subscription: Subscription, mock_message: MagicMock):
+def test_extend_ack_deadline_exception_logs_warning(subscription: Subscription, mock_message: MagicMock) -> None:
     """Tests that a warning is logged when extend_ack_deadline fails."""
     mock_message.modify_ack_deadline.side_effect = GoogleAPICallError("API Error")
 

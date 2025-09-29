@@ -1,6 +1,7 @@
 """
 Shared fixtures for worker unit tests.
 """
+
 import json
 from unittest.mock import MagicMock
 

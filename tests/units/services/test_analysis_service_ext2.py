@@ -1,62 +1,61 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.models.procurements import Procurement
 from public_detective.repositories.procurements import ProcessedFile
 from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture
-def mock_procurement_repo():
+def mock_procurement_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_analysis_repo():
+def mock_analysis_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_source_document_repo():
+def mock_source_document_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_file_record_repo():
+def mock_file_record_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_status_history_repo():
+def mock_status_history_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_budget_ledger_repo():
+def mock_budget_ledger_repo() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_ai_provider():
+def mock_ai_provider() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
-def mock_gcs_provider():
+def mock_gcs_provider() -> MagicMock:
     return MagicMock()
 
 
 @pytest.fixture
 def analysis_service(
-    mock_procurement_repo,
-    mock_analysis_repo,
-    mock_source_document_repo,
-    mock_file_record_repo,
-    mock_status_history_repo,
-    mock_budget_ledger_repo,
-    mock_ai_provider,
-    mock_gcs_provider,
-):
+    mock_procurement_repo: MagicMock,
+    mock_analysis_repo: MagicMock,
+    mock_source_document_repo: MagicMock,
+    mock_file_record_repo: MagicMock,
+    mock_status_history_repo: MagicMock,
+    mock_budget_ledger_repo: MagicMock,
+    mock_ai_provider: MagicMock,
+    mock_gcs_provider: MagicMock,
+) -> AnalysisService:
     """Provides an AnalysisService instance with mocked dependencies."""
     return AnalysisService(
         procurement_repo=mock_procurement_repo,
@@ -70,7 +69,7 @@ def analysis_service(
     )
 
 
-def test_prepare_ai_candidates_unsupported_extension(analysis_service):
+def test_prepare_ai_candidates_unsupported_extension(analysis_service: AnalysisService) -> None:
     """Tests that a file with an unsupported extension is marked for exclusion."""
     processed_file = ProcessedFile(
         source_document_id="doc1",
@@ -85,7 +84,7 @@ def test_prepare_ai_candidates_unsupported_extension(analysis_service):
 
 
 @patch("public_detective.services.converter.ConverterService.docx_to_html")
-def test_prepare_ai_candidates_docx_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_docx_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .docx file."""
     mock_converter.return_value = "<html><body>test</body></html>"
     processed_file = ProcessedFile(
@@ -102,7 +101,7 @@ def test_prepare_ai_candidates_docx_conversion(mock_converter, analysis_service)
 
 
 @patch("public_detective.services.converter.ConverterService.rtf_to_text")
-def test_prepare_ai_candidates_rtf_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_rtf_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of an .rtf file."""
     mock_converter.return_value = "rtf text"
     processed_file = ProcessedFile(
@@ -118,7 +117,7 @@ def test_prepare_ai_candidates_rtf_conversion(mock_converter, analysis_service):
 
 
 @patch("public_detective.services.converter.ConverterService.doc_to_text")
-def test_prepare_ai_candidates_doc_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_doc_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .doc file."""
     mock_converter.return_value = "doc text"
     processed_file = ProcessedFile(
@@ -134,7 +133,7 @@ def test_prepare_ai_candidates_doc_conversion(mock_converter, analysis_service):
 
 
 @patch("public_detective.services.converter.ConverterService.bmp_to_png")
-def test_prepare_ai_candidates_bmp_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_bmp_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .bmp file."""
     mock_converter.return_value = b"png content"
     processed_file = ProcessedFile(
@@ -150,7 +149,7 @@ def test_prepare_ai_candidates_bmp_conversion(mock_converter, analysis_service):
 
 
 @patch("public_detective.services.converter.ConverterService.gif_to_mp4")
-def test_prepare_ai_candidates_gif_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_gif_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .gif file."""
     mock_converter.return_value = b"mp4 content"
     processed_file = ProcessedFile(
@@ -166,7 +165,9 @@ def test_prepare_ai_candidates_gif_conversion(mock_converter, analysis_service):
 
 
 @patch("public_detective.services.converter.ConverterService.spreadsheet_to_csvs")
-def test_prepare_ai_candidates_spreadsheet_conversion(mock_converter, analysis_service):
+def test_prepare_ai_candidates_spreadsheet_conversion(
+    mock_converter: MagicMock, analysis_service: AnalysisService
+) -> None:
     """Tests successful conversion of a spreadsheet file."""
     mock_converter.return_value = [("sheet1", b"csv1"), ("sheet2", b"csv2")]
     processed_file = ProcessedFile(
@@ -183,7 +184,7 @@ def test_prepare_ai_candidates_spreadsheet_conversion(mock_converter, analysis_s
 
 
 @patch("public_detective.services.converter.ConverterService.docx_to_html", side_effect=Exception("Conversion failed"))
-def test_prepare_ai_candidates_conversion_failure(mock_converter, analysis_service):
+def test_prepare_ai_candidates_conversion_failure(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests that a file is marked for exclusion if conversion fails."""
     processed_file = ProcessedFile(
         source_document_id="doc1",
@@ -196,7 +197,7 @@ def test_prepare_ai_candidates_conversion_failure(mock_converter, analysis_servi
     assert "Falha ao converter o arquivo" in candidates[0].exclusion_reason
 
 
-def test_get_priority(analysis_service):
+def test_get_priority(analysis_service: AnalysisService) -> None:
     """Tests the file prioritization logic."""
     assert analysis_service._get_priority("edital.pdf") == 0
     assert analysis_service._get_priority("termo de referencia.docx") == 1
@@ -205,7 +206,7 @@ def test_get_priority(analysis_service):
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
-def test_select_files_by_token_limit_all_fit(mock_build_prompt, analysis_service):
+def test_select_files_by_token_limit_all_fit(mock_build_prompt: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests file selection when all files are within the token limit."""
     mock_build_prompt.return_value = "prompt"
     analysis_service.ai_provider.count_tokens_for_analysis.return_value = (100, 0, 0)
@@ -222,7 +223,9 @@ def test_select_files_by_token_limit_all_fit(mock_build_prompt, analysis_service
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
-def test_select_files_by_token_limit_some_excluded(mock_build_prompt, analysis_service):
+def test_select_files_by_token_limit_some_excluded(
+    mock_build_prompt: MagicMock, analysis_service: AnalysisService
+) -> None:
     """Tests file selection when some files exceed the token limit."""
     mock_build_prompt.return_value = "prompt"
     analysis_service.ai_provider.count_tokens_for_analysis.side_effect = [(100, 0, 0), (200000, 0, 0)]
@@ -242,7 +245,9 @@ def test_select_files_by_token_limit_some_excluded(mock_build_prompt, analysis_s
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
-def test_select_files_by_token_limit_prioritization(mock_build_prompt, analysis_service):
+def test_select_files_by_token_limit_prioritization(
+    mock_build_prompt: MagicMock, analysis_service: AnalysisService
+) -> None:
     """Tests that high-priority files are selected first."""
     mock_build_prompt.return_value = "prompt"
     analysis_service.ai_provider.count_tokens_for_analysis.side_effect = [(100, 0, 0), (200000, 0, 0)]

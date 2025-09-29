@@ -1,17 +1,21 @@
 """
 Integration tests to increase coverage of the full application flow.
 """
+
 from datetime import date
-from unittest.mock import patch, MagicMock
+from typing import Any
+from unittest.mock import patch
 from uuid import uuid4
 
 from public_detective.models.procurements import Procurement
-from public_detective.repositories.procurements import ProcessedFile
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
 from public_detective.services.analysis import AnalysisService
 from sqlalchemy.engine import Engine
 
 
-def test_pre_analysis_integration_with_real_processing(db_session: Engine, mock_procurement: Procurement, integration_dependencies):
+def test_pre_analysis_integration_with_real_processing(
+    db_session: Engine, mock_procurement: Procurement, integration_dependencies: dict[str, Any]
+) -> None:
     """
     Tests the pre-analysis flow with more realistic component interaction,
     mocking only the external HTTP calls.
@@ -35,11 +39,13 @@ def test_pre_analysis_integration_with_real_processing(db_session: Engine, mock_
     )
 
     # Mock the methods that perform external calls or are out of scope for this test
-    with patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]), \
-         patch.object(procurement_repo, "process_procurement_documents", return_value=[processed_file]), \
-         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False), \
-         patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock, \
-         patch.object(ai_provider, "count_tokens_for_analysis", return_value=(100, 0, 0)):
+    with (
+        patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
+        patch.object(procurement_repo, "process_procurement_documents", return_value=[processed_file]),
+        patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
+        patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(100, 0, 0)),
+    ):
 
         # Act
         analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 0, None)

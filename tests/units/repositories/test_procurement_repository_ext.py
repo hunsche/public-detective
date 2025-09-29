@@ -1,7 +1,5 @@
 import io
-import re
 import tarfile
-import zipfile
 from datetime import date
 from http import HTTPStatus
 from unittest.mock import MagicMock, patch
@@ -10,14 +8,14 @@ import py7zr
 import pytest
 import rarfile
 import requests
+from _pytest.logging import LogCaptureFixture
 from google.api_core import exceptions
-from public_detective.models.procurements import Procurement, ProcurementListResponse
-from public_detective.repositories.procurements import ProcurementsRepository
-from pydantic import ValidationError
+from public_detective.models.procurements import Procurement
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
 
 
 @pytest.fixture
-def mock_engine():
+def mock_engine() -> MagicMock:
     """Provides a mock SQLAlchemy engine."""
     engine = MagicMock()
     conn = MagicMock()
@@ -26,19 +24,19 @@ def mock_engine():
 
 
 @pytest.fixture
-def mock_pubsub_provider():
+def mock_pubsub_provider() -> MagicMock:
     """Provides a mock PubSubProvider."""
     return MagicMock()
 
 
 @pytest.fixture
-def repository(mock_engine, mock_pubsub_provider):
+def repository(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> ProcurementsRepository:
     """Provides a ProcurementsRepository instance with mocked dependencies."""
     return ProcurementsRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
 
 
 @pytest.fixture
-def mock_procurement():
+def mock_procurement() -> MagicMock:
     """Provides a detailed mock Procurement object for testing."""
     procurement = MagicMock(spec=Procurement)
     mock_entity = MagicMock()
@@ -60,7 +58,7 @@ def mock_procurement():
     return procurement
 
 
-def test_extract_from_rar_with_bad_file(repository, caplog):
+def test_extract_from_rar_with_bad_file(repository: ProcurementsRepository, caplog: LogCaptureFixture) -> None:
     """Tests that a BadRarFile error is handled gracefully."""
     with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
         result = repository._extract_from_rar(b"bad content")
@@ -68,7 +66,7 @@ def test_extract_from_rar_with_bad_file(repository, caplog):
         assert "Failed to extract from a corrupted or invalid RAR file" in caplog.text
 
 
-def test_extract_from_7z(repository):
+def test_extract_from_7z(repository: ProcurementsRepository) -> None:
     """Tests successful extraction from a 7z archive."""
     zip_buffer = io.BytesIO()
     with py7zr.SevenZipFile(zip_buffer, "w") as z:
@@ -80,7 +78,7 @@ def test_extract_from_7z(repository):
     assert result[0][1] == b"hello"
 
 
-def test_extract_from_tar(repository):
+def test_extract_from_tar(repository: ProcurementsRepository) -> None:
     """Tests successful extraction from a TAR archive."""
     tar_buffer = io.BytesIO()
     with tarfile.open(fileobj=tar_buffer, mode="w") as tar:
@@ -95,13 +93,15 @@ def test_extract_from_tar(repository):
     assert result[0][1] == b"hello"
 
 
-def test_create_zip_from_files_empty(repository):
+def test_create_zip_from_files_empty(repository: ProcurementsRepository) -> None:
     """Tests that creating a zip from no files returns None."""
     assert repository.create_zip_from_files([], "123") is None
 
 
 @patch("zipfile.ZipFile")
-def test_create_zip_from_files_exception(mock_zipfile, repository, caplog):
+def test_create_zip_from_files_exception(
+    mock_zipfile: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests that an exception during zip creation is handled."""
     mock_zipfile.side_effect = Exception("Zip error")
     result = repository.create_zip_from_files([("test.txt", b"content")], "123")
@@ -110,7 +110,9 @@ def test_create_zip_from_files_exception(mock_zipfile, repository, caplog):
 
 
 @patch("requests.get")
-def test_get_all_documents_metadata_request_exception(mock_get, repository, mock_procurement, caplog):
+def test_get_all_documents_metadata_request_exception(
+    mock_get: MagicMock, repository: ProcurementsRepository, mock_procurement: MagicMock, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of RequestException when fetching document metadata."""
     mock_get.side_effect = requests.RequestException("Network error")
     result = repository._get_all_documents_metadata(mock_procurement)
@@ -119,7 +121,9 @@ def test_get_all_documents_metadata_request_exception(mock_get, repository, mock
 
 
 @patch("requests.get")
-def test_get_all_documents_metadata_validation_error(mock_get, repository, mock_procurement, caplog):
+def test_get_all_documents_metadata_validation_error(
+    mock_get: MagicMock, repository: ProcurementsRepository, mock_procurement: MagicMock, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of ValidationError when fetching document metadata."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
@@ -132,7 +136,9 @@ def test_get_all_documents_metadata_validation_error(mock_get, repository, mock_
 
 
 @patch("requests.get")
-def test_download_file_content_request_exception(mock_get, repository, caplog):
+def test_download_file_content_request_exception(
+    mock_get: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of RequestException during file download."""
     mock_get.side_effect = requests.RequestException("Download failed")
     result = repository._download_file_content("http://example.com/file")
@@ -141,7 +147,9 @@ def test_download_file_content_request_exception(mock_get, repository, caplog):
 
 
 @patch("requests.head")
-def test_determine_original_filename_request_exception(mock_head, repository, caplog):
+def test_determine_original_filename_request_exception(
+    mock_head: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of RequestException when determining filename."""
     mock_head.side_effect = requests.RequestException("HEAD request failed")
     result = repository._determine_original_filename("http://example.com/file")
@@ -150,7 +158,9 @@ def test_determine_original_filename_request_exception(mock_head, repository, ca
 
 
 @patch("requests.get")
-def test_get_updated_procurements_request_exception(mock_get, repository, caplog):
+def test_get_updated_procurements_request_exception(
+    mock_get: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of RequestException in get_updated_procurements."""
     mock_get.side_effect = requests.exceptions.RequestException("API is down")
     target_date = date(2023, 1, 1)
@@ -160,7 +170,9 @@ def test_get_updated_procurements_request_exception(mock_get, repository, caplog
 
 
 @patch("requests.get")
-def test_get_updated_procurements_validation_error(mock_get, repository, caplog):
+def test_get_updated_procurements_validation_error(
+    mock_get: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of ValidationError in get_updated_procurements."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
@@ -174,7 +186,9 @@ def test_get_updated_procurements_validation_error(mock_get, repository, caplog)
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data_request_exception(mock_get, repository, caplog):
+def test_get_updated_procurements_with_raw_data_request_exception(
+    mock_get: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of RequestException in get_updated_procurements_with_raw_data."""
     mock_get.side_effect = requests.exceptions.RequestException("API is down")
     target_date = date(2023, 1, 1)
@@ -184,7 +198,9 @@ def test_get_updated_procurements_with_raw_data_request_exception(mock_get, repo
 
 
 @patch("requests.get")
-def test_get_updated_procurements_with_raw_data_validation_error(mock_get, repository, caplog):
+def test_get_updated_procurements_with_raw_data_validation_error(
+    mock_get: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of ValidationError in get_updated_procurements_with_raw_data."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
@@ -196,7 +212,9 @@ def test_get_updated_procurements_with_raw_data_validation_error(mock_get, repos
     assert "Data validation error on page 1" in caplog.text
 
 
-def test_publish_procurement_to_pubsub_api_error(repository, mock_procurement, caplog):
+def test_publish_procurement_to_pubsub_api_error(
+    repository: ProcurementsRepository, mock_procurement: MagicMock, caplog: LogCaptureFixture
+) -> None:
     """Tests handling of GoogleAPICallError during pub/sub publish."""
     repository.pubsub_provider.publish.side_effect = exceptions.GoogleAPICallError("Pub/Sub error")
     mock_procurement.model_dump_json.return_value = "{}"
@@ -207,9 +225,11 @@ def test_publish_procurement_to_pubsub_api_error(repository, mock_procurement, c
 
 
 @patch.object(ProcurementsRepository, "_extract_from_zip", side_effect=Exception("ZIP processing error"))
-def test_recursive_file_processing_archive_exception(mock_extract, repository, caplog):
+def test_recursive_file_processing_archive_exception(
+    mock_extract: MagicMock, repository: ProcurementsRepository, caplog: LogCaptureFixture
+) -> None:
     """Tests that an exception during archive extraction is handled and the file is treated as a single entity."""
-    file_collection = []
+    file_collection: list[ProcessedFile] = []
     repository._recursive_file_processing(
         source_document_id="doc1",
         content=b"zip_content",
@@ -224,42 +244,39 @@ def test_recursive_file_processing_archive_exception(mock_extract, repository, c
     assert "Could not process archive 'archive.zip': ZIP processing error" in caplog.text
 
 
-def test_get_procurement_by_hash_found(repository):
+def test_get_procurement_by_hash_found(repository: ProcurementsRepository) -> None:
     """Tests checking a hash that exists."""
-    repository.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one_or_none.return_value = (
-        1
-    )
+    conn = repository.engine.connect.return_value.__enter__.return_value
+    conn.execute.return_value.scalar_one_or_none.return_value = 1
     assert repository.get_procurement_by_hash("existing_hash") is True
 
 
-def test_get_procurement_by_hash_not_found(repository):
+def test_get_procurement_by_hash_not_found(repository: ProcurementsRepository) -> None:
     """Tests checking a hash that does not exist."""
-    repository.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one_or_none.return_value = (
-        None
-    )
+    conn = repository.engine.connect.return_value.__enter__.return_value
+    conn.execute.return_value.scalar_one_or_none.return_value = None
     assert repository.get_procurement_by_hash("new_hash") is False
 
 
-def test_get_procurement_by_id_and_version_not_found(repository):
+def test_get_procurement_by_id_and_version_not_found(repository: ProcurementsRepository) -> None:
     """Tests fetching a procurement that does not exist."""
-    repository.engine.connect.return_value.__enter__.return_value.execute.return_value.scalar_one_or_none.return_value = (
-        None
-    )
+    conn = repository.engine.connect.return_value.__enter__.return_value
+    conn.execute.return_value.scalar_one_or_none.return_value = None
     result = repository.get_procurement_by_id_and_version("123", 1)
     assert result is None
 
 
-def test_save_procurement_version(repository, mock_procurement):
+def test_save_procurement_version(repository: ProcurementsRepository, mock_procurement: MagicMock) -> None:
     """Tests saving a new procurement version."""
     repository.save_procurement_version(mock_procurement, '{"key":"value"}', 1, "hash123")
-    assert repository.engine.connect.return_value.__enter__.return_value.execute.call_count == 1
-    assert repository.engine.connect.return_value.__enter__.return_value.commit.call_count == 1
+    conn = repository.engine.connect.return_value.__enter__.return_value
+    assert conn.execute.call_count == 1
+    assert conn.commit.call_count == 1
 
 
 @patch("requests.get")
-def test_get_updated_procurements_happy_path(mock_get, repository):
+def test_get_updated_procurements_happy_path(mock_get: MagicMock, repository: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements."""
-    # This response will be returned on the first call
     mock_response_with_data = MagicMock()
     mock_response_with_data.status_code = HTTPStatus.OK
     mock_response_with_data.json.return_value = {
@@ -307,11 +324,9 @@ def test_get_updated_procurements_happy_path(mock_get, repository):
         ],
     }
 
-    # This response will be returned on all subsequent calls
     mock_response_no_content = MagicMock()
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
-    # Set the side_effect to return the data response once, then the no_content response forever
     mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 10
 
     target_date = date(2023, 1, 1)
@@ -321,7 +336,7 @@ def test_get_updated_procurements_happy_path(mock_get, repository):
 
 
 @patch("requests.get")
-def test_get_updated_procurements_no_content(mock_get, repository):
+def test_get_updated_procurements_no_content(mock_get: MagicMock, repository: ProcurementsRepository) -> None:
     """Tests get_updated_procurements with a 204 No Content response."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.NO_CONTENT

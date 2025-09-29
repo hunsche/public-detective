@@ -1,12 +1,11 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
 from public_detective.providers.gcs import GcsProvider
 
 
 @patch("public_detective.providers.gcs.ConfigProvider")
 @patch("public_detective.providers.gcs.Client")
-def test_get_client_real_credentials(mock_gcs_client, mock_config_provider):
+def test_get_client_real_credentials(mock_gcs_client: MagicMock, mock_config_provider: MagicMock) -> None:
     """Tests that a real GCS client is created when no host is configured."""
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None

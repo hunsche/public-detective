@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from google.api_core.exceptions import GoogleAPICallError
-
 from public_detective.worker.subscription import Subscription
 
 

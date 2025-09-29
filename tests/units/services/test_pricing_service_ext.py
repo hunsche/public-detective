@@ -1,4 +1,6 @@
+from collections.abc import Generator
 from decimal import Decimal
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -6,7 +8,7 @@ from public_detective.services.pricing_service import Modality, PricingService
 
 
 @pytest.fixture
-def pricing_service():
+def pricing_service() -> Generator[PricingService, Any, None]:
     """Provides a PricingService instance with a mocked config."""
     with patch("public_detective.services.pricing_service.ConfigProvider") as mock_provider:
         mock_config = MagicMock()
@@ -39,7 +41,9 @@ def pricing_service():
         (Modality.VIDEO, Decimal("0.004")),
     ],
 )
-def test_calculate_standard_context_modalities(pricing_service, modality, expected_input_cost_per_million):
+def test_calculate_standard_context_modalities(
+    pricing_service: PricingService, modality: Modality, expected_input_cost_per_million: Decimal
+) -> None:
     """Tests cost calculation for different modalities in a standard context."""
     input_tokens = 100_000
     output_tokens = 10_000
@@ -68,7 +72,9 @@ def test_calculate_standard_context_modalities(pricing_service, modality, expect
         (Modality.VIDEO, Decimal("0.008")),
     ],
 )
-def test_calculate_long_context_modalities(pricing_service, modality, expected_input_cost_per_million):
+def test_calculate_long_context_modalities(
+    pricing_service: PricingService, modality: Modality, expected_input_cost_per_million: Decimal
+) -> None:
     """Tests cost calculation for different modalities in a long context."""
     input_tokens = 250_000
     output_tokens = 10_000

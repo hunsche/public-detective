@@ -4,6 +4,7 @@ import pytest
 from public_detective.models.procurements import Procurement
 from public_detective.repositories.procurements import ProcurementsRepository
 
+
 @pytest.fixture
 def mock_engine() -> MagicMock:
     """Fixture for a mocked database engine."""
@@ -19,8 +20,10 @@ def mock_pubsub_provider() -> MagicMock:
 @pytest.fixture
 def repo(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> ProcurementsRepository:
     """Provides a ProcurementsRepository instance with mocked dependencies."""
-    with patch("public_detective.repositories.procurements.LoggingProvider") as mock_logging_provider, \
-         patch("public_detective.repositories.procurements.ConfigProvider") as mock_config_provider:
+    with (
+        patch("public_detective.repositories.procurements.LoggingProvider") as mock_logging_provider,
+        patch("public_detective.repositories.procurements.ConfigProvider") as mock_config_provider,
+    ):
 
         mock_logger = MagicMock()
         mock_config = MagicMock()
@@ -34,6 +37,7 @@ def repo(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> Procurement
         repository.logger = mock_logger
         repository.config = mock_config
         return repository
+
 
 @pytest.fixture
 def mock_procurement() -> Procurement:

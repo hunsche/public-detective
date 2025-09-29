@@ -1,13 +1,14 @@
 """
 Unit tests for the FileRecordsRepository to increase test coverage.
 """
+
 from unittest.mock import MagicMock
 from uuid import uuid4
 
 from public_detective.repositories.file_records import FileRecordsRepository
 
 
-def test_set_files_as_included_with_ids():
+def test_set_files_as_included_with_ids() -> None:
     """
     Tests that set_files_as_included correctly calls the database
     with a list of file IDs.
@@ -25,7 +26,7 @@ def test_set_files_as_included_with_ids():
     mock_connection.commit.assert_called_once()
 
 
-def test_set_files_as_included_empty_list():
+def test_set_files_as_included_empty_list() -> None:
     """
     Tests that set_files_as_included returns early and does not
     call the database when given an empty list.

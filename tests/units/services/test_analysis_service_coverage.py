@@ -2,12 +2,11 @@
 Unit tests for the AnalysisService to increase test coverage.
 """
 
-import os
-from unittest.mock import MagicMock, patch, call
-from uuid import uuid4
-from datetime import datetime, timezone, date, timedelta
-from typing import Any
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
+from typing import Any
+from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from public_detective.constants.analysis_feedback import ExclusionReason
@@ -15,8 +14,8 @@ from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis, AnalysisResult
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
-from public_detective.services.analysis import AIFileCandidate, AnalysisService, Modality
 from public_detective.repositories.procurements import ProcessedFile
+from public_detective.services.analysis import AIFileCandidate, AnalysisService, Modality
 
 
 @pytest.fixture
@@ -33,6 +32,7 @@ def mock_dependencies() -> dict[str, Any]:
         "gcs_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
     }
+
 
 @pytest.fixture
 def mock_analysis() -> AnalysisResult:
@@ -51,6 +51,7 @@ def mock_analysis() -> AnalysisResult:
         output_tokens_used=50,
         thinking_tokens_used=10,
     )
+
 
 @pytest.fixture
 def mock_procurement() -> Procurement:
@@ -90,7 +91,9 @@ def mock_procurement() -> Procurement:
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_process_analysis_from_message_analysis_not_found(mock_logging_provider, mock_dependencies):
+def test_process_analysis_from_message_analysis_not_found(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -105,7 +108,9 @@ def test_process_analysis_from_message_analysis_not_found(mock_logging_provider,
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_process_analysis_from_message_procurement_not_found(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_process_analysis_from_message_procurement_not_found(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -123,7 +128,12 @@ def test_process_analysis_from_message_procurement_not_found(mock_logging_provid
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_process_analysis_from_message_main_analysis_fails(mock_logging_provider, mock_dependencies, mock_analysis, mock_procurement):
+def test_process_analysis_from_message_main_analysis_fails(
+    mock_logging_provider: MagicMock,
+    mock_dependencies: dict[str, Any],
+    mock_analysis: AnalysisResult,
+    mock_procurement: Procurement,
+) -> None:
     mock_logging_provider.return_value.get_logger.return_value = MagicMock()
     service = AnalysisService(**mock_dependencies)
     analysis_id = mock_analysis.analysis_id
@@ -142,7 +152,9 @@ def test_process_analysis_from_message_main_analysis_fails(mock_logging_provider
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_process_analysis_from_message_outer_exception(mock_logging_provider, mock_dependencies):
+def test_process_analysis_from_message_outer_exception(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logging_provider.return_value.get_logger.return_value = MagicMock()
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
@@ -157,7 +169,7 @@ def test_process_analysis_from_message_outer_exception(mock_logging_provider, mo
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_specific_analysis_not_found(mock_logging_provider, mock_dependencies):
+def test_run_specific_analysis_not_found(mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -171,7 +183,9 @@ def test_run_specific_analysis_not_found(mock_logging_provider, mock_dependencie
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_specific_analysis_wrong_status(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_specific_analysis_wrong_status(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -186,7 +200,9 @@ def test_run_specific_analysis_wrong_status(mock_logging_provider, mock_dependen
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_specific_analysis_no_pubsub(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_specific_analysis_no_pubsub(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logging_provider.return_value.get_logger.return_value = MagicMock()
     mock_dependencies["pubsub_provider"] = None
     service = AnalysisService(**mock_dependencies)
@@ -200,7 +216,9 @@ def test_run_specific_analysis_no_pubsub(mock_logging_provider, mock_dependencie
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_specific_analysis_outer_exception(mock_logging_provider, mock_dependencies):
+def test_run_specific_analysis_outer_exception(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logging_provider.return_value.get_logger.return_value = MagicMock()
     service = AnalysisService(**mock_dependencies)
     analysis_id = uuid4()
@@ -215,7 +233,9 @@ def test_run_specific_analysis_outer_exception(mock_logging_provider, mock_depen
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_get_procurement_overall_status_found(mock_logging_provider, mock_dependencies):
+def test_get_procurement_overall_status_found(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -231,7 +251,9 @@ def test_get_procurement_overall_status_found(mock_logging_provider, mock_depend
 
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_get_procurement_overall_status_not_found(mock_logging_provider, mock_dependencies):
+def test_get_procurement_overall_status_not_found(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -243,14 +265,23 @@ def test_get_procurement_overall_status_not_found(mock_logging_provider, mock_de
     assert result is None
     mock_logger.warning.assert_called_once_with(f"No overall status found for procurement {control_number}.")
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_get_modality(mock_logging_provider, mock_dependencies):
+def test_get_modality(mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]) -> None:
     service = AnalysisService(**mock_dependencies)
 
-    text_candidate = AIFileCandidate(original_path="doc.pdf", original_content=b"", synthetic_id="1", raw_document_metadata={})
-    image_candidate = AIFileCandidate(original_path="image.jpg", original_content=b"", synthetic_id="2", raw_document_metadata={})
-    audio_candidate = AIFileCandidate(original_path="audio.mp3", original_content=b"", synthetic_id="3", raw_document_metadata={})
-    video_candidate = AIFileCandidate(original_path="video.mp4", original_content=b"", synthetic_id="4", raw_document_metadata={})
+    text_candidate = AIFileCandidate(
+        original_path="doc.pdf", original_content=b"", synthetic_id="1", raw_document_metadata={}
+    )
+    image_candidate = AIFileCandidate(
+        original_path="image.jpg", original_content=b"", synthetic_id="2", raw_document_metadata={}
+    )
+    audio_candidate = AIFileCandidate(
+        original_path="audio.mp3", original_content=b"", synthetic_id="3", raw_document_metadata={}
+    )
+    video_candidate = AIFileCandidate(
+        original_path="video.mp4", original_content=b"", synthetic_id="4", raw_document_metadata={}
+    )
 
     assert service._get_modality([text_candidate]) == Modality.TEXT
     assert service._get_modality([text_candidate, image_candidate]) == Modality.IMAGE
@@ -258,8 +289,11 @@ def test_get_modality(mock_logging_provider, mock_dependencies):
     assert service._get_modality([text_candidate, video_candidate]) == Modality.VIDEO
     assert service._get_modality([image_candidate, video_candidate]) == Modality.VIDEO
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_prepare_ai_candidates_conversion_failure(mock_logging_provider, mock_dependencies):
+def test_prepare_ai_candidates_conversion_failure(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -280,23 +314,32 @@ def test_prepare_ai_candidates_conversion_failure(mock_logging_provider, mock_de
     assert candidates[0].exclusion_reason == ExclusionReason.CONVERSION_FAILED
     mock_logger.error.assert_called_once()
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_analyze_procurement_no_procurement_id(mock_logging_provider, mock_dependencies, mock_procurement):
+def test_analyze_procurement_no_procurement_id(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     service = AnalysisService(**mock_dependencies)
     service.procurement_repo.get_procurement_uuid.return_value = None
 
     with pytest.raises(AnalysisError, match="Could not find procurement UUID"):
         service.analyze_procurement(mock_procurement, 1, uuid4())
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_calculate_auto_budget_invalid_period(mock_logging_provider, mock_dependencies):
+def test_calculate_auto_budget_invalid_period(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     service = AnalysisService(**mock_dependencies)
     with pytest.raises(ValueError, match="Invalid budget period: invalid"):
         service._calculate_auto_budget("invalid")
 
+
 @patch("public_detective.services.analysis.datetime")
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_calculate_auto_budget(mock_logging_provider, mock_datetime, mock_dependencies):
+def test_calculate_auto_budget(
+    mock_logging_provider: MagicMock, mock_datetime: MagicMock, mock_dependencies: dict[str, Any]
+) -> None:
     mock_datetime.now.return_value = datetime(2025, 7, 15, tzinfo=timezone.utc)
 
     service = AnalysisService(**mock_dependencies)
@@ -315,8 +358,11 @@ def test_calculate_auto_budget(mock_logging_provider, mock_datetime, mock_depend
     budget = service._calculate_auto_budget("monthly")
     assert round(budget, 4) == Decimal("432.2581")
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_pre_analysis_happy_path(mock_logging_provider, mock_dependencies, mock_procurement):
+def test_run_pre_analysis_happy_path(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -326,8 +372,9 @@ def test_run_pre_analysis_happy_path(mock_logging_provider, mock_dependencies, m
         service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 0)
         mock_pre_analyze.assert_called_once_with(mock_procurement, {})
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_pre_analysis_no_procurements(mock_logging_provider, mock_dependencies):
+def test_run_pre_analysis_no_procurements(mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -338,8 +385,11 @@ def test_run_pre_analysis_no_procurements(mock_logging_provider, mock_dependenci
         mock_pre_analyze.assert_not_called()
     assert mock_logger.info.call_count == 4
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_pre_analyze_procurement_hash_exists(mock_logging_provider, mock_dependencies, mock_procurement):
+def test_pre_analyze_procurement_hash_exists(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_procurement: Procurement
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -352,8 +402,11 @@ def test_pre_analyze_procurement_hash_exists(mock_logging_provider, mock_depende
     service.procurement_repo.save_procurement_version.assert_not_called()
     mock_logger.info.assert_any_call("Procurement with hash some_hash already exists. Skipping.")
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_ranked_analysis_manual_budget(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_ranked_analysis_manual_budget(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -365,8 +418,11 @@ def test_run_ranked_analysis_manual_budget(mock_logging_provider, mock_dependenc
         service.run_ranked_analysis(False, None, 10, budget=Decimal("100"))
         mock_run_specific.assert_called_once_with(mock_analysis.analysis_id)
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_ranked_analysis_auto_budget(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_ranked_analysis_auto_budget(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -380,14 +436,18 @@ def test_run_ranked_analysis_auto_budget(mock_logging_provider, mock_dependencie
             mock_calc_budget.assert_called_once_with("daily")
             mock_run_specific.assert_called_once_with(mock_analysis.analysis_id)
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_ranked_analysis_no_budget(mock_logging_provider, mock_dependencies):
+def test_run_ranked_analysis_no_budget(mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]) -> None:
     service = AnalysisService(**mock_dependencies)
     with pytest.raises(ValueError, match="Either a manual budget must be provided or auto-budget must be enabled."):
         service.run_ranked_analysis(False, None, 10)
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_ranked_analysis_budget_exceeded(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_ranked_analysis_budget_exceeded(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -398,10 +458,15 @@ def test_run_ranked_analysis_budget_exceeded(mock_logging_provider, mock_depende
     with patch.object(service, "run_specific_analysis") as mock_run_specific:
         service.run_ranked_analysis(False, None, 10, budget=Decimal("100"))
         mock_run_specific.assert_not_called()
-    mock_logger.info.assert_any_call(f"Skipping analysis {mock_analysis.analysis_id}. Cost (150.00 BRL) exceeds remaining budget (100.00 BRL).")
+    mock_logger.info.assert_any_call(
+        f"Skipping analysis {mock_analysis.analysis_id}. Cost (150.00 BRL) exceeds remaining budget (100.00 BRL)."
+    )
+
 
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_run_ranked_analysis_max_messages(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_run_ranked_analysis_max_messages(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -417,8 +482,11 @@ def test_run_ranked_analysis_max_messages(mock_logging_provider, mock_dependenci
         mock_run_specific.assert_called_once()
     mock_logger.info.assert_any_call("Reached max_messages limit of 1. Stopping job.")
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_retry_analyses_happy_path(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_retry_analyses_happy_path(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -432,8 +500,11 @@ def test_retry_analyses_happy_path(mock_logging_provider, mock_dependencies, moc
         assert count == 1
         mock_run_specific.assert_called_once()
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_retry_analyses_backoff(mock_logging_provider, mock_dependencies, mock_analysis):
+def test_retry_analyses_backoff(
+    mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any], mock_analysis: AnalysisResult
+) -> None:
     mock_logger = MagicMock()
     mock_logging_provider.return_value.get_logger.return_value = mock_logger
     service = AnalysisService(**mock_dependencies)
@@ -446,8 +517,9 @@ def test_retry_analyses_backoff(mock_logging_provider, mock_dependencies, mock_a
         assert count == 0
         mock_run_specific.assert_not_called()
 
+
 @patch("public_detective.services.analysis.LoggingProvider")
-def test_retry_analyses_exception(mock_logging_provider, mock_dependencies):
+def test_retry_analyses_exception(mock_logging_provider: MagicMock, mock_dependencies: dict[str, Any]) -> None:
     service = AnalysisService(**mock_dependencies)
     error = Exception("DB error")
     service.analysis_repo.get_analyses_to_retry.side_effect = error
