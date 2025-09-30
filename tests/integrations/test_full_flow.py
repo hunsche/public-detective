@@ -13,7 +13,7 @@ from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
-from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
@@ -98,10 +98,21 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
 
     with (
         patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
-        patch.object(procurement_repo, "process_procurement_documents", return_value=[]),
+        patch.object(
+            procurement_repo,
+            "process_procurement_documents",
+            return_value=[
+                ProcessedFile(
+                    source_document_id="1",
+                    relative_path="test.pdf",
+                    content=b"test",
+                    raw_document_metadata={},
+                )
+            ],
+        ),
         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(1, 1, 1)),
         patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
-        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(100, 0, 0)),
     ):
         analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None)
 

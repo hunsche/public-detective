@@ -65,6 +65,7 @@ repos:
         require_serial: true
         additional_dependencies:
           - types-requests
+          - pydantic
       - id: vulture
         name: vulture
         language: python

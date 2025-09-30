@@ -1,3 +1,4 @@
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -5,14 +6,37 @@ from google.api_core.exceptions import GoogleAPICallError
 from public_detective.worker.subscription import Subscription
 
 
+@pytest.fixture
+def mock_message() -> MagicMock:
+    message_data = {"analysis_id": 123}
+    message = MagicMock()
+    message.data = json.dumps(message_data).encode("utf-8")
+    message.message_id = "test-message-id"
+    return message
+
+
+@pytest.fixture
+def mock_analysis_service() -> MagicMock:
+    """Fixture for a mocked AnalysisService."""
+    service = MagicMock()
+    service.procurement_repo = MagicMock()
+    return service
+
+
+@pytest.fixture
+def subscription(mock_analysis_service: MagicMock) -> Subscription:
+    """Fixture to create a Subscription instance with mocked services."""
+    sub = Subscription(analysis_service=mock_analysis_service)
+    sub.pubsub_provider = MagicMock()
+    return sub
+
+
 def test_process_message_success(subscription: Subscription, mock_message: MagicMock) -> None:
     """Tests the successful processing of a valid message."""
     subscription.config.IS_DEBUG_MODE = False
     subscription._process_message(mock_message, max_output_tokens=None)
 
-    subscription.analysis_service.process_analysis_from_message.assert_called_once_with(
-        "123e4567-e89b-12d3-a456-426614174000", max_output_tokens=None
-    )
+    subscription.analysis_service.process_analysis_from_message.assert_called_once_with(123, max_output_tokens=None)
     mock_message.ack.assert_called_once()
     mock_message.nack.assert_not_called()
 

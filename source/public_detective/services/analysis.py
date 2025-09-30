@@ -167,22 +167,20 @@ class AnalysisService:
     def _get_modality(self, candidates: list[AIFileCandidate]) -> Modality:
         """Determines the modality of an analysis based on file extensions.
 
-        The modality is determined by the highest-ranking media type present in
-        the candidates, with the precedence being VIDEO > AUDIO > IMAGE > TEXT.
-
         Args:
             candidates: A list of AIFileCandidate objects.
 
         Returns:
             The modality of the analysis.
         """
-        extensions = {os.path.splitext(c.ai_path)[1].lower() for c in candidates}
-        if any(ext in self._VIDEO_EXTENSIONS for ext in extensions):
-            return Modality.VIDEO
-        if any(ext in self._AUDIO_EXTENSIONS for ext in extensions):
-            return Modality.AUDIO
-        if any(ext in self._IMAGE_EXTENSIONS for ext in extensions):
-            return Modality.IMAGE
+        for candidate in candidates:
+            ext = os.path.splitext(candidate.ai_path)[1].lower()
+            if ext in self._VIDEO_EXTENSIONS:
+                return Modality.VIDEO
+            if ext in self._AUDIO_EXTENSIONS:
+                return Modality.AUDIO
+            if ext in self._IMAGE_EXTENSIONS:
+                return Modality.IMAGE
         return Modality.TEXT
 
     def _update_status_with_history(

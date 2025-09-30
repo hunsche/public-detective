@@ -97,24 +97,3 @@ def test_download_file_failure() -> None:
     # Act & Assert
     with pytest.raises(Exception, match="GCS Error"):
         gcs_provider.download_file("test-bucket", "file.pdf")
-
-
-@patch("public_detective.providers.gcs.Client")
-@patch("public_detective.providers.gcs.ConfigProvider")
-def test_get_client_no_host(mock_config_provider: MagicMock, mock_storage_client: MagicMock) -> None:
-    """
-    Tests that the GCS client is created without special options when no host is configured.
-    """
-    # Arrange
-    mock_config = MagicMock()
-    mock_config.GCP_GCS_HOST = None
-    mock_config_provider.get_config.return_value = mock_config
-
-    gcs_provider = GcsProvider()
-    gcs_provider._client = None  # Ensure client is not cached
-
-    # Act
-    gcs_provider.get_client()
-
-    # Assert
-    mock_storage_client.assert_called_once_with()

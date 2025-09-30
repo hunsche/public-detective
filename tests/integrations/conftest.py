@@ -9,7 +9,6 @@ from typing import Any
 import pytest
 from alembic import command
 from alembic.config import Config
-from public_detective.models.procurements import Procurement
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -88,7 +87,6 @@ def db_session() -> Generator[Engine, Any, None]:
 @pytest.fixture
 def integration_dependencies(db_session: Engine) -> dict[str, Any]:
     """Provides real dependencies for integration tests."""
-    from public_detective.models.analyses import Analysis
     from public_detective.providers.ai import AiProvider
     from public_detective.providers.gcs import GcsProvider
     from public_detective.providers.pubsub import PubSubProvider
@@ -96,8 +94,8 @@ def integration_dependencies(db_session: Engine) -> dict[str, Any]:
     from public_detective.repositories.budget_ledger import BudgetLedgerRepository
     from public_detective.repositories.file_records import FileRecordsRepository
     from public_detective.repositories.procurements import ProcurementsRepository
-    from public_detective.repositories.source_documents import SourceDocumentsRepository
     from public_detective.repositories.status_history import StatusHistoryRepository
+    from public_detective.services.analysis import Analysis
 
     pubsub_provider = PubSubProvider()
     procurement_repo = ProcurementsRepository(db_session, pubsub_provider)
@@ -105,14 +103,12 @@ def integration_dependencies(db_session: Engine) -> dict[str, Any]:
     file_record_repo = FileRecordsRepository(db_session)
     status_history_repo = StatusHistoryRepository(db_session)
     budget_ledger_repo = BudgetLedgerRepository(db_session)
-    source_document_repo = SourceDocumentsRepository(db_session)
     ai_provider = AiProvider(output_schema=Analysis)
     gcs_provider = GcsProvider()
 
     return {
         "procurement_repo": procurement_repo,
         "analysis_repo": analysis_repo,
-        "source_document_repo": source_document_repo,
         "file_record_repo": file_record_repo,
         "status_history_repo": status_history_repo,
         "budget_ledger_repo": budget_ledger_repo,
@@ -120,40 +116,3 @@ def integration_dependencies(db_session: Engine) -> dict[str, Any]:
         "gcs_provider": gcs_provider,
         "pubsub_provider": pubsub_provider,
     }
-
-
-@pytest.fixture
-def mock_procurement() -> Procurement:
-    """Fixture to create a standard procurement object for tests."""
-    procurement_data = {
-        "processo": "123",
-        "objetoCompra": "Test Object",
-        "amparoLegal": {"codigo": 1, "nome": "Test", "descricao": "Test"},
-        "srp": False,
-        "orgaoEntidade": {
-            "cnpj": "00000000000191",
-            "razaoSocial": "Test Entity",
-            "poderId": "E",
-            "esferaId": "F",
-        },
-        "anoCompra": 2025,
-        "sequencialCompra": 1,
-        "dataPublicacaoPncp": "2025-01-01T12:00:00",
-        "dataAtualizacao": "2025-01-01T12:00:00",
-        "numeroCompra": "1",
-        "unidadeOrgao": {
-            "ufNome": "Test",
-            "codigoUnidade": "1",
-            "nomeUnidade": "Test",
-            "ufSigla": "TE",
-            "municipioNome": "Test",
-            "codigoIbge": "1",
-        },
-        "modalidadeId": 8,
-        "numeroControlePNCP": "123456789-1-1234-2025",
-        "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
-        "modoDisputaId": 5,
-        "situacaoCompraId": 1,
-        "usuarioNome": "Test User",
-    }
-    return Procurement.model_validate(procurement_data)
