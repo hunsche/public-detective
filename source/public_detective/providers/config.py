@@ -22,7 +22,7 @@ class Config(BaseSettings):
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
 
-    IS_DEBUG_MODE: bool = False
+    FORCE_SYNC: bool = False
 
     POSTGRES_DRIVER: str = "postgresql"
     POSTGRES_ISOLATION_LEVEL: str = "AUTOCOMMIT"

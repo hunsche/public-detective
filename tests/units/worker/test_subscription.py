@@ -35,8 +35,7 @@ def subscription(mock_analysis_service: MagicMock) -> Subscription:
 
 
 def test_process_message_success(subscription: Subscription, mock_message: MagicMock) -> None:
-    """Tests the successful processing of a valid message."""
-    subscription.config.IS_DEBUG_MODE = False
+    subscription.config.FORCE_SYNC = False
     subscription._process_message(mock_message, max_output_tokens=None)
 
     subscription.analysis_service.process_analysis_from_message.assert_called_once_with("123", max_output_tokens=None)
@@ -59,7 +58,7 @@ def test_process_message_validation_error(subscription: Subscription) -> None:
 def test_process_message_unexpected_error(subscription: Subscription, mock_message: MagicMock) -> None:
     """Tests that an unexpected error during processing results in a NACK."""
     subscription.analysis_service.process_analysis_from_message.side_effect = Exception("Boom!")
-    subscription.config.IS_DEBUG_MODE = False
+    subscription.config.FORCE_SYNC = False
 
     subscription._process_message(mock_message, max_output_tokens=None)
 
@@ -119,7 +118,7 @@ def test_run_worker_no_subscription_name(subscription: Subscription, caplog: Any
 
 def test_debug_context(subscription: Subscription, mock_message: MagicMock) -> None:
     """Tests that the debug context extends the ack deadline."""
-    subscription.config.IS_DEBUG_MODE = True
+    subscription.config.FORCE_SYNC = True
     subscription._extend_ack_deadline = MagicMock()
     with subscription._debug_context(mock_message):
         pass

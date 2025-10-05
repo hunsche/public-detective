@@ -155,8 +155,8 @@ The application is controlled via a unified Command-Line Interface (CLI) named `
 
 These options can be used with any command:
 
-- `--verbose`: Enable verbose logging (INFO level).
-- `--debug`: Enable debug logging (DEBUG level).
+- `--log-level <level>`: Override the default log level. Choices are `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
+- `--sync`: Run tasks synchronously instead of asynchronously. This is useful for debugging and development. It sets the `FORCE_SYNC` environment variable for the duration of the command.
 - `--output <format>`: Set the output format. Choices are `text`, `json`, or `yaml` (default: `text`).
 
 ### Analysis Commands

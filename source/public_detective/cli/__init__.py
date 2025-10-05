@@ -35,14 +35,14 @@ def create_cli() -> click.Group:
 
     @click.group()
     @click.option(
-        "--verbose",
-        is_flag=True,
-        help="Enable verbose logging (INFO level).",
+        "--log-level",
+        type=click.Choice(["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"], case_sensitive=False),
+        help="Override the default log level for this command.",
     )
     @click.option(
-        "--debug",
+        "--sync",
         is_flag=True,
-        help="Enable debug logging (DEBUG level).",
+        help="Run tasks synchronously instead of asynchronously.",
     )
     @click.option(
         "--output",
@@ -51,7 +51,7 @@ def create_cli() -> click.Group:
         help="Set the output format.",
     )
     @click.pass_context
-    def cli(ctx: click.Context, verbose: bool, debug: bool, output: str) -> None:
+    def cli(ctx: click.Context, log_level: str | None, sync: bool, output: str) -> None:
         """A unified command-line interface for the Public Detective tool.
 
         This CLI provides a collection of commands to interact with the Public
@@ -60,15 +60,18 @@ def create_cli() -> click.Group:
 
         Args:
             ctx: The Click context object.
-            verbose: If True, sets logging level to INFO.
-            debug: If True, sets logging level to DEBUG.
+            log_level: The desired logging level.
+            sync: If True, forces synchronous execution.
             output: The desired output format.
         """
         logger = LoggingProvider().get_logger()
-        if debug:
-            logger.setLevel(logging.DEBUG)
-        elif verbose:
-            logger.setLevel(logging.INFO)
+        if log_level:
+            logger.setLevel(getattr(logging, log_level.upper()))
+
+        if sync:
+            import os
+
+            os.environ["FORCE_SYNC"] = "True"
 
         ctx.obj = Context(output_format=output)
 

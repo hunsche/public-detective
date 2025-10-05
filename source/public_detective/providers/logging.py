@@ -90,19 +90,28 @@ class LoggingProvider:
         logger.info(f"Logger configured with level: {log_level_str}")
         return logger
 
-    def get_logger(self) -> Logger:
+    def get_logger(self, level: int | None = None) -> Logger:
         """Returns the configured logger instance.
 
         If the logger has not been configured yet, this method will trigger
         the configuration. This lazy initialization ensures that the logger is
-        only set up when it's first needed, preventing issues in test setups
-        or module imports.
+        only set up when it's first needed.
+
+        If a level is provided, it will be set on the logger instance,
+        allowing for dynamic level changes.
+
+        Args:
+            level: An optional logging level to set on the logger.
 
         Returns:
             The configured logger instance.
         """
         if not self._logger:
             self._logger = self._configure_logger()
+
+        if level is not None and self._logger:
+            self._logger.setLevel(level)
+
         return self._logger
 
     @contextmanager
