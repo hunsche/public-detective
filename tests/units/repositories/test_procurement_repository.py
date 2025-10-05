@@ -311,6 +311,7 @@ def test_get_all_documents_metadata_request_exception(
 ) -> None:
     """Tests handling of RequestException when fetching document metadata."""
     mock_get.side_effect = requests.RequestException("Network error")
+    repo.config.PNCP_INTEGRATION_API_URL = "http://dummy.url"
     result = repo._get_all_documents_metadata(mock_procurement)
     assert result == []
     assert "Failed to get/validate document list for 123: Network error" in caplog.text
@@ -336,7 +337,7 @@ def test_get_all_documents_metadata_validation_error(
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
     mock_get.return_value = mock_response
-
+    repo.config.PNCP_INTEGRATION_API_URL = "http://dummy.url"
     result = repo._get_all_documents_metadata(mock_procurement)
     assert result == []
     assert "Failed to get/validate document list for 123" in caplog.text
@@ -371,6 +372,8 @@ def test_get_updated_procurements_request_exception(
 ) -> None:
     """Tests handling of RequestException in get_updated_procurements."""
     mock_get.side_effect = requests.exceptions.RequestException("API is down")
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements(target_date)
     assert result == []
@@ -386,7 +389,8 @@ def test_get_updated_procurements_validation_error(
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
     mock_get.return_value = mock_response
-
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements(target_date)
     assert result == []
@@ -399,6 +403,8 @@ def test_get_updated_procurements_with_raw_data_request_exception(
 ) -> None:
     """Tests handling of RequestException in get_updated_procurements_with_raw_data."""
     mock_get.side_effect = requests.exceptions.RequestException("API is down")
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements_with_raw_data(target_date)
     assert result == []
@@ -414,6 +420,8 @@ def test_get_updated_procurements_with_raw_data_validation_error(
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
     mock_get.return_value = mock_response
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements_with_raw_data(target_date)
     assert result == []
@@ -475,7 +483,6 @@ def test_save_procurement_version(repo: ProcurementsRepository, mock_procurement
 @patch("requests.get")
 def test_get_updated_procurements_happy_path(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements."""
-    # This response will be returned on the first call
     mock_response_with_data = MagicMock()
     mock_response_with_data.status_code = HTTPStatus.OK
     mock_response_with_data.json.return_value = {
@@ -523,13 +530,12 @@ def test_get_updated_procurements_happy_path(mock_get: MagicMock, repo: Procurem
         ],
     }
 
-    # This response will be returned on all subsequent calls
     mock_response_no_content = MagicMock()
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
-    # Set the side_effect to return the data response once, then the no_content response forever
     mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 10
-
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements(target_date)
     assert len(result) == 1

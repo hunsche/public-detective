@@ -146,7 +146,7 @@ def test_spreadsheet_to_csvs_xlsx_failure(mock_load_workbook: MagicMock, convert
         converter_service.spreadsheet_to_csvs(b"bad xlsx content", ".xlsx")
 
 
-@patch("source.public_detective.services.converter.pyxlsb.open_workbook")
+@patch("public_detective.services.converter.open_xlsb")
 def test_spreadsheet_to_csvs_xlsb_failure(mock_open_workbook: MagicMock, converter_service: ConverterService) -> None:
     """Tests that an exception during XLSB to CSV conversion is handled."""
     mock_open_workbook.side_effect = Exception("pyxlsb error")

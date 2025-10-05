@@ -1,33 +1,38 @@
-"""A flake8 plugin to forbid hash comments."""
+"""A flake8 plugin to forbid hash comments using the tokenize module correctly."""
 
 import ast
-from typing import Any, Generator
+import tokenize
+from collections.abc import Generator
+from typing import Any
 
 
 class NoHashCommentsPlugin:
     """A flake8 plugin to forbid hash comments."""
 
     name = "flake8-no-hash-comments"
-    version = "0.1.0"
+    version = "1.2.1"
 
-    # Define the error code and message.
-    NOHASH_ERROR_CODE = "NHC001"
-    NOHASH_ERROR_MESSAGE = f"{NOHASH_ERROR_CODE} hash comments are not allowed"
+    NOHASH_ERROR_CODE = "NHC9001"
+    NOHASH_ERROR_MESSAGE = (
+        f"{NOHASH_ERROR_CODE} Hash comments are not allowed; use docstrings or remove unnecessary comments"
+    )
 
-    # A class attribute to store the options.
-    _lines: list[str] = []
+    allowed_prefixes: list[str] = []
+    allowed_substrings: list[str] = []
 
     def __init__(self, tree: ast.AST, filename: str, lines: list[str]):
         """The constructor, called by flake8.
 
         Args:
-            tree: The AST tree of the file.
-            filename: The name of the file being processed.
-            lines: The lines of the file.
+            tree: The AST tree.
+            filename: The name of the file.
+            lines: The lines of the file. Kept for compatibility, but not used by run().
         """
         self._tree = tree
         self._filename = filename
         self._lines = lines
+        self.prefixes_tuple = tuple(self.allowed_prefixes)
+        self.substrings_tuple = tuple(self.allowed_substrings)
 
     @classmethod
     def add_options(cls, parser: Any) -> None:
@@ -36,8 +41,20 @@ class NoHashCommentsPlugin:
         Args:
             parser: The flake8 option parser.
         """
-        # This method is called by flake8 to add new options.
-        # We don't need any options for this plugin.
+        parser.add_option(
+            "--no-hash-allow-prefixes",
+            comma_separated_list=True,
+            parse_from_config=True,
+            default=[],
+            help="A comma-separated list of prefixes to allow for hash comments.",
+        )
+        parser.add_option(
+            "--no-hash-allow-substrings",
+            comma_separated_list=True,
+            parse_from_config=True,
+            default=[],
+            help="A comma-separated list of substrings to allow for hash comments.",
+        )
 
     @classmethod
     def parse_options(cls, options: Any) -> None:
@@ -46,26 +63,53 @@ class NoHashCommentsPlugin:
         Args:
             options: The options parsed by flake8.
         """
-        # This method is called by flake8 to parse the options.
-        # We don't need any options for this plugin.
+        cls.allowed_prefixes = options.no_hash_allow_prefixes or []
+        cls.allowed_substrings = options.no_hash_allow_substrings or []
+
+    def _is_allowed_comment(self, comment: str) -> bool:
+        """Check if a comment is allowed by the configured rules.
+
+        Args:
+            comment: The comment string.
+
+        Returns:
+            True if the comment is allowed, False otherwise.
+        """
+        is_coding_directive = "coding:" in comment
+        if is_coding_directive:
+            return True
+        stripped_comment = comment.lstrip("# ")
+        if any(stripped_comment.startswith(p) for p in self.prefixes_tuple):
+            return True
+        if any(s in comment for s in self.substrings_tuple):
+            return True
+        return False
 
     def run(self) -> Generator[tuple[int, int, str, type[Any]], None, None]:
         """The main method, called by flake8.
 
+        It opens the file using `tokenize.open` for automatic encoding detection,
+        then iterates through tokens to find and validate comments.
+        It ignores files that are not valid Python, have been deleted, or have
+        other OS or syntax errors by catching the relevant exceptions.
+
         Yields:
-            A tuple containing the line number, column, error message, and plugin type.
+            A tuple of (line number, column, message, type).
         """
-        for i, line in enumerate(self._lines):
-            line_number = i + 1
-            # We're looking for comments that start with a hash.
-            # We need to be careful not to flag shebangs or encoding declarations.
-            stripped_line = line.strip()
-            if stripped_line.startswith("#"):
-                if stripped_line.startswith("#!") or "coding:" in stripped_line:
-                    continue
-                yield (
-                    line_number,
-                    line.find("#"),
-                    self.NOHASH_ERROR_MESSAGE,
-                    type(self),
-                )
+        if self._filename in ("stdin", None):
+            return
+
+        try:
+            with tokenize.open(self._filename) as f:
+                tokens = tokenize.generate_tokens(f.readline)
+                for token in tokens:
+                    if token.type == tokenize.COMMENT and not token.string.startswith("#!"):
+                        if not self._is_allowed_comment(token.string):
+                            yield (
+                                token.start[0],
+                                token.start[1],
+                                self.NOHASH_ERROR_MESSAGE,
+                                type(self),
+                            )
+        except (tokenize.TokenError, SyntaxError, OSError):
+            pass

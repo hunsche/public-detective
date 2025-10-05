@@ -382,6 +382,7 @@ def test_analyze_procurement_happy_path(
     analysis_service._build_analysis_prompt = MagicMock(return_value="prompt")
 
     analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10)
+    analysis_service.pricing_service.calculate.return_value = (0, 0, 0, 0)
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 

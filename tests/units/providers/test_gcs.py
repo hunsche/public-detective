@@ -8,6 +8,9 @@ from public_detective.providers.gcs import GcsProvider
 def test_get_client_caches_instance(mock_storage_client: MagicMock) -> None:
     """
     Should create a GCS client only once and then cache it.
+
+    Args:
+        mock_storage_client: Mock for the GCS client.
     """
     # Arrange
     gcs_provider = GcsProvider()
@@ -102,7 +105,12 @@ def test_download_file_failure() -> None:
 @patch("public_detective.providers.gcs.ConfigProvider")
 @patch("public_detective.providers.gcs.Client")
 def test_get_client_real_credentials(mock_gcs_client: MagicMock, mock_config_provider: MagicMock) -> None:
-    """Tests that a real GCS client is created when no host is configured."""
+    """Tests that a real GCS client is created when no host is configured.
+
+    Args:
+        mock_gcs_client: Mock for the GCS client.
+        mock_config_provider: Mock for the ConfigProvider.
+    """
     mock_config = MagicMock()
     mock_config.GCP_GCS_HOST = None
     mock_config_provider.get_config.return_value = mock_config

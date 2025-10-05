@@ -77,7 +77,7 @@ class LoggingProvider:
         logger.setLevel(numeric_level)
 
         if not logger.handlers:
-            handler = StreamHandler(sys.stdout)
+            handler = StreamHandler(sys.stderr)
             formatter = Formatter(
                 "%(asctime)s - %(name)s - [%(levelname)s] [%(correlation_id)s] - " "%(message)s",
                 datefmt="%Y-%m-%d %H:%M:%S",

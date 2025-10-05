@@ -31,6 +31,18 @@ def test_retry_command_success(
 ) -> None:
     """
     Tests that the retry command works as expected when there are analyses to retry.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     initial_backoff_hours = 6
@@ -85,6 +97,18 @@ def test_retry_command_no_analyses(
 ) -> None:
     """
     Tests that the retry command works as expected when there are no analyses to retry.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     initial_backoff_hours = 6
@@ -137,6 +161,18 @@ def test_analyze_command_success(
 ) -> None:
     """
     Tests that the analyze command works as expected.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     analysis_id = uuid4()
@@ -187,6 +223,18 @@ def test_analyze_command_exception(
 ) -> None:
     """
     Tests that the analyze command handles exceptions gracefully.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     analysis_id = uuid4()
@@ -224,7 +272,20 @@ def test_trigger_ranked_analysis_manual_budget(
     mock_pubsub_provider: MagicMock,  # noqa: F841
     mock_db_manager: MagicMock,
 ) -> None:
-    """Test the trigger-ranked-analysis command with a manual budget."""
+    """Test the trigger-ranked-analysis command with a manual budget.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
+    """
     runner = CliRunner()
     mock_service_instance = MagicMock()
     mock_analysis_service.return_value = mock_service_instance
@@ -264,7 +325,20 @@ def test_trigger_ranked_analysis_auto_budget(
     mock_pubsub_provider: MagicMock,  # noqa: F841
     mock_db_manager: MagicMock,
 ) -> None:
-    """Test the trigger-ranked-analysis command with auto-budget."""
+    """Test the trigger-ranked-analysis command with auto-budget.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
+    """
     runner = CliRunner()
     mock_service_instance = MagicMock()
     mock_analysis_service.return_value = mock_service_instance
@@ -321,7 +395,20 @@ def test_trigger_ranked_analysis_exception(
     mock_pubsub_provider: MagicMock,  # noqa: F841
     mock_db_manager: MagicMock,
 ) -> None:
-    """Test that the command handles exceptions gracefully."""
+    """Test that the command handles exceptions gracefully.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
+    """
     runner = CliRunner()
     mock_service_instance = MagicMock()
     mock_service_instance.run_ranked_analysis.side_effect = Exception("Test error")
@@ -364,6 +451,18 @@ def test_pre_analysis_command_with_valid_dates(
 ) -> None:
     """
     Tests the pre-analysis command with valid dates.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     start_date = "2025-01-01"
@@ -447,6 +546,18 @@ def test_pre_analysis_command_exception(
 ) -> None:
     """
     Tests that the pre-analysis command handles exceptions gracefully.
+
+    Args:
+        mock_analysis_service: Mock for the AnalysisService.
+        mock_budget_ledger_repo: Mock for the BudgetLedgerRepository.
+        mock_status_history_repo: Mock for the StatusHistoryRepository.
+        mock_procurement_repo: Mock for the ProcurementsRepository.
+        mock_file_record_repo: Mock for the FileRecordsRepository.
+        mock_analysis_repo: Mock for the AnalysisRepository.
+        mock_ai_provider: Mock for the AiProvider.
+        mock_gcs_provider: Mock for the GcsProvider.
+        mock_pubsub_provider: Mock for the PubSubProvider.
+        mock_db_manager: Mock for the DatabaseManager.
     """
     runner = CliRunner()
     start_date = "2025-01-01"

@@ -30,25 +30,43 @@ from tests.e2e.conftest import MockPNCP, run_command
 
 # Helper functions to generate files
 def create_txt(path: Path, content: str = "This is a test text file.") -> None:
-    """Creates a simple text file."""
+    """Creates a simple text file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_doc(path: Path) -> None:
-    """Copies a valid DOC file from the fixtures directory."""
+    """Copies a valid DOC file from the fixtures directory.
+
+    Args:
+        path: The path to the file.
+    """
     fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.doc"
     shutil.copy(fixture_path, path)
 
 
 def create_docx(path: Path, content: str = "This is a test DOCX file.") -> None:
-    """Creates a simple DOCX file."""
+    """Creates a simple DOCX file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     document = Document()
     document.add_paragraph(content)
     document.save(str(path))
 
 
 def create_xls(path: Path) -> None:
-    """Creates a simple XLS file (by saving as XLSX)."""
+    """Creates a simple XLS file (by saving as XLSX).
+
+    Args:
+        path: The path to the file.
+    """
     workbook = Workbook()
     sheet = workbook.active
     if sheet:
@@ -57,7 +75,11 @@ def create_xls(path: Path) -> None:
 
 
 def create_xlsx(path: Path) -> None:
-    """Creates a simple XLSX file."""
+    """Creates a simple XLSX file.
+
+    Args:
+        path: The path to the file.
+    """
     workbook = Workbook()
     sheet = workbook.active
     if sheet:
@@ -69,75 +91,135 @@ def create_xlsx(path: Path) -> None:
 
 
 def create_jpg(path: Path) -> None:
-    """Creates a simple JPG image."""
+    """Creates a simple JPG image.
+
+    Args:
+        path: The path to the file.
+    """
     img = Image.new("RGB", (10, 10), color="red")
     img.save(path, "jpeg")
 
 
 def create_png(path: Path) -> None:
-    """Creates a simple PNG image."""
+    """Creates a simple PNG image.
+
+    Args:
+        path: The path to the file.
+    """
     img = Image.new("RGB", (10, 10), color="green")
     img.save(path, "png")
 
 
 def create_gif(path: Path) -> None:
-    """Creates a simple GIF image."""
+    """Creates a simple GIF image.
+
+    Args:
+        path: The path to the file.
+    """
     img = Image.new("RGB", (10, 10), color="blue")
     img.save(path, "gif")
 
 
 def create_bmp(path: Path) -> None:
-    """Creates a simple BMP image."""
+    """Creates a simple BMP image.
+
+    Args:
+        path: The path to the file.
+    """
     img = Image.new("RGB", (10, 10), color="yellow")
     img.save(path, "bmp")
 
 
 def create_pdf(path: Path, content: str = "This is a valid PDF file.") -> None:
-    """Creates a simple, valid PDF file."""
+    """Creates a simple, valid PDF file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     pdf_canvas = canvas.Canvas(str(path), pagesize=letter)
     pdf_canvas.drawString(100, 750, content)
     pdf_canvas.save()
 
 
 def create_html(path: Path, content: str = "<h1>This is a test HTML file.</h1>") -> None:
-    """Creates a simple HTML file."""
+    """Creates a simple HTML file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_rtf(path: Path, content: str = "This is a test RTF file.") -> None:
-    """Creates a simple RTF file."""
+    """Creates a simple RTF file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     rtf_content = f"{{{{\rtf1\\ansi\\deff0 {{{{\fonttbl {{{{\f0 Arial;}}}}}}}}\\f0\\fs24 {content}}}}}"
     path.write_text(rtf_content)
 
 
 def create_xlsb(path: Path) -> None:
-    """Copies a valid XLSB file from the fixtures directory."""
+    """Copies a valid XLSB file from the fixtures directory.
+
+    Args:
+        path: The path to the file.
+    """
     fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.xlsb"
     shutil.copy(fixture_path, path)
 
 
 def create_csv(path: Path, content: str = "col1,col2\nval1,val2") -> None:
-    """Creates a simple CSV file."""
+    """Creates a simple CSV file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_json(path: Path, content: str = """{"key": "value"}""") -> None:
-    """Creates a simple JSON file."""
+    """Creates a simple JSON file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_md(path: Path, content: str = "# Markdown") -> None:
-    """Creates a simple Markdown file."""
+    """Creates a simple Markdown file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_xml(path: Path, content: str = "<root><test>value</test></root>") -> None:
-    """Creates a simple XML file."""
+    """Creates a simple XML file.
+
+    Args:
+        path: The path to the file.
+        content: The content of the file.
+    """
     path.write_text(content)
 
 
 def create_media_from_fixture(path: Path, source_filename: str) -> None:
-    """Copies a valid media file from the fixtures directory."""
+    """Copies a valid media file from the fixtures directory.
+
+    Args:
+        path: The path to the file.
+        source_filename: The name of the source file.
+    """
     fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / source_filename
     shutil.copy(fixture_path, path)
 
@@ -186,6 +268,14 @@ def test_file_extension_processing(
     """
     Tests the full E2E processing for various file extensions by running the
     worker as a subprocess and using a mock PNCP server to provide the files.
+
+    Args:
+        db_session: The database session.
+        e2e_pubsub: The pub/sub fixture.
+        tmp_path: The temporary path fixture.
+        extension: The file extension to test.
+        mock_pncp_server: The mock PNCP server.
+        gcs_cleanup_manager: The GCS cleanup manager.
     """
     expected_status = ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL
 

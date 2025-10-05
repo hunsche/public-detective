@@ -23,7 +23,11 @@ from sqlalchemy.engine import Engine
 
 
 def get_free_port() -> int:
-    """Finds a free port on the host."""
+    """Finds a free port on the host.
+
+    Returns:
+        A free port number.
+    """
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("", 0))
         return s.getsockname()[1]  # type: ignore
@@ -44,11 +48,25 @@ class MockPNCP:
         self.loop: asyncio.AbstractEventLoop | None = None
 
     async def get_file_metadata(self, request: web.Request) -> web.Response:  # noqa: F841
-        """Serves the file metadata."""
+        """Serves the file metadata.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            A web response with the file metadata.
+        """
         return web.json_response(self.file_metadata)
 
     async def get_file_content(self, request: web.Request) -> web.Response:  # noqa: F841
-        """Serves the file content."""
+        """Serves the file content.
+
+        Args:
+            request: The incoming request.
+
+        Returns:
+            A web response with the file content.
+        """
         return web.Response(body=self.file_content)
 
     def run_server(self) -> None:
@@ -80,7 +98,11 @@ class MockPNCP:
 
 @pytest.fixture(scope="function")
 def mock_pncp_server() -> Generator[MockPNCP, None, None]:
-    """Fixture to manage the mock PNCP server."""
+    """Fixture to manage the mock PNCP server.
+
+    Yields:
+        The mock PNCP server.
+    """
     port = get_free_port()
     server = MockPNCP(port)
     server.start()
@@ -89,7 +111,13 @@ def mock_pncp_server() -> Generator[MockPNCP, None, None]:
 
 
 def run_command(command_str: str, max_retries: int = 3, delay: int = 10) -> None:
-    """Executes a shell command and streams its output in real-time."""
+    """Executes a shell command and streams its output in real-time.
+
+    Args:
+        command_str: The command to execute.
+        max_retries: The maximum number of retries.
+        delay: The delay between retries.
+    """
     print(f"\n--- Running command: {command_str} ---")
     for _ in range(max_retries):
         process = subprocess.Popen(
@@ -115,7 +143,11 @@ def run_command(command_str: str, max_retries: int = 3, delay: int = 10) -> None
 
 @pytest.fixture(scope="function")
 def e2e_pubsub() -> Generator[tuple[PublisherClient, str], None, None]:
-    """Sets up and tears down the Pub/Sub resources for an E2E test."""
+    """Sets up and tears down the Pub/Sub resources for an E2E test.
+
+    Yields:
+        A tuple with the publisher client and the topic path.
+    """
     config = ConfigProvider.get_config()
     project_id = config.GCP_PROJECT
     run_id = uuid.uuid4().hex[:8]
@@ -198,11 +230,19 @@ def _run_migrations(engine: Engine) -> None:
 
 @pytest.fixture(scope="function")
 def gcs_cleanup_manager() -> Generator[Callable[[str], None], None, None]:
-    """A fixture to manage GCS cleanup for E2E tests."""
+    """A fixture to manage GCS cleanup for E2E tests.
+
+    Yields:
+        A function to register a GCS prefix to be deleted.
+    """
     prefixes_to_delete = []
 
     def register_prefix(prefix: str) -> None:
-        """Registers a GCS prefix to be deleted after the test."""
+        """Registers a GCS prefix to be deleted after the test.
+
+        Args:
+            prefix: The GCS prefix to delete.
+        """
         prefixes_to_delete.append(prefix)
 
     yield register_prefix
@@ -223,7 +263,11 @@ def gcs_cleanup_manager() -> Generator[Callable[[str], None], None, None]:
 
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Engine, None, None]:
-    """Configures a fully isolated environment for a single E2E test function."""
+    """Configures a fully isolated environment for a single E2E test function.
+
+    Yields:
+        The SQLAlchemy engine.
+    """
     run_id = uuid.uuid4().hex[:8]
     schema_name = _setup_environment(run_id)
     original_credentials, temp_credentials_path = _setup_credentials(run_id)

@@ -337,7 +337,6 @@ def trigger_ranked_analysis(
             pubsub_provider=pubsub_provider,
         )
 
-        # The service will handle the logic of whether to use the manual or auto budget
         service.run_ranked_analysis(
             budget=budget,
             use_auto_budget=use_auto_budget,

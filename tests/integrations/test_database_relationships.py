@@ -9,7 +9,11 @@ from sqlalchemy.engine import Engine
 
 
 def test_database_relationships(db_session: Engine) -> None:
-    """Tests the foreign key relationships between analysis, source_document, and file_record."""
+    """Tests the foreign key relationships between analysis, source_document, and file_record.
+
+    Args:
+        db_session: The SQLAlchemy engine.
+    """
     # Arrange
     source_repo = SourceDocumentsRepository(engine=db_session)
     file_repo = FileRecordsRepository(engine=db_session)

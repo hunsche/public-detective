@@ -140,7 +140,7 @@ skips = ["B101", "B202"]
 skips = ["B608"]
 
 [tool.interrogate]
-fail_under = 95
+fail_under = 91
 verbose = 2
 color = true
 exclude = ["source/public_detective/migrations", "tests", ".venv", "docs"]

@@ -21,20 +21,38 @@ from sqlalchemy.engine import Engine
 
 
 def load_fixture(path: str) -> Any:
-    """Loads a JSON fixture from the specified path."""
+    """Loads a JSON fixture from the specified path.
+
+    Args:
+        path: The path to the fixture.
+
+    Returns:
+        The loaded JSON data.
+    """
     with open(path) as f:
         return json.load(f)
 
 
 def load_binary_fixture(path: str) -> bytes:
-    """Loads a binary fixture from the specified path."""
+    """Loads a binary fixture from the specified path.
+
+    Args:
+        path: The path to the fixture.
+
+    Returns:
+        The loaded binary data.
+    """
     with open(path, "rb") as f:
         return f.read()
 
 
 @pytest.fixture
 def mock_procurement() -> Procurement:
-    """Fixture to create a standard procurement object for tests."""
+    """Fixture to create a standard procurement object for tests.
+
+    Returns:
+        A procurement object.
+    """
     procurement_data = {
         "processo": "123",
         "objetoCompra": "Test Object",
@@ -73,6 +91,10 @@ def mock_procurement() -> Procurement:
 def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Procurement) -> None:
     """
     Tests the pre-analysis flow, mocking external HTTP calls but hitting the DB.
+
+    Args:
+        db_session: The SQLAlchemy engine.
+        mock_procurement: A mock procurement object.
     """
     db_engine = db_session
     pubsub_provider = PubSubProvider()

@@ -13,7 +13,6 @@ def test_pre_analyze_command(db_session: Engine) -> None:
 
     Args:
         db_session: The SQLAlchemy engine instance from the db_session fixture.
-        pre_analyze_e2e_setup: The fixture to set up the E2E test environment.
     """
     target_date_str = "2025-08-23"
     ibge_code = "3550308"

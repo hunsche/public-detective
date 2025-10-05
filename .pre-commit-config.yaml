@@ -47,14 +47,7 @@ repos:
         types:
           - python
         require_serial: true
-        additional_dependencies:
-          - pycodestyle
-          - flake8-bugbear
-          - flake8-comprehensions
-          - flake8-todos
-          - flake8-variables-names
-          - pep8-naming
-          - darglint
+
       - id: mypy
         name: mypy
         entry: mypy

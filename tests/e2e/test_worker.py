@@ -14,7 +14,12 @@ from tests.e2e.conftest import run_command
 
 @pytest.mark.timeout(240)
 def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
-    """Tests the worker processing a single message."""
+    """Tests the worker processing a single message.
+
+    Args:
+        db_session: The SQLAlchemy engine instance from the db_session fixture.
+        e2e_pubsub: The pub/sub fixture.
+    """
     publisher, topic_path = e2e_pubsub
     analysis_id = uuid.uuid4()
     procurement_control_number = "43776491000170-1-000251/2025"

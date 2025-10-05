@@ -16,6 +16,11 @@ from sqlalchemy.engine import Engine
 
 @pytest.fixture(scope="function")
 def db_session() -> Generator[Engine, Any, None]:
+    """Creates a new database session for a test.
+
+    Yields:
+        The SQLAlchemy engine.
+    """
     os.environ.pop("GCP_SERVICE_ACCOUNT_CREDENTIALS", None)
 
     fixture_dir = Path("tests/fixtures/3304557/2025-08-23/")
@@ -86,7 +91,14 @@ def db_session() -> Generator[Engine, Any, None]:
 
 @pytest.fixture
 def integration_dependencies(db_session: Engine) -> dict[str, Any]:
-    """Provides real dependencies for integration tests."""
+    """Provides real dependencies for integration tests.
+
+    Args:
+        db_session: The SQLAlchemy engine.
+
+    Returns:
+        A dictionary of dependencies.
+    """
     from public_detective.providers.ai import AiProvider
     from public_detective.providers.gcs import GcsProvider
     from public_detective.providers.pubsub import PubSubProvider
