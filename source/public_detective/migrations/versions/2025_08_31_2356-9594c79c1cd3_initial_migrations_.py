@@ -29,7 +29,19 @@ def upgrade() -> None:
     donations_table = get_qualified_name("donations")
     budget_ledgers_table = get_qualified_name("budget_ledgers")
     transaction_type = get_qualified_name("transaction_type")
-    op.execute('CREATE EXTENSION IF NOT EXISTS "uuid-ossp";')
+    op.execute(
+        """
+        DO $$
+        BEGIN
+            CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+        EXCEPTION
+            WHEN duplicate_object THEN
+                -- Extension already exists, so no action is needed.
+                NULL;
+        END
+        $$;
+    """
+    )
     op.execute(
         f"""
         CREATE TYPE {procurement_analysis_status_type} AS ENUM (

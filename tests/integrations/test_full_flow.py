@@ -123,6 +123,9 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         patch.object(procurement_repo, "process_procurement_documents", return_value=[]),
         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
         patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
+        patch.object(procurement_repo, "get_latest_version", return_value=1),
+        patch.object(procurement_repo, "save_procurement_version"),
+        patch.object(ai_provider, "count_tokens_for_analysis", return_value=(0, 0, 0)),
     ):
         analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None)
 
