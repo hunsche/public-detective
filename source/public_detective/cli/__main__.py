@@ -20,5 +20,11 @@ cli.add_command(pre_analyze)
 cli.add_command(retry)
 cli.add_command(trigger_ranked_analysis)
 
-if __name__ == "__main__":
+
+def main() -> None:
+    """CLI entry point."""
     cli()
+
+
+if __name__ == "__main__":
+    main()

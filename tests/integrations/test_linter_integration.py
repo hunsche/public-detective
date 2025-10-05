@@ -1,11 +1,11 @@
 """Test the flake8 plugin integration."""
 
-import subprocess
+import subprocess  # nosec B404
 import sys
 from pathlib import Path
 
 
-def test_flake8_plugin_detects_hash_comment_via_subprocess(tmp_path: Path):
+def test_flake8_plugin_detects_hash_comment_via_subprocess(tmp_path: Path) -> None:
     """Verify that flake8, when run as a subprocess, detects a hash comment.
 
     This test ensures that the plugin is correctly installed and discovered by
@@ -20,7 +20,7 @@ def test_flake8_plugin_detects_hash_comment_via_subprocess(tmp_path: Path):
     test_file.write_text("my_variable = 1  # This should fail\n")
 
     # Act: Run flake8 as a subprocess on the temporary file
-    process = subprocess.run(
+    process = subprocess.run(  # nosec B603
         [sys.executable, "-m", "flake8", str(test_file)],
         capture_output=True,
         text=True,
@@ -28,10 +28,8 @@ def test_flake8_plugin_detects_hash_comment_via_subprocess(tmp_path: Path):
 
     # Assert: Check that flake8 exited with an error and reported our code
     assert process.returncode != 0, (
-        "flake8 should exit with a non-zero status code. "
-        f"stdout:\n{process.stdout}\nstderr:\n{process.stderr}"
+        "flake8 should exit with a non-zero status code. " f"stdout:\n{process.stdout}\nstderr:\n{process.stderr}"
     )
     assert "NHC9001" in process.stdout, (
-        "The custom error NHC9001 should be in the output. "
-        f"stdout:\n{process.stdout}"
+        "The custom error NHC9001 should be in the output. " f"stdout:\n{process.stdout}"
     )

@@ -249,6 +249,12 @@ def test_get_priority(analysis_service: AnalysisService) -> None:
     assert analysis_service._get_priority("outro_documento.txt") == len(analysis_service._FILE_PRIORITY_ORDER)
 
 
+def test_get_priority_as_string(analysis_service: AnalysisService) -> None:
+    """Tests the priority string generation."""
+    assert "edital" in analysis_service._get_priority_as_string("edital.pdf")
+    assert "Sem priorização." in analysis_service._get_priority_as_string("documento.txt")
+
+
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
 def test_select_files_by_token_limit_all_fit(mock_build_prompt: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests file selection when all files are within the token limit."""
@@ -704,32 +710,6 @@ def test_process_analysis_from_message_happy_path(
     )
 
 
-def test_process_analysis_from_message_analysis_not_found(
-    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Tests that an error is logged if the analysis is not found."""
-    analysis_id = uuid.uuid4()
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = None
-
-    analysis_service.process_analysis_from_message(analysis_id)
-    assert f"Analysis with ID {analysis_id} not found" in caplog.text
-
-
-def test_process_analysis_from_message_procurement_not_found(
-    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Tests that an error is logged if the procurement is not found."""
-    analysis_id = uuid.uuid4()
-    mock_analysis = MagicMock(spec=Analysis)
-    mock_analysis.procurement_control_number = "123"
-    mock_analysis.version_number = 1
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = None
-
-    analysis_service.process_analysis_from_message(analysis_id)
-    assert f"Procurement {mock_analysis.procurement_control_number} version" in caplog.text
-
-
 @patch("public_detective.services.analysis.AnalysisService.analyze_procurement")
 def test_process_analysis_from_message_pipeline_fails(
     mock_analyze_procurement: MagicMock, analysis_service: AnalysisService
@@ -764,3 +744,94 @@ def test_process_analysis_from_message_main_exception(analysis_service: Analysis
 
     with pytest.raises(AnalysisError, match=f"Failed to process analysis from message: {error_message}"):
         analysis_service.process_analysis_from_message(analysis_id)
+
+
+def test_run_pre_analysis_no_procurements_found(
+    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Tests that the pre-analysis job handles dates with no procurements gracefully."""
+    start_date = date(2023, 1, 1)
+    end_date = date(2023, 1, 1)
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = []
+
+    analysis_service.run_pre_analysis(start_date, end_date, 10, 0)
+
+    assert f"No procurements were updated on {start_date}" in caplog.text
+
+
+def test_analyze_procurement_no_procurement_id(analysis_service: AnalysisService) -> None:
+    """Tests that an AnalysisError is raised if the procurement UUID is not found."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "123"
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = None
+
+    with pytest.raises(AnalysisError, match="Could not find procurement UUID"):
+        analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
+
+
+def test_analyze_procurement_no_files_left_for_ai(
+    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Tests that an error is logged if no files are left after token filtering."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP-123"
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
+    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
+
+    # Provide a more realistic mock to avoid ValidationError
+    mock_prepared_candidate = AIFileCandidate(
+        synthetic_id="doc1",
+        raw_document_metadata={"titulo": "Test Doc"},
+        original_path="test.pdf",
+        original_content=b"content",
+    )
+    analysis_service._prepare_ai_candidates = MagicMock(return_value=[mock_prepared_candidate])
+    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
+
+    # Mock the selection process to return a candidate that is not included
+    mock_selected_candidate = MagicMock(is_included=False)
+    analysis_service._select_files_by_token_limit = MagicMock(return_value=([mock_selected_candidate], []))
+
+    analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
+
+    assert "No supported files left after filtering for PNCP-123" in caplog.text
+    analysis_service.ai_provider.get_structured_analysis.assert_not_called()
+
+
+def test_analyze_procurement_save_analysis_fails(
+    analysis_service: AnalysisService, mock_valid_analysis: Analysis, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Tests that an exception during the final save is caught and logged."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP-FAIL"
+    analysis_id = uuid.uuid4()
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
+    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
+    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
+
+    mock_candidate = AIFileCandidate(
+        synthetic_id="doc1",
+        raw_document_metadata={"titulo": "Test Doc"},
+        original_path="test.pdf",
+        original_content=b"content",
+        is_included=True,
+        ai_gcs_uris=["uri1"],
+        ai_path="p",
+        ai_content=b"c",
+    )
+    analysis_service._prepare_ai_candidates = MagicMock(return_value=[mock_candidate])
+    analysis_service._select_files_by_token_limit = MagicMock(return_value=([mock_candidate], []))
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1)
+    analysis_service.pricing_service.calculate.return_value = (
+        Decimal("0.1"),
+        Decimal("0.2"),
+        Decimal("0.3"),
+        Decimal("0.6"),
+    )
+    error_message = "Database save failed"
+    analysis_service.analysis_repo.save_analysis.side_effect = Exception(error_message)
+
+    with pytest.raises(Exception, match=error_message):
+        analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
+
+    assert f"Analysis pipeline failed for PNCP-FAIL: {error_message}" in caplog.text

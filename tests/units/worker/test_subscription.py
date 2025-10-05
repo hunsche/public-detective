@@ -99,6 +99,17 @@ def test_run_worker_handles_shutdown_exception(subscription: Subscription) -> No
     assert future.result.call_count == 2
 
 
+def test_run_worker_handles_generic_exception(subscription: Subscription, caplog: Any) -> None:
+    """Tests that a generic, non-cancellation exception is logged as critical."""
+    future = MagicMock()
+    future.result.side_effect = Exception("Something went wrong")
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    subscription.run()
+
+    assert "A critical error stopped the worker: Something went wrong" in caplog.text
+
+
 def test_run_worker_no_subscription_name(subscription: Subscription, caplog: Any) -> None:
     """Tests that the worker exits if the subscription name is not configured."""
     subscription.config.GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS = ""
@@ -135,12 +146,12 @@ def test_debug_pause(subscription: Subscription) -> None:
 @patch("public_detective.worker.subscription.GcsProvider")
 @patch("public_detective.worker.subscription.DatabaseManager")
 def test_subscription_init_composition_root(
-    mock_db_manager: MagicMock,
-    mock_gcs_provider: MagicMock,
-    mock_ai_provider: MagicMock,
-    mock_procurement_repo: MagicMock,
-    mock_analysis_repo: MagicMock,
-    mock_file_record_repo: MagicMock,
+    _mock_db_manager: MagicMock,
+    _mock_gcs_provider: MagicMock,
+    _mock_ai_provider: MagicMock,
+    _mock_procurement_repo: MagicMock,
+    _mock_analysis_repo: MagicMock,
+    _mock_file_record_repo: MagicMock,
     mock_analysis_service: MagicMock,
 ) -> None:
     """Tests that the Subscription class correctly wires up dependencies."""
@@ -205,3 +216,14 @@ def test_message_callback_when_stopped(subscription: Subscription) -> None:
     mock_message = MagicMock()
     subscription._message_callback(mock_message, max_messages=10)
     mock_message.nack.assert_called_once()
+
+
+def test_message_callback_no_max_messages(subscription: Subscription, mock_message: MagicMock) -> None:
+    """Tests that the worker does not stop if max_messages is None."""
+    subscription.streaming_pull_future = MagicMock()
+    subscription._process_message = MagicMock()
+
+    subscription._message_callback(mock_message, max_messages=None, max_output_tokens=None)
+
+    assert not subscription._stop_event.is_set()
+    subscription.streaming_pull_future.cancel.assert_not_called()

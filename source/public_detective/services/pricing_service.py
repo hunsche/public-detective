@@ -2,6 +2,7 @@
 
 from decimal import Decimal
 from enum import Enum, auto
+from typing import cast
 
 from public_detective.providers.config import Config, ConfigProvider
 
@@ -50,22 +51,22 @@ class PricingService:
         """
         if is_long_context:
             if modality == Modality.TEXT:
-                return self.config.GCP_GEMINI_TEXT_INPUT_LONG_COST
+                return cast(Decimal, self.config.GCP_GEMINI_TEXT_INPUT_LONG_COST)
             elif modality == Modality.AUDIO:
-                return self.config.GCP_GEMINI_AUDIO_INPUT_LONG_COST
+                return cast(Decimal, self.config.GCP_GEMINI_AUDIO_INPUT_LONG_COST)
             elif modality == Modality.IMAGE:
-                return self.config.GCP_GEMINI_IMAGE_INPUT_LONG_COST
+                return cast(Decimal, self.config.GCP_GEMINI_IMAGE_INPUT_LONG_COST)
             elif modality == Modality.VIDEO:
-                return self.config.GCP_GEMINI_VIDEO_INPUT_LONG_COST
+                return cast(Decimal, self.config.GCP_GEMINI_VIDEO_INPUT_LONG_COST)
         else:
             if modality == Modality.TEXT:
-                return self.config.GCP_GEMINI_TEXT_INPUT_COST
+                return cast(Decimal, self.config.GCP_GEMINI_TEXT_INPUT_COST)
             elif modality == Modality.AUDIO:
-                return self.config.GCP_GEMINI_AUDIO_INPUT_COST
+                return cast(Decimal, self.config.GCP_GEMINI_AUDIO_INPUT_COST)
             elif modality == Modality.IMAGE:
-                return self.config.GCP_GEMINI_IMAGE_INPUT_COST
+                return cast(Decimal, self.config.GCP_GEMINI_IMAGE_INPUT_COST)
             elif modality == Modality.VIDEO:
-                return self.config.GCP_GEMINI_VIDEO_INPUT_COST
+                return cast(Decimal, self.config.GCP_GEMINI_VIDEO_INPUT_COST)
 
         raise ValueError(f"Unknown modality or context combination: {modality}, {is_long_context}")
 
@@ -79,8 +80,8 @@ class PricingService:
             The cost per million tokens for the output.
         """
         if is_long_context:
-            return self.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
-        return self.config.GCP_GEMINI_TEXT_OUTPUT_COST
+            return cast(Decimal, self.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST)
+        return cast(Decimal, self.config.GCP_GEMINI_TEXT_OUTPUT_COST)
 
     def _get_thinking_cost_per_million(self, is_long_context: bool) -> Decimal:
         """Determines the thinking cost per million tokens based on context length.
@@ -92,8 +93,8 @@ class PricingService:
             The cost per million tokens for thinking.
         """
         if is_long_context:
-            return self.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST
-        return self.config.GCP_GEMINI_THINKING_OUTPUT_COST
+            return cast(Decimal, self.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST)
+        return cast(Decimal, self.config.GCP_GEMINI_THINKING_OUTPUT_COST)
 
     def calculate(
         self,

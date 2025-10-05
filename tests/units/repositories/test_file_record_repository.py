@@ -69,3 +69,12 @@ def test_set_files_as_included_empty_list(repository: FileRecordsRepository) -> 
     """Tests that no database call is made when an empty list is passed."""
     repository.set_files_as_included([])
     repository.engine.connect.return_value.__enter__.return_value.execute.assert_not_called()
+
+
+def test_set_files_as_included_happy_path(repository: FileRecordsRepository) -> None:
+    """Tests that the UPDATE statement is called for a list of file IDs."""
+    file_ids = [uuid4(), uuid4()]
+    repository.set_files_as_included(file_ids)
+    mock_connection = repository.engine.connect().__enter__()
+    mock_connection.execute.assert_called_once()
+    mock_connection.commit.assert_called_once()

@@ -72,3 +72,21 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procu
 
     service.procurement_repo.save_procurement_version.assert_not_called()
     service.analysis_repo.save_pre_analysis.assert_not_called()
+
+
+def test_pre_analyze_procurement_existing_hash(mock_dependencies: dict, mock_procurement: Procurement) -> None:
+    """Tests that pre-analysis is skipped if a procurement with the same content hash already exists."""
+    service = AnalysisService(**mock_dependencies)
+    service.procurement_repo.process_procurement_documents.return_value = []
+    service.procurement_repo.get_procurement_by_hash.return_value = True
+
+    with (
+        patch.object(service, "_prepare_ai_candidates", return_value=[]),
+        patch.object(service, "_select_files_by_token_limit", return_value=([], [])),
+        patch.object(service, "logger") as mock_logger,
+    ):
+        service._pre_analyze_procurement(mock_procurement, {})
+        # The exact hash depends on the mock_procurement, so we check that the log message contains the key phrase.
+        assert any("already exists. Skipping." in call.args[0] for call in mock_logger.info.call_args_list)
+
+    service.procurement_repo.save_procurement_version.assert_not_called()

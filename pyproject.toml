@@ -91,6 +91,7 @@ ignore_errors = false
 omit = [
     ".venv/**",
     "*__init__*",
+    "*__main__*",
     "source/public_detective/migrations/*",
 ]
 

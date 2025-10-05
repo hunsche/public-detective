@@ -109,6 +109,19 @@ def test_extract_from_tar(repo: ProcurementsRepository) -> None:
     assert ("file2.txt", b"content2") in extracted_files
 
 
+def test_extract_from_tar_empty_file(repo: ProcurementsRepository) -> None:
+    """Tests that the tar extraction handles empty/unextractable files gracefully."""
+    mock_archive = MagicMock()
+    mock_member = MagicMock()
+    mock_member.isfile.return_value = True
+    mock_archive.getmembers.return_value = [mock_member]
+    mock_archive.extractfile.return_value = None  # Simulate an unextractable file
+
+    with patch("tarfile.open", return_value=mock_archive):
+        result = repo._extract_from_tar(b"dummy tar content")
+        assert result == []
+
+
 @patch("requests.get")
 def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
     """Tests successful fetching and filtering of document metadata."""
@@ -157,6 +170,40 @@ def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: Procureme
     assert isinstance(doc_model, ProcurementDocument)
     assert doc_model.document_sequence == 1
     assert raw_meta == raw_doc1
+
+
+@patch("requests.get")
+def test_get_all_documents_metadata_all_active(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests fetching document metadata when all documents are active."""
+    raw_doc1 = {
+        "sequencialDocumento": 1,
+        "dataPublicacaoPncp": "2025-01-01T12:00:00",
+        "cnpj": "12345678000199",
+        "anoCompra": 2025,
+        "sequencialCompra": 1,
+        "statusAtivo": True,
+        "titulo": "doc1",
+        "tipoDocumentoId": 1,
+        "tipoDocumentoNome": "Edital",
+        "tipoDocumentoDescricao": "Edital",
+        "url": "http://example.com/doc1",
+    }
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = [raw_doc1]
+    mock_get.return_value = mock_response
+
+    procurement = MagicMock(spec=Procurement)
+    procurement.government_entity = MagicMock()
+    procurement.government_entity.cnpj = "123"
+    procurement.procurement_year = "2025"
+    procurement.procurement_sequence = "1"
+    repo.config.PNCP_INTEGRATION_API_URL = "http://test.api/"
+
+    docs = repo._get_all_documents_metadata(procurement)
+
+    assert len(docs) == 1
+    assert docs[0][1] == raw_doc1
 
 
 @patch("requests.get")
@@ -283,6 +330,29 @@ def mock_procurement() -> MagicMock:
     return procurement
 
 
+def test_extract_from_rar_with_directory(repo: ProcurementsRepository) -> None:
+    """Tests that directories inside a RAR archive are ignored."""
+    mock_archive = MagicMock()
+    mock_file_info = MagicMock()
+    mock_file_info.filename = "file.txt"
+    mock_file_info.isdir.return_value = False
+    mock_dir_info = MagicMock()
+    mock_dir_info.isdir.return_value = True
+
+    mock_archive.infolist.return_value = [mock_dir_info, mock_file_info]
+    mock_archive.read.return_value = b"content"
+
+    # Configure the context manager correctly
+    mock_rar_file_context = MagicMock()
+    mock_rar_file_context.__enter__.return_value = mock_archive
+
+    with patch("rarfile.RarFile", return_value=mock_rar_file_context):
+        result = repo._extract_from_rar(b"dummy rar content")
+        assert len(result) == 1
+        assert result[0] == ("file.txt", b"content")
+        mock_archive.read.assert_called_once_with("file.txt")
+
+
 def test_extract_from_rar_with_bad_file(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests that a BadRarFile error is handled gracefully."""
     with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
@@ -352,6 +422,39 @@ def test_determine_original_filename_request_exception(
     result = repo._determine_original_filename("http://example.com/file")
     assert result is None
     assert "Could not determine filename from headers for http://example.com/file" in caplog.text
+
+
+@patch("requests.head")
+def test_determine_original_filename_no_header(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of a missing Content-Disposition header."""
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.headers = {}  # No Content-Disposition header
+    mock_head.return_value = mock_response
+    filename = repo._determine_original_filename("http://example.com/file")
+    assert filename is None
+
+
+@patch("requests.head")
+def test_determine_original_filename_header_no_filename(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests handling of a Content-Disposition header that is missing the filename."""
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.headers = {"Content-Disposition": "attachment"}
+    mock_head.return_value = mock_response
+    filename = repo._determine_original_filename("http://example.com/file")
+    assert filename is None
+
+
+@patch("requests.head")
+def test_determine_original_filename_success(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests successful extraction of filename from Content-Disposition header."""
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.headers = {"Content-Disposition": 'attachment; filename="test_file.pdf"'}
+    mock_head.return_value = mock_response
+    filename = repo._determine_original_filename("http://example.com/file")
+    assert filename == "test_file.pdf"
 
 
 def test_publish_procurement_to_pubsub_api_error(
@@ -428,8 +531,91 @@ def test_get_updated_procurements_with_raw_data_validation_error(
     assert "Data validation error on page 1" in caplog.text
 
 
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_no_content(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests get_updated_procurements_with_raw_data with a 204 No Content response."""
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.NO_CONTENT
+    mock_get.return_value = mock_response
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
+    target_date = date(2023, 1, 1)
+    result = repo.get_updated_procurements_with_raw_data(target_date)
+    assert result == []
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_happy_path(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests the happy path for get_updated_procurements_with_raw_data."""
+    raw_procurement_data = _get_mock_procurement_data("PNCP-456")
+    mock_response_with_data = MagicMock()
+    mock_response_with_data.status_code = HTTPStatus.OK
+    mock_response_with_data.json.return_value = {
+        "totalRegistros": 1,
+        "numeroPagina": 1,
+        "totalPaginas": 1,
+        "data": [raw_procurement_data],
+    }
+
+    mock_response_no_content = MagicMock()
+    mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
+
+    # Simulate finding data for the first modality, then no data for the rest
+    mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
+
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
+    target_date = date(2023, 1, 1)
+
+    result = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert len(result) == 1
+    procurement_model, raw_data = result[0]
+    assert isinstance(procurement_model, Procurement)
+    assert procurement_model.pncp_control_number == "PNCP-456"
+    assert raw_data == raw_procurement_data
+
+
+@patch("requests.get")
+def test_get_updated_procurements_with_raw_data_pagination(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests that the raw data procurement fetching logic correctly handles pagination."""
+    raw_proc_page1 = _get_mock_procurement_data("PNCP-RAW-PAGE-1")
+    raw_proc_page2 = _get_mock_procurement_data("PNCP-RAW-PAGE-2")
+
+    mock_response_p1 = MagicMock()
+    mock_response_p1.status_code = HTTPStatus.OK
+    mock_response_p1.json.return_value = {
+        "totalRegistros": 2,
+        "numeroPagina": 1,
+        "totalPaginas": 2,
+        "data": [raw_proc_page1],
+    }
+
+    mock_response_p2 = MagicMock()
+    mock_response_p2.status_code = HTTPStatus.OK
+    mock_response_p2.json.return_value = {
+        "totalRegistros": 2,
+        "numeroPagina": 2,
+        "totalPaginas": 2,
+        "data": [raw_proc_page2],
+    }
+
+    mock_get.side_effect = [mock_response_p1, mock_response_p2] + [MagicMock(status_code=HTTPStatus.NO_CONTENT)] * 3
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = ["12345"]
+    target_date = date(2023, 1, 1)
+
+    result = repo.get_updated_procurements_with_raw_data(target_date)
+
+    assert len(result) == 2
+    assert result[0][0].pncp_control_number == "PNCP-RAW-PAGE-1"
+    assert result[1][0].pncp_control_number == "PNCP-RAW-PAGE-2"
+    assert result[0][1] == raw_proc_page1
+    assert result[1][1] == raw_proc_page2
+
+
 @patch.object(ProcurementsRepository, "_extract_from_zip", side_effect=Exception("ZIP processing error"))
-def test_recursive_file_processing_archive_exception(
+def test_recursive_file_processing_generic_archive_exception(
     mock_extract: MagicMock, repo: ProcurementsRepository, caplog: Any
 ) -> None:
     """Tests that an exception during archive extraction is handled and the file is treated as a single entity."""
@@ -464,6 +650,18 @@ def test_get_procurement_by_hash_not_found(repo: ProcurementsRepository) -> None
     assert repo.get_procurement_by_hash("new_hash") is False
 
 
+def test_get_procurement_by_id_and_version_found(repo: ProcurementsRepository) -> None:
+    """Tests fetching a procurement that exists."""
+    raw_data = _get_mock_procurement_data("PNCP-123")
+    mock_scalar = MagicMock()
+    mock_scalar.scalar_one_or_none.return_value = raw_data
+    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    result = repo.get_procurement_by_id_and_version("PNCP-123", 1)
+    assert result is not None
+    assert isinstance(result, Procurement)
+    assert result.pncp_control_number == "PNCP-123"
+
+
 def test_get_procurement_by_id_and_version_not_found(repo: ProcurementsRepository) -> None:
     """Tests fetching a procurement that does not exist."""
     mock_scalar = MagicMock()
@@ -471,6 +669,27 @@ def test_get_procurement_by_id_and_version_not_found(repo: ProcurementsRepositor
     repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
     result = repo.get_procurement_by_id_and_version("123", 1)
     assert result is None
+
+
+def test_get_procurement_uuid_not_found(repo: ProcurementsRepository) -> None:
+    """Tests fetching a procurement UUID that does not exist."""
+    mock_scalar = MagicMock()
+    mock_scalar.scalar_one_or_none.return_value = None
+    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    result = repo.get_procurement_uuid("non_existent", 1)
+    assert result is None
+
+
+def test_get_procurement_uuid_found(repo: ProcurementsRepository) -> None:
+    """Tests fetching a procurement UUID that exists."""
+    from uuid import uuid4
+
+    mock_uuid = uuid4()
+    mock_scalar = MagicMock()
+    mock_scalar.scalar_one_or_none.return_value = mock_uuid
+    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    result = repo.get_procurement_uuid("123", 1)
+    assert result == mock_uuid
 
 
 def test_save_procurement_version(repo: ProcurementsRepository, mock_procurement: MagicMock) -> None:
@@ -552,3 +771,93 @@ def test_get_updated_procurements_no_content(mock_get: MagicMock, repo: Procurem
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements(target_date)
     assert result == []
+
+
+def test_get_latest_version_found(repo: ProcurementsRepository) -> None:
+    """Tests retrieving the latest version number when one exists."""
+    mock_scalar = MagicMock()
+    mock_scalar.scalar_one_or_none.return_value = 5
+    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    result = repo.get_latest_version("some_pncp_number")
+    assert result == 5
+
+
+def test_get_latest_version_not_found(repo: ProcurementsRepository) -> None:
+    """Tests retrieving the latest version when none exists, expecting 0."""
+    mock_scalar = MagicMock()
+    mock_scalar.scalar_one_or_none.return_value = None
+    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    result = repo.get_latest_version("some_pncp_number")
+    assert result == 0
+
+
+@patch("requests.get")
+def test_get_updated_procurements_pagination(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+    """Tests that the procurement fetching logic correctly handles pagination."""
+    raw_proc_page1 = _get_mock_procurement_data("PNCP-PAGE-1")
+    raw_proc_page2 = _get_mock_procurement_data("PNCP-PAGE-2")
+
+    # Response for page 1
+    mock_response_p1 = MagicMock()
+    mock_response_p1.status_code = HTTPStatus.OK
+    mock_response_p1.json.return_value = {
+        "totalRegistros": 2,
+        "numeroPagina": 1,
+        "totalPaginas": 2,
+        "data": [raw_proc_page1],
+    }
+
+    # Response for page 2
+    mock_response_p2 = MagicMock()
+    mock_response_p2.status_code = HTTPStatus.OK
+    mock_response_p2.json.return_value = {
+        "totalRegistros": 2,
+        "numeroPagina": 2,
+        "totalPaginas": 2,
+        "data": [raw_proc_page2],
+    }
+
+    mock_get.side_effect = [mock_response_p1, mock_response_p2] + [MagicMock(status_code=HTTPStatus.NO_CONTENT)] * 3
+
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = ["12345"]  # Use a specific code to limit loops
+    target_date = date(2023, 1, 1)
+
+    result = repo.get_updated_procurements(target_date)
+
+    assert len(result) == 2
+    assert result[0].pncp_control_number == "PNCP-PAGE-1"
+    assert result[1].pncp_control_number == "PNCP-PAGE-2"
+    # Ensure it called the API for both pages for the first modality
+    assert mock_get.call_count >= 2
+
+
+@patch("requests.get")
+def test_get_updated_procurements_happy_path_multiple_modalities(
+    mock_get: MagicMock, repo: ProcurementsRepository
+) -> None:
+    """Tests the happy path for get_updated_procurements across multiple modalities."""
+    raw_procurement_data = _get_mock_procurement_data("PNCP-789")
+    mock_response_with_data = MagicMock()
+    mock_response_with_data.status_code = HTTPStatus.OK
+    mock_response_with_data.json.return_value = {
+        "totalRegistros": 1,
+        "numeroPagina": 1,
+        "totalPaginas": 1,
+        "data": [raw_procurement_data],
+    }
+
+    mock_response_no_content = MagicMock()
+    mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
+
+    # Simulate finding data for the first modality, then no data for the rest
+    mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
+
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
+    target_date = date(2023, 1, 1)
+
+    result = repo.get_updated_procurements(target_date)
+
+    assert len(result) == 1
+    assert result[0].pncp_control_number == "PNCP-789"
