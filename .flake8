@@ -18,4 +18,4 @@ min-const-length = 3
 max-const-length = 50
 allowed-short-variable-names = i,j,k,_,e
 no-hash-allow-prefixes = Arrange,Act,Assert
-no-hash-allow-substrings = nosec,type: ignore,noqa
+no-hash-allow-substrings = nosec,type: ignore,noqa,pragma

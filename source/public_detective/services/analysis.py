@@ -501,9 +501,8 @@ class AnalysisService:
         for candidate in candidates:
             source_document_db_id = source_docs_map[candidate.synthetic_id]
             base_gcs_path = f"{procurement_id}/{analysis_id}/{source_document_db_id}"
-
-            # Upload original file
             original_gcs_path = f"{base_gcs_path}/{os.path.basename(candidate.original_path)}"
+
             self.gcs_provider.upload_file(
                 bucket_name=bucket_name,
                 destination_blob_name=original_gcs_path,
@@ -511,7 +510,6 @@ class AnalysisService:
                 content_type="application/octet-stream",
             )
 
-            # Upload prepared files and set final GCS URIs
             final_converted_uris = []
             if candidate.prepared_content_gcs_uris:
                 if isinstance(candidate.ai_content, list):
@@ -539,7 +537,6 @@ class AnalysisService:
             else:
                 candidate.ai_gcs_uris = [f"gs://{bucket_name}/{original_gcs_path}"]
 
-            # Save initial file record
             file_record = NewFileRecord(
                 source_document_id=source_document_db_id,
                 file_name=os.path.basename(candidate.original_path),
@@ -547,12 +544,11 @@ class AnalysisService:
                 extension=os.path.splitext(candidate.original_path)[1].lstrip("."),
                 size_bytes=len(candidate.original_content),
                 nesting_level=candidate.original_path.count(os.sep),
-                included_in_analysis=False,  # Always False initially
+                included_in_analysis=False,
                 exclusion_reason=candidate.exclusion_reason,
                 prioritization_logic=self._get_priority_as_string(candidate.original_path),
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
             )
-            # Store the new record's ID back on the candidate for the update step
             candidate.file_record_id = self.file_record_repo.save_file_record(file_record)
 
     def _get_priority(self, file_path: str) -> int:
@@ -605,16 +601,13 @@ class AnalysisService:
         """
         procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
 
-        # Group files by their source document
         source_doc_files = defaultdict(list)
         for candidate in candidates:
             if candidate.is_included:
                 source_doc_files[candidate.synthetic_id].append(candidate)
 
-        # Build the document context section
         document_context_parts = []
         for _source_id, files in source_doc_files.items():
-            # All files in this group share the same raw metadata
             meta = files[0].raw_document_metadata
             title = meta.get("titulo", "N/A")
             doc_type = meta.get("tipoDocumentoNome", "N/A")

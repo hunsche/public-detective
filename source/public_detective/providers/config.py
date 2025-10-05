@@ -10,8 +10,10 @@ from decimal import Decimal
 from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+IBGE_CODE_SAO_PAULO = 3550308
+IBGE_CODE_RIO_DE_JANEIRO = 3304557
 
-# pylint: disable=invalid-name
+
 class Config(BaseSettings):
     """A Pydantic model for managing application settings.
 
@@ -37,8 +39,8 @@ class Config(BaseSettings):
     LOG_LEVEL: str = "INFO"
 
     TARGET_IBGE_CODES: list[int] = [
-        3550308,  # São Paulo
-        3304557,  # Rio de Janeiro
+        IBGE_CODE_SAO_PAULO,
+        IBGE_CODE_RIO_DE_JANEIRO,
     ]
 
     GCP_PROJECT: str = "public-detective"
