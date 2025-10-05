@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "local-linters"
-version = "1.1.5"
+version = "1.1.0"
 
 [tool.setuptools]
 packages = ["local_linters"]

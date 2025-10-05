@@ -10,7 +10,7 @@ class NoHashCommentsPlugin:
     """A flake8 plugin to forbid hash comments."""
 
     name = "flake8-no-hash-comments"
-    version = "1.2.1"
+    version = "1.1.0"
 
     NOHASH_ERROR_CODE = "NHC9001"
     NOHASH_ERROR_MESSAGE = (
