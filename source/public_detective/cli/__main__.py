@@ -1,24 +1,8 @@
-"""Main entry point for the CLI application."""
+"""Main entry point for the unified CLI application."""
 
-import click
-from public_detective.cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
+from public_detective.cli import create_cli
 
-
-@click.group()
-def cli() -> None:
-    """A command-line interface for the Public Detective tool.
-
-    This CLI provides a collection of commands to interact with the Public
-    Detective system, allowing users to trigger analyses, manage tasks,
-    and perform other administrative functions.
-    """
-    pass
-
-
-cli.add_command(analyze)
-cli.add_command(pre_analyze)
-cli.add_command(retry)
-cli.add_command(trigger_ranked_analysis)
+cli = create_cli()
 
 
 def main() -> None:

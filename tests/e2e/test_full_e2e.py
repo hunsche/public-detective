@@ -29,7 +29,7 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
 
     pre_analyze_command = (
-        f"poetry run python -m public_detective.cli pre-analyze "
+        f"poetry run pd analysis prepare "
         f"--start-date {target_date_str} --end-date {target_date_str} "
         f"--max-messages {max_items_to_process}"
     )
@@ -55,13 +55,11 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
         connection.commit()
         print("--- Inserted mock donation ---")
 
-    ranked_analysis_command = (
-        "poetry run python -m public_detective.cli trigger-ranked-analysis " "--use-auto-budget --budget-period daily"
-    )
+    ranked_analysis_command = "poetry run pd analysis rank --use-auto-budget --budget-period daily"
     run_command(ranked_analysis_command)
 
     worker_command = (
-        f"poetry run python -m public_detective.worker "
+        f"poetry run pd worker start "
         f"--max-messages {max_items_to_process} "
         f"--timeout 15 "
         f"--max-output-tokens None"

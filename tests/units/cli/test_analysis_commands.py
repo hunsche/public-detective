@@ -3,20 +3,20 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 from click.testing import CliRunner
-from public_detective.cli.commands import analyze, pre_analyze, retry, trigger_ranked_analysis
+from public_detective.cli.analysis import analysis_group
 
 
 # --- Tests for 'retry' command ---
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_retry_command_success(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -55,8 +55,9 @@ def test_retry_command_success(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        retry,
+        analysis_group,
         [
+            "retry",
             "--initial-backoff-hours",
             str(initial_backoff_hours),
             "--max-retries",
@@ -73,16 +74,16 @@ def test_retry_command_success(
     assert result.exit_code == 0
 
 
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_retry_command_no_analyses(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -120,8 +121,9 @@ def test_retry_command_no_analyses(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        retry,
+        analysis_group,
         [
+            "retry",
             "--initial-backoff-hours",
             str(initial_backoff_hours),
             "--max-retries",
@@ -137,16 +139,16 @@ def test_retry_command_no_analyses(
 
 
 # --- Tests for 'analyze' command ---
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_analyze_command_success(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -180,8 +182,7 @@ def test_analyze_command_success(
     mock_service_instance = MagicMock()
     mock_analysis_service.return_value = mock_service_instance
 
-    result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
-
+    result = runner.invoke(analysis_group, ["run", "--analysis-id", str(analysis_id)])
     mock_db_manager.get_engine.assert_called_once()
     mock_analysis_service.assert_called_once()
     mock_service_instance.run_specific_analysis.assert_called_once_with(analysis_id)
@@ -194,21 +195,21 @@ def test_analyze_command_missing_id() -> None:
     Tests that the analyze command fails if the --analysis-id is missing.
     """
     runner = CliRunner()
-    result = runner.invoke(analyze, [], catch_exceptions=False)
+    result = runner.invoke(analysis_group, ["run"], catch_exceptions=False)
     assert "Missing option '--analysis-id'" in result.output
     assert result.exit_code != 0
 
 
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_analyze_command_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -243,23 +244,23 @@ def test_analyze_command_exception(
     mock_service_instance.run_specific_analysis.side_effect = Exception("Test error")
     mock_analysis_service.return_value = mock_service_instance
 
-    result = runner.invoke(analyze, ["--analysis-id", str(analysis_id)])
+    result = runner.invoke(analysis_group, ["run", "--analysis-id", str(analysis_id)])
 
     assert "An error occurred: Test error" in result.output
     assert result.exit_code != 0
 
 
 # --- Tests for 'trigger-ranked-analysis' command ---
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_trigger_ranked_analysis_manual_budget(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -291,8 +292,9 @@ def test_trigger_ranked_analysis_manual_budget(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        trigger_ranked_analysis,
+        analysis_group,
         [
+            "rank",
             "--budget",
             "100.00",
         ],
@@ -303,16 +305,16 @@ def test_trigger_ranked_analysis_manual_budget(
     assert result.exit_code == 0
 
 
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_trigger_ranked_analysis_auto_budget(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -344,8 +346,9 @@ def test_trigger_ranked_analysis_auto_budget(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        trigger_ranked_analysis,
+        analysis_group,
         [
+            "rank",
             "--use-auto-budget",
             "--budget-period",
             "daily",
@@ -354,13 +357,13 @@ def test_trigger_ranked_analysis_auto_budget(
 
     mock_service_instance.run_ranked_analysis.assert_called_once()
     assert "Ranked analysis completed successfully!" in result.output
-    assert result.exit_code == 0
+    assert result.exit_code == 0.0
 
 
 def test_trigger_ranked_analysis_no_budget() -> None:
     """Test that the command fails if no budget option is provided."""
     runner = CliRunner()
-    result = runner.invoke(trigger_ranked_analysis, [])
+    result = runner.invoke(analysis_group, ["rank"])
     assert "Either --budget or --use-auto-budget must be provided" in result.output
     assert result.exit_code != 0
 
@@ -368,21 +371,21 @@ def test_trigger_ranked_analysis_no_budget() -> None:
 def test_trigger_ranked_analysis_auto_budget_no_period() -> None:
     """Test that the command fails if auto-budget is used without a period."""
     runner = CliRunner()
-    result = runner.invoke(trigger_ranked_analysis, ["--use-auto-budget"])
+    result = runner.invoke(analysis_group, ["rank", "--use-auto-budget"])
     assert "--budget-period is required" in result.output
     assert result.exit_code != 0
 
 
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_trigger_ranked_analysis_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -415,8 +418,9 @@ def test_trigger_ranked_analysis_exception(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        trigger_ranked_analysis,
+        analysis_group,
         [
+            "rank",
             "--budget",
             "100.00",
         ],
@@ -427,16 +431,16 @@ def test_trigger_ranked_analysis_exception(
 
 
 # --- Tests for 'pre-analyze' command ---
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_pre_analysis_command_with_valid_dates(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -474,8 +478,9 @@ def test_pre_analysis_command_with_valid_dates(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        pre_analyze,
+        analysis_group,
         [
+            "prepare",
             "--start-date",
             start_date,
             "--end-date",
@@ -508,8 +513,9 @@ def test_pre_analysis_command_with_invalid_date_range() -> None:
     end_date = "2025-01-01"
 
     result = runner.invoke(
-        pre_analyze,
+        analysis_group,
         [
+            "prepare",
             "--start-date",
             start_date,
             "--end-date",
@@ -522,16 +528,16 @@ def test_pre_analysis_command_with_invalid_date_range() -> None:
     assert result.exit_code != 0
 
 
-@patch("public_detective.cli.commands.DatabaseManager")
-@patch("public_detective.cli.commands.PubSubProvider")
-@patch("public_detective.cli.commands.GcsProvider")
-@patch("public_detective.cli.commands.AiProvider")
-@patch("public_detective.cli.commands.AnalysisRepository")
-@patch("public_detective.cli.commands.FileRecordsRepository")
-@patch("public_detective.cli.commands.ProcurementsRepository")
-@patch("public_detective.cli.commands.StatusHistoryRepository")
-@patch("public_detective.cli.commands.BudgetLedgerRepository")
-@patch("public_detective.cli.commands.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+@patch("public_detective.cli.analysis.PubSubProvider")
+@patch("public_detective.cli.analysis.GcsProvider")
+@patch("public_detective.cli.analysis.AiProvider")
+@patch("public_detective.cli.analysis.AnalysisRepository")
+@patch("public_detective.cli.analysis.FileRecordsRepository")
+@patch("public_detective.cli.analysis.ProcurementsRepository")
+@patch("public_detective.cli.analysis.StatusHistoryRepository")
+@patch("public_detective.cli.analysis.BudgetLedgerRepository")
+@patch("public_detective.cli.analysis.AnalysisService")
 def test_pre_analysis_command_exception(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,  # noqa: F841
@@ -568,8 +574,9 @@ def test_pre_analysis_command_exception(
     mock_analysis_service.return_value = mock_service_instance
 
     result = runner.invoke(
-        pre_analyze,
+        analysis_group,
         [
+            "prepare",
             "--start-date",
             start_date,
             "--end-date",

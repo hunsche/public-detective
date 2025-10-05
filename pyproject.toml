@@ -78,6 +78,10 @@ pep8-naming = "^0.15.1"
 flake8-variables-names = "^0.0.6"
 local-linters = {path = "linting"}
 
+[tool.poetry.scripts]
+pd = "public_detective.cli.__main__:main"
+
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 

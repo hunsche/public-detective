@@ -22,7 +22,7 @@ def test_cli_group_help() -> None:
     runner = CliRunner()
     result = runner.invoke(cli, ["--help"])
     assert result.exit_code == 0
-    assert "A command-line interface for the Public Detective tool." in result.output
+    assert "A unified command-line interface for the Public Detective tool." in result.output
 
 
 def test_main_invokes_main() -> None:

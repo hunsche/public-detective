@@ -113,7 +113,7 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
         f"GCP_PUBSUB_TOPIC_PROCUREMENTS='{topic_name}' "
         f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}'"
     )
-    worker_command = f"{env_vars} poetry run python -m public_detective.worker --max-messages 1 --timeout 5"
+    worker_command = f"{env_vars} poetry run pd worker start --max-messages 1 --timeout 5"
     run_command(worker_command)
 
     with db_session.connect() as connection:

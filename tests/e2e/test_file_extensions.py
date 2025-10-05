@@ -387,7 +387,7 @@ def test_file_extension_processing(
     print(f"Published message for analysis_id: {analysis_id}")
 
     # 5. Run the worker as a subprocess
-    worker_command = "poetry run python -m public_detective.worker --max-messages 1 --timeout 15"
+    worker_command = "poetry run pd worker start --max-messages 1 --timeout 15"
     run_command(worker_command)
 
     # 6. Assertions

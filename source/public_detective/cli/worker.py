@@ -1,9 +1,4 @@
-"""This module serves as the main entry point for the Pub/Sub worker.
-
-It sets up a command-line interface using Click to start the subscription
-listener. The worker's behavior, such as message limits and timeouts, can
-be configured via CLI options.
-"""
+"""This module defines the 'worker' command group for the Public Detective CLI."""
 
 import click
 from public_detective.providers.config import ConfigProvider
@@ -13,7 +8,13 @@ from public_detective.worker.subscription import Subscription
 logger = LoggingProvider().get_logger()
 
 
-@click.command()
+@click.group("worker")
+def worker_group() -> None:
+    """Groups commands related to the Pub/Sub worker."""
+    pass
+
+
+@worker_group.command("start")
 @click.option(
     "--max-messages",
     type=int,
@@ -32,18 +33,13 @@ logger = LoggingProvider().get_logger()
     default=None,
     help="Maximum number of output tokens for the AI model. Set to 'None' to remove the limit.",
 )
-def main(max_messages: int | None, timeout: int | None, max_output_tokens: str | None) -> None:
-    """Main entry point for the Pub/Sub worker.
-
-    This script initializes and runs the Subscription worker. It can be configured
-    to exit after a specific number of messages (--max-messages) or after a
-    period of inactivity (--timeout). If --max-messages is used without a
-    --timeout, a default timeout of 10 seconds is applied.
+def start(max_messages: int | None, timeout: int | None, max_output_tokens: str | None) -> None:
+    """Initializes and runs the Pub/Sub subscription worker.
 
     Args:
-        max_messages: The maximum number of messages to process before exiting.
-        timeout: The time in seconds to wait for a message.
-        max_output_tokens: The maximum number of output tokens for the AI model.
+        max_messages: Maximum number of messages to process before exiting.
+        timeout: Time in seconds to wait for a message.
+        max_output_tokens: Maximum number of output tokens for the AI model.
     """
     if max_messages is not None and timeout is None:
         timeout = 10
@@ -67,6 +63,3 @@ def main(max_messages: int | None, timeout: int | None, max_output_tokens: str |
         logger.critical(f"Execution stopped due to missing environment variables: {e}")
     except Exception as e:
         logger.critical(f"An unhandled exception occurred at the top level: {e}", exc_info=True)
-
-
-main()

@@ -1,8 +1,4 @@
-"""This module defines the command-line interface (CLI) commands for the Public Detective application.
-
-It provides functionalities to trigger, manage, and retry procurement analyses
-through a set of user-friendly commands.
-"""
+"""This module defines the 'analysis' command group for the Public Detective CLI."""
 
 from datetime import date, datetime
 from decimal import Decimal
@@ -25,22 +21,19 @@ from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 
 
-@click.command("analyze")
-@click.option("--analysis-id", type=UUID, required=True, help="The ID of the analysis to run.")
-def analyze(analysis_id: UUID) -> None:
-    """Triggers a specific procurement analysis.
+@click.group("analysis")
+def analysis_group() -> None:
+    """Groups commands related to procurement analysis."""
+    pass
 
-    This command initiates the analysis for a single procurement
-    by its unique analysis ID. It locates the corresponding record in the
-    database, ensures it is in a 'PENDING_ANALYSIS' state, and then
-    publishes a message to the Pub/Sub topic. A worker will then
-    pick up this message to execute the full, in-depth analysis pipeline.
+
+@analysis_group.command("run")
+@click.option("--analysis-id", type=UUID, required=True, help="The ID of the analysis to run.")
+def run(analysis_id: UUID) -> None:
+    """Triggers a specific procurement analysis by its ID.
 
     Args:
-        analysis_id: The unique identifier for the analysis to be processed.
-
-    Raises:
-        click.Abort: If an error occurs during the process.
+        analysis_id: The ID of the analysis to run.
     """
     click.echo(f"Triggering analysis for analysis_id: {analysis_id}")
 
@@ -77,7 +70,7 @@ def analyze(analysis_id: UUID) -> None:
         raise click.Abort()
 
 
-@click.command("pre-analyze")
+@analysis_group.command("prepare")
 @click.option(
     "--start-date",
     type=click.DateTime(formats=[DateProvider.DATE_FORMAT]),
@@ -98,41 +91,17 @@ def analyze(analysis_id: UUID) -> None:
     default=None,
     help="Maximum number of messages to publish. If None, publishes all found.",
 )
-def pre_analyze(
+def prepare(
     start_date: datetime, end_date: datetime, batch_size: int, sleep_seconds: int, max_messages: int | None
 ) -> None:
     """Scans for new procurements and prepares them for analysis.
 
-    This command searches for procurements within a given date range that
-    have not yet been analyzed. For each new procurement, it performs the
-    following "pre-analysis" steps:
-    1.  Calculates a hash of the procurement's documents to check for
-        idempotency.
-    2.  If the procurement is new, it saves a new version record to the
-        database.
-    3.  Creates a new record in the `procurement_analyses` table with a
-        'PENDING_ANALYSIS' status.
-    4.  Estimates the token count for the AI analysis.
-
-    This prepares a batch of procurements for the main analysis phase, which
-    can be triggered separately by the 'analyze' command or a worker.
-
     Args:
-        start_date: The beginning of the date range to scan for new
-            procurements (inclusive). Format: YYYY-MM-DD.
-        end_date: The end of the date range to scan (inclusive).
-            Format: YYYY-MM-DD.
-        batch_size: The number of procurements to process in a single batch
-            before sleeping.
-        sleep_seconds: The duration in seconds to pause between batches to
-            avoid overwhelming external APIs.
-        max_messages: An optional limit on the total number of new analysis
-            tasks to create. The process will stop once this limit is
-            reached.
-
-    Raises:
-        click.BadParameter: If the start date is after the end date.
-        click.Abort: If an error occurs during the process.  # noqa: DAR401, DAR402
+        start_date: Start date for the pre-analysis.
+        end_date: End date for the pre-analysis.
+        batch_size: Number of procurements to process in each batch.
+        sleep_seconds: Seconds to sleep between batches.
+        max_messages: Maximum number of messages to publish.
     """
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
@@ -185,7 +154,7 @@ def pre_analyze(
         raise click.Abort()
 
 
-@click.command("retry")
+@analysis_group.command("retry")
 @click.option(
     "--initial-backoff-hours",
     type=int,
@@ -210,21 +179,10 @@ def pre_analyze(
 def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> None:
     """Retries failed or stale procurement analyses.
 
-    This command identifies analyses that are in an 'ANALYSIS_FAILED' state
-    or have been in the 'ANALYSIS_IN_PROGRESS' state for longer than the
-    specified timeout. It then triggers a new analysis for them, respecting
-    an exponential backoff strategy.
-
     Args:
-        initial_backoff_hours: The base duration to wait before the first
-            retry.
-        max_retries: The maximum number of times an analysis will be
-            retried.
-        timeout_hours: The number of hours after which an 'IN_PROGRESS'
-            task is considered stale.
-
-    Raises:
-        click.Abort: If an error occurs during the process.  # noqa: DAR401, DAR402
+        initial_backoff_hours: The initial backoff period in hours.
+        max_retries: The maximum number of retries for a failed analysis.
+        timeout_hours: The timeout in hours to consider a task stale.
     """
     click.echo("Searching for analyses to retry...")
 
@@ -265,7 +223,7 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
         raise click.Abort()
 
 
-@click.command("trigger-ranked-analysis")
+@analysis_group.command("rank")
 @click.option("--budget", type=Decimal, help="The manual budget for the analysis run.")
 @click.option("--use-auto-budget", is_flag=True, help="Use automatic budget calculation based on donations.")
 @click.option(
@@ -286,20 +244,20 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
     default=None,
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
-def trigger_ranked_analysis(
+def rank(
     budget: Decimal | None,
     use_auto_budget: bool,
     budget_period: str | None,
     zero_vote_budget_percent: int,
     max_messages: int | None,
 ) -> None:
-    """Triggers a ranked analysis of pending procurements.
+    """Triggers a ranked analysis of pending procurements based on budget.
 
     Args:
         budget: The manual budget for the analysis run.
-        use_auto_budget: Flag to use automatic budget calculation.
+        use_auto_budget: Use automatic budget calculation based on donations.
         budget_period: The period for auto-budget calculation.
-        zero_vote_budget_percent: The percentage of the budget for zero-vote items.
+        zero_vote_budget_percent: Percentage of budget for zero-vote items.
         max_messages: Maximum number of analyses to trigger.
     """
     if not use_auto_budget and budget is None:

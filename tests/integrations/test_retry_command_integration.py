@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 from click.testing import CliRunner
 from faker import Faker
-from public_detective.cli.commands import retry
+from public_detective.cli.analysis import analysis_group
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
@@ -116,10 +116,10 @@ def test_retry_command_failed_analysis(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.analysis.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.analysis.PubSubProvider", return_value=mock_pubsub),
     ):
-        result = runner.invoke(retry)
+        result = runner.invoke(analysis_group, ["retry"])
 
     assert result.exit_code == 0, result.output
     assert "Successfully triggered 1 analyses for retry" in result.output
@@ -160,10 +160,10 @@ def test_retry_command_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.analysis.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.analysis.PubSubProvider", return_value=mock_pubsub),
     ):
-        result = runner.invoke(retry)
+        result = runner.invoke(analysis_group, ["retry"])
 
     assert result.exit_code == 0, result.output
     assert "Successfully triggered 1 analyses for retry" in result.output
@@ -203,10 +203,10 @@ def test_retry_command_max_retries_exceeded(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.analysis.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.analysis.PubSubProvider", return_value=mock_pubsub),
     ):
-        result = runner.invoke(retry)
+        result = runner.invoke(analysis_group, ["retry"])
 
     assert result.exit_code == 0
     assert "No analyses found to retry" in result.output
@@ -229,10 +229,10 @@ def test_retry_command_not_stale_in_progress(db_session: Engine) -> None:
     mock_pubsub = MagicMock()
     runner = CliRunner()
     with (
-        patch("public_detective.cli.commands.DatabaseManager.get_engine", return_value=db_engine),
-        patch("public_detective.cli.commands.PubSubProvider", return_value=mock_pubsub),
+        patch("public_detective.cli.analysis.DatabaseManager.get_engine", return_value=db_engine),
+        patch("public_detective.cli.analysis.PubSubProvider", return_value=mock_pubsub),
     ):
-        result = runner.invoke(retry)
+        result = runner.invoke(analysis_group, ["retry"])
 
     assert result.exit_code == 0
     assert "No analyses found to retry" in result.output

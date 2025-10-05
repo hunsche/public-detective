@@ -35,7 +35,7 @@ def upgrade() -> None:
         BEGIN
             CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
         EXCEPTION
-            WHEN duplicate_object THEN
+            WHEN unique_violation THEN
                 -- Extension already exists, so no action is needed.
                 NULL;
         END
