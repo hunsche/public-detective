@@ -14,6 +14,9 @@
 [![Flake8](https://img.shields.io/badge/flake8-checked-green.svg)](https://flake8.pycqa.org/en/latest/)
 [![Bandit](https://img.shields.io/badge/bandit-checked-green.svg)](https://github.com/PyCQA/bandit)
 [![isort](https://img.shields.io/badge/isort-checked-green.svg)](https://pycqa.github.io/isort/)
+[![Vulture](https://img.shields.io/badge/vulture-checked-green.svg)](https://github.com/jendrikseipp/vulture)
+[![Alembic](https://img.shields.io/badge/Alembic-migrations-blue.svg)](https://alembic.sqlalchemy.org/)
+[![Click](https://img.shields.io/badge/Click-CLI-blue.svg)](https://click.palletsprojects.com/)
 
 </div>
 
@@ -82,7 +85,12 @@ graph LR
 
 - **Language:** Python 3.12+
 - **AI / NLP:** Google Gemini API
-- **Database:** PostgreSQL
+- **CLI Framework:** Click
+- **Database & Migrations:** PostgreSQL, managed with Alembic
+- **Core Toolkit:**
+  - **SQLAlchemy Core:** For writing safe, raw SQL queries.
+  - **Tenacity:** To provide automatic retries for resilient operations.
+  - **Textract:** For extracting content from various document formats.
 - **Infrastructure:** Docker, Google Cloud Storage, Google Cloud Pub/Sub
 
 ## 🏁 Get Started
@@ -149,106 +157,62 @@ The application attempts to find credentials in the following order:
 
 ## 💻 How to Use
 
-The application is controlled via a unified Command-Line Interface (CLI) named `pd`.
+The application is controlled via a Command-Line Interface (CLI) with two main commands.
 
-### Global Options
-
-These options can be used with any command:
-
-- `--log-level <level>`: Override the default log level. Choices are `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`.
-- `--sync`: Run tasks synchronously instead of asynchronously. This is useful for debugging and development. It sets the `FORCE_SYNC` environment variable for the duration of the command.
-- `--output <format>`: Set the output format. Choices are `text`, `json`, or `yaml` (default: `text`).
-
-### Analysis Commands
-
-These commands are grouped under `pd analysis`.
-
-#### `prepare`
-
+### `pre-analyze`
 This command runs the first stage of the pipeline, fetching new procurement data and preparing it for analysis.
-
-- `--no-progress`: Disable the progress bar.
 
 **Example 1: Run for a specific date range**
 ```bash
-$ poetry run pd analysis prepare --start-date 2025-01-01 --end-date 2025-01-05
+$ poetry run python -m source.cli pre-analyze --start-date 2025-01-01 --end-date 2025-01-05
+
+INFO: Starting pre-analysis for dates: 2025-01-01 to 2025-01-05...
+INFO: Fetching data from PNCP...
+INFO: Found 5 new procurements.
+INFO: Pre-analysis complete. 5 items are now pending full analysis.
 ```
 
 **Example 2: Run for the current day (default)**
 ```bash
-$ poetry run pd analysis prepare
+$ poetry run python -m source.cli pre-analyze
+
+INFO: Starting pre-analysis for date: 2025-08-31...
+INFO: Fetching data from PNCP...
+INFO: Found 2 new procurements.
+INFO: Pre-analysis complete. 2 items are now pending full analysis.
 ```
 
-#### `run`
-
+---
+### `analyze`
 This command triggers the full, AI-powered analysis for a specific item that has been pre-analyzed.
 
 **Example: Trigger the analysis for a specific ID**
 ```bash
-$ poetry run pd analysis run --analysis-id <UUID>
+$ poetry run python -m source.cli analyze --analysis-id 123
+
+INFO: Triggering analysis for ID: 123...
+INFO: Message published successfully. A background worker will process the analysis shortly.
 ```
 
-#### `retry`
+---
+### `reap-stale-tasks`
+This is a maintenance command to clean up "orphan" tasks. If a worker crashes mid-process, a task could be stuck in the `IN_PROGRESS` state indefinitely. This command finds such tasks and resets them to `TIMEOUT`, allowing them to be re-processed.
 
-This is a maintenance command to clean up "orphan" tasks. If a worker crashes mid-process, a task could be stuck in the `IN_PROGRESS` state indefinitely. This command finds such tasks and resets them.
-
-**Example: Reset tasks that have been in-progress for more than 1 hour**
+**Example: Reset tasks that have been in-progress for more than 15 minutes (default)**
 ```bash
-$ poetry run pd analysis retry --timeout-hours 1
+$ poetry run python -m source.cli reap-stale-tasks
+
+INFO: Searching for stale tasks with a timeout of 15 minutes...
+INFO: Successfully reset 1 stale task to TIMEOUT status.
 ```
 
-#### `rank`
-
-This command triggers a ranked analysis of pending procurements based on budget.
-
-- `--no-progress`: Disable the progress bar.
-
-**Example: Trigger a ranked analysis with a manual budget**
+**Example: Use a custom 60-minute timeout**
 ```bash
-$ poetry run pd analysis rank --budget 100.00
+$ poetry run python -m source.cli reap-stale-tasks --timeout-minutes 60
+
+INFO: Searching for stale tasks with a timeout of 60 minutes...
+INFO: No stale tasks found.
 ```
-
-### Worker Commands
-
-These commands are grouped under `pd worker`.
-
-#### `start`
-
-This command starts a worker to process analysis messages from the queue.
-
-**Example: Start a worker that processes up to 10 messages and then stops**
-```bash
-$ poetry run pd worker start --max-messages 10
-```
-
-### Database Commands
-
-These commands are grouped under `pd db`.
-
-#### `migrate`
-
-This command runs database migrations to the latest version.
-
-```bash
-$ poetry run pd db migrate
-```
-
-#### `downgrade`
-
-This command downgrades the database to the previous version.
-
-```bash
-$ poetry run pd db downgrade
-```
-
-#### `reset`
-
-This command resets the database. **Warning: This is a destructive operation.**
-
-```bash
-$ poetry run pd db reset
-```
-
 
 ## 🙌 Join the Mission!
 
