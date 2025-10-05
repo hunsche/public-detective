@@ -314,6 +314,12 @@ class AnalysisService:
                 total_cost=total_cost,
             )
 
+            self.budget_ledger_repo.save_expense(
+                analysis_id,
+                total_cost,
+                f"Análise da licitação {procurement.pncp_control_number} (v{version_number}).",
+            )
+
             self.logger.info(f"Successfully completed analysis for {control_number}.")
 
         except Exception as e:
@@ -751,7 +757,7 @@ class AnalysisService:
         batch_size: int,
         sleep_seconds: int,
         max_messages: int | None = None,
-    ) -> None:
+    ) -> list[tuple[Procurement, dict[str, Any]]]:
         """Runs the pre-analysis job for a given date range.
 
         Args:
@@ -760,47 +766,46 @@ class AnalysisService:
             batch_size: The number of procurements to process in each batch.
             sleep_seconds: The number of seconds to sleep between batches.
             max_messages: The maximum number of messages to publish.
+
+        Returns:
+            A list of all procurements found.
         """
         try:
             self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
             current_date = start_date
             messages_published_count = 0
+
+            all_procurements = []
             while current_date <= end_date:
-                self.logger.info(f"Processing date: {current_date}")
                 procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
                     target_date=current_date
                 )
-
-                if not procurements_with_raw:
-                    self.logger.info(f"No procurements were updated on {current_date}. Moving to next day.")
-                    current_date += timedelta(days=1)
-                    continue
-
-                batch_count = 0
-                for i in range(0, len(procurements_with_raw), batch_size):
-                    batch = procurements_with_raw[i : i + batch_size]
-                    batch_count += 1
-                    self.logger.info(f"Processing batch {batch_count} with {len(batch)} procurements.")
-
-                    for procurement, raw_data in batch:
-                        try:
-                            self._pre_analyze_procurement(procurement, raw_data)
-                            messages_published_count += 1
-                            if max_messages is not None and messages_published_count >= max_messages:
-                                self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
-                                return
-                        except Exception as e:
-                            self.logger.error(
-                                f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
-                                exc_info=True,
-                            )
-
-                    if i + batch_size < len(procurements_with_raw):
-                        self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
-                        time.sleep(sleep_seconds)
-
+                all_procurements.extend(procurements_with_raw)
                 current_date += timedelta(days=1)
+
+            for i in range(0, len(all_procurements), batch_size):
+                batch = all_procurements[i : i + batch_size]
+                self.logger.info(f"Processing batch with {len(batch)} procurements.")
+
+                for procurement, raw_data in batch:
+                    try:
+                        self._pre_analyze_procurement(procurement, raw_data)
+                        messages_published_count += 1
+                        if max_messages is not None and messages_published_count >= max_messages:
+                            self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
+                            return all_procurements
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
+                            exc_info=True,
+                        )
+
+                if i + batch_size < len(all_procurements):
+                    self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
+                    time.sleep(sleep_seconds)
+
             self.logger.info("Pre-analysis job for the entire date range has been completed.")
+            return all_procurements
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e
 
@@ -870,7 +875,7 @@ class AnalysisService:
         zero_vote_budget_percent: int,
         budget: Decimal | None = None,
         max_messages: int | None = None,
-    ) -> None:
+    ) -> list[Any]:
         """Runs the ranked analysis job.
 
         Args:
@@ -879,6 +884,9 @@ class AnalysisService:
             zero_vote_budget_percent: The percentage of the budget to use for zero-vote analyses.
             budget: The manual budget to use.
             max_messages: The maximum number of messages to publish.
+
+        Returns:
+            A list of analyses that were triggered.
         """
         if use_auto_budget:
             if not budget_period:
@@ -899,14 +907,14 @@ class AnalysisService:
 
         pending_analyses = self.analysis_repo.get_pending_analyses_ranked()
         self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
-        triggered_count = 0
+        triggered_analyses: list[Any] = []
 
         for analysis in pending_analyses:
             if remaining_budget <= 0:
                 self.logger.info("Budget exhausted. Stopping job.")
                 break
 
-            if max_messages is not None and triggered_count >= max_messages:
+            if max_messages is not None and len(triggered_analyses) >= max_messages:
                 self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
                 break
 
@@ -936,17 +944,13 @@ class AnalysisService:
                 remaining_budget -= estimated_cost
                 if analysis.votes_count == 0:
                     zero_vote_budget -= estimated_cost
-                self.budget_ledger_repo.save_expense(
-                    analysis.analysis_id,
-                    estimated_cost,
-                    f"Análise da licitação {analysis.procurement_control_number} (v{analysis.version_number}).",
-                )
+
                 self.logger.info(
                     f"Analysis {analysis.analysis_id} triggered. "
                     f"Remaining budget: {remaining_budget:.2f} BRL. "
                     f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
                 )
-                triggered_count += 1
+                triggered_analyses.append(analysis)
             except Exception as e:
                 self.logger.error(
                     f"Failed to trigger analysis {analysis.analysis_id}: {e}",
@@ -954,6 +958,7 @@ class AnalysisService:
                 )
 
         self.logger.info("Ranked analysis job completed.")
+        return triggered_analyses
 
     def retry_analyses(self, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> int:
         """Retries failed or stale analyses.

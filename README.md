@@ -149,62 +149,106 @@ The application attempts to find credentials in the following order:
 
 ## 💻 How to Use
 
-The application is controlled via a Command-Line Interface (CLI) with two main commands.
+The application is controlled via a unified Command-Line Interface (CLI) named `pd`.
 
-### `pre-analyze`
+### Global Options
+
+These options can be used with any command:
+
+- `--verbose`: Enable verbose logging (INFO level).
+- `--debug`: Enable debug logging (DEBUG level).
+- `--output <format>`: Set the output format. Choices are `text`, `json`, or `yaml` (default: `text`).
+
+### Analysis Commands
+
+These commands are grouped under `pd analysis`.
+
+#### `prepare`
+
 This command runs the first stage of the pipeline, fetching new procurement data and preparing it for analysis.
+
+- `--no-progress`: Disable the progress bar.
 
 **Example 1: Run for a specific date range**
 ```bash
-$ poetry run python -m source.cli pre-analyze --start-date 2025-01-01 --end-date 2025-01-05
-
-INFO: Starting pre-analysis for dates: 2025-01-01 to 2025-01-05...
-INFO: Fetching data from PNCP...
-INFO: Found 5 new procurements.
-INFO: Pre-analysis complete. 5 items are now pending full analysis.
+$ poetry run pd analysis prepare --start-date 2025-01-01 --end-date 2025-01-05
 ```
 
 **Example 2: Run for the current day (default)**
 ```bash
-$ poetry run python -m source.cli pre-analyze
-
-INFO: Starting pre-analysis for date: 2025-08-31...
-INFO: Fetching data from PNCP...
-INFO: Found 2 new procurements.
-INFO: Pre-analysis complete. 2 items are now pending full analysis.
+$ poetry run pd analysis prepare
 ```
 
----
-### `analyze`
+#### `run`
+
 This command triggers the full, AI-powered analysis for a specific item that has been pre-analyzed.
 
 **Example: Trigger the analysis for a specific ID**
 ```bash
-$ poetry run python -m source.cli analyze --analysis-id 123
-
-INFO: Triggering analysis for ID: 123...
-INFO: Message published successfully. A background worker will process the analysis shortly.
+$ poetry run pd analysis run --analysis-id <UUID>
 ```
 
----
-### `reap-stale-tasks`
-This is a maintenance command to clean up "orphan" tasks. If a worker crashes mid-process, a task could be stuck in the `IN_PROGRESS` state indefinitely. This command finds such tasks and resets them to `TIMEOUT`, allowing them to be re-processed.
+#### `retry`
 
-**Example: Reset tasks that have been in-progress for more than 15 minutes (default)**
+This is a maintenance command to clean up "orphan" tasks. If a worker crashes mid-process, a task could be stuck in the `IN_PROGRESS` state indefinitely. This command finds such tasks and resets them.
+
+**Example: Reset tasks that have been in-progress for more than 1 hour**
 ```bash
-$ poetry run python -m source.cli reap-stale-tasks
-
-INFO: Searching for stale tasks with a timeout of 15 minutes...
-INFO: Successfully reset 1 stale task to TIMEOUT status.
+$ poetry run pd analysis retry --timeout-hours 1
 ```
 
-**Example: Use a custom 60-minute timeout**
+#### `rank`
+
+This command triggers a ranked analysis of pending procurements based on budget.
+
+- `--no-progress`: Disable the progress bar.
+
+**Example: Trigger a ranked analysis with a manual budget**
 ```bash
-$ poetry run python -m source.cli reap-stale-tasks --timeout-minutes 60
-
-INFO: Searching for stale tasks with a timeout of 60 minutes...
-INFO: No stale tasks found.
+$ poetry run pd analysis rank --budget 100.00
 ```
+
+### Worker Commands
+
+These commands are grouped under `pd worker`.
+
+#### `start`
+
+This command starts a worker to process analysis messages from the queue.
+
+**Example: Start a worker that processes up to 10 messages and then stops**
+```bash
+$ poetry run pd worker start --max-messages 10
+```
+
+### Database Commands
+
+These commands are grouped under `pd db`.
+
+#### `migrate`
+
+This command runs database migrations to the latest version.
+
+```bash
+$ poetry run pd db migrate
+```
+
+#### `downgrade`
+
+This command downgrades the database to the previous version.
+
+```bash
+$ poetry run pd db downgrade
+```
+
+#### `reset`
+
+This command resets the database. **Warning: This is a destructive operation.**
+
+```bash
+$ poetry run pd db reset
+```
+
 
 ## 🙌 Join the Mission!
 

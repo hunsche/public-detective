@@ -29,6 +29,7 @@ This document is your one-stop guide to contributing to the project. Let's get s
 - [The Detective's Toolkit (Style Guides)](#the-detectives-toolkit-style-guides)
   - [Python Code](#python-code)
   - [Git Commit Messages](#git-commit-messages)
+- [🤓 Workflow Overview](#-workflow-overview)
 - [Code of Conduct](#code-of-conduct)
 - [Thank You!](#thank-you)
 
@@ -145,31 +146,39 @@ If any of these checks fail, your commit will be aborted. Simply review the erro
 As mentioned above, we use the [Conventional Commits](https://www.conventionalcommits.org/en/v1.0.0/) standard. This helps us automate changelogs and makes the project history more readable.
 
 ## 🤓 Workflow Overview
-The application operates in a two-stage pipeline: a lightweight **Pre-analysis** stage to discover and prepare data, followed by an on-demand, AI-powered **Analysis** stage. This decoupled architecture ensures efficiency and cost-effectiveness.
+The application operates in a multi-stage pipeline: a lightweight **Pre-analysis** stage to discover and prepare data, an on-demand trigger for the **Analysis** stage, and an asynchronous **Worker** to handle the AI processing. This decoupled architecture ensures efficiency and cost-effectiveness.
 
 The diagram below illustrates the complete workflow:
 
 ```mermaid
 graph TD
-    subgraph "Stage 1: Pre-analysis (Scheduler)"
-        A[Start: `pre-analyze` command] --> B{Fetch new data from PNCP API};
-        B --> C[Calculate content hash for idempotency];
-        C --> D[Estimate AI analysis cost];
-        D --> E[Save analysis record to Database<br>Status: PENDING_ANALYSIS];
+    subgraph "Stage 1: Pre-analysis (Scheduled CLI)"
+        A[Start: `cli pre-analyze`] --> B{Fetch procurements from PNCP API};
+        B --> C[For each procurement...];
+        C --> D{Calculate content hash<br>to ensure idempotency};
+        D --> E[Estimate analysis cost<br>(input tokens only)];
+        E --> F[Save initial record to Database<br>Status: PENDING_ANALYSIS<br>Cost: *Estimated*];
     end
 
-    E --> F[Start: `analyze` command with ID]
-
-    subgraph "Stage 2: Analysis (On-Demand)"
-        F --> G[Publish message to Pub/Sub];
-        H[Background worker consumes message] --> I[Retrieve data and documents];
-        I --> J[Submit to Google Gemini for analysis];
-        J --> K{Save AI results to Database};
-        K --> L[Status: ANALYSIS_SUCCESSFUL];
-        K --> M[Status: ANALYSIS_FAILED];
+    subgraph "Stage 2: Analysis (On-demand Trigger)"
+        G[Start: `cli analyze`] --> H{User or scheduler triggers analysis<br>for a specific ID};
+        H --> I[Publish message to Pub/Sub topic];
     end
 
-    G -.-> H;
+    subgraph "Stage 3: Worker (Asynchronous Processing)"
+        J[Background worker consumes message] --> K[Retrieve analysis details & documents];
+        K --> L[Prepare files & build prompt];
+        L --> M[Submit to Google Gemini API];
+        M --> N[Receive AI analysis & token usage];
+        N --> O[Calculate *actual* total cost<br>(input + output + thinking)];
+        O --> P{Save final results to Database<br>Status: ANALYSIS_SUCCESSFUL<br>Cost: *Actual*};
+        P --> Q[Save actual expense to Budget Ledger];
+    end
+
+    F --> G;
+    I -.-> J;
+
+    M -- On Failure --> R[Update status in DB<br>Status: ANALYSIS_FAILED];
 ```
 
 ## Code of Conduct

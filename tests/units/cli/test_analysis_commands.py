@@ -2,7 +2,9 @@ from datetime import date
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
+import pytest
 from click.testing import CliRunner
+from public_detective.cli import create_cli
 from public_detective.cli.analysis import analysis_group
 
 
@@ -493,11 +495,11 @@ def test_pre_analysis_command_with_valid_dates(
     )
 
     mock_service_instance.run_pre_analysis.assert_called_once_with(
-        date(2025, 1, 1),
-        date(2025, 1, 2),
-        batch_size,
-        sleep_seconds,
-        None,  # max_messages
+        start_date=date(2025, 1, 1),
+        end_date=date(2025, 1, 2),
+        batch_size=batch_size,
+        sleep_seconds=sleep_seconds,
+        max_messages=None,
     )
 
     assert "Pre-analysis completed successfully!" in result.output
@@ -586,3 +588,72 @@ def test_pre_analysis_command_exception(
 
     assert "An error occurred: Test error" in result.output
     assert result.exit_code != 0
+
+
+class FakeProgressFactory:
+    """A fake progress factory for testing."""
+
+    calls: list[str]
+
+    def __init__(self) -> None:
+        """Initializes the fake progress factory."""
+        self.calls = []
+
+    def make(self, iterable: list[int], label: str) -> object:
+        """Creates a fake progress bar.
+
+        Args:
+            iterable: The iterable to track.
+            label: The label for the progress bar.
+
+        Returns:
+            A fake context manager.
+        """
+        self.calls.append(label)
+
+        class _CM:
+            def __enter__(self) -> list[int]:
+                return iterable
+
+            def __exit__(self, _exc_type: None, _exc: None, _tb: None) -> None:
+                return
+
+        return _CM()
+
+
+@pytest.mark.parametrize(
+    "should_show, no_progress_flag, expected_called",
+    [
+        (True, False, True),
+        (False, False, False),
+        (True, True, False),
+    ],
+)
+@patch("public_detective.cli.analysis.should_show_progress")
+@patch("public_detective.cli.analysis.AnalysisService")
+def test_progress_bar_behavior(
+    mock_analysis_service: MagicMock,
+    mock_should_show_progress: MagicMock,
+    should_show: bool,
+    no_progress_flag: bool,
+    expected_called: bool,
+) -> None:
+    """Tests that the progress bar is displayed based on the environment."""
+    fake = FakeProgressFactory()
+    mock_should_show_progress.return_value = should_show
+    mock_analysis_service.return_value.run_pre_analysis.return_value = [1, 2, 3]
+
+    with patch("public_detective.cli.analysis.PROGRESS_FACTORY", fake):
+        runner = CliRunner()
+        cli = create_cli()
+        args = ["analysis", "prepare"]
+        if no_progress_flag:
+            args.append("--no-progress")
+        result = runner.invoke(cli, args, color=False)
+        assert result.exit_code == 0, result.output
+
+        if no_progress_flag:
+            assert not fake.calls
+        else:
+            assert mock_should_show_progress.called
+            assert (len(fake.calls) > 0) is expected_called

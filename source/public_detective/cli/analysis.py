@@ -1,10 +1,13 @@
 """This module defines the 'analysis' command group for the Public Detective CLI."""
 
+import os
+import sys
 from datetime import date, datetime
 from decimal import Decimal
 from uuid import UUID
 
 import click
+from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
@@ -19,6 +22,27 @@ from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
+
+PROGRESS_FACTORY = ProgressFactory()
+
+
+def should_show_progress(no_progress_flag: bool) -> bool:
+    """Determines whether a progress bar should be displayed.
+
+    Args:
+        no_progress_flag: The value of the --no-progress flag.
+
+    Returns:
+        True if the progress bar should be shown, False otherwise.
+    """
+    if no_progress_flag:
+        return False
+    if os.getenv("CI") == "1":
+        return False
+    try:
+        return sys.stderr.isatty()
+    except Exception:
+        return False
 
 
 @click.group("analysis")
@@ -91,8 +115,14 @@ def run(analysis_id: UUID) -> None:
     default=None,
     help="Maximum number of messages to publish. If None, publishes all found.",
 )
+@click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
 def prepare(
-    start_date: datetime, end_date: datetime, batch_size: int, sleep_seconds: int, max_messages: int | None
+    start_date: datetime,
+    end_date: datetime,
+    batch_size: int,
+    sleep_seconds: int,
+    max_messages: int | None,
+    no_progress: bool,
 ) -> None:
     """Scans for new procurements and prepares them for analysis.
 
@@ -102,25 +132,10 @@ def prepare(
         batch_size: Number of procurements to process in each batch.
         sleep_seconds: Seconds to sleep between batches.
         max_messages: Maximum number of messages to publish.
+        no_progress: Whether to disable the progress bar.
     """
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
-
-    import os
-
-    import google.auth
-
-    click.echo(f"GOOGLE_APPLICATION_CREDENTIALS: {os.environ.get('GOOGLE_APPLICATION_CREDENTIALS')}")
-    try:
-        credentials, project_id = google.auth.default()
-        click.echo(f"Default GCP Project: {project_id}")
-    except Exception as e:
-        click.echo(f"Could not get default GCP project: {e}")
-
-    click.echo(
-        f"Running pre-analysis from {start_date.strftime(DateProvider.DATE_FORMAT)} to "
-        f"{end_date.strftime(DateProvider.DATE_FORMAT)}."
-    )
 
     db_engine = DatabaseManager.get_engine()
     pubsub_provider = PubSubProvider()
@@ -147,7 +162,23 @@ def prepare(
     )
 
     try:
-        service.run_pre_analysis(start_date.date(), end_date.date(), batch_size, sleep_seconds, max_messages)
+        items = service.run_pre_analysis(
+            start_date=start_date.date(),
+            end_date=end_date.date(),
+            batch_size=batch_size,
+            sleep_seconds=sleep_seconds,
+            max_messages=max_messages,
+        )
+
+        if not no_progress and should_show_progress(no_progress):
+            cm = PROGRESS_FACTORY.make(items, label="Processing procurements")
+        else:
+            cm = null_progress(items, label="Processing procurements")
+
+        with cm as bar:
+            for _ in bar:
+                pass
+
         click.secho("Pre-analysis completed successfully!", fg="green")
     except (AnalysisError, Exception) as e:
         click.secho(f"An error occurred: {e}", fg="red")
@@ -244,12 +275,14 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
     default=None,
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
+@click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
 def rank(
     budget: Decimal | None,
     use_auto_budget: bool,
     budget_period: str | None,
     zero_vote_budget_percent: int,
     max_messages: int | None,
+    no_progress: bool,
 ) -> None:
     """Triggers a ranked analysis of pending procurements based on budget.
 
@@ -259,6 +292,7 @@ def rank(
         budget_period: The period for auto-budget calculation.
         zero_vote_budget_percent: Percentage of budget for zero-vote items.
         max_messages: Maximum number of analyses to trigger.
+        no_progress: Whether to disable the progress bar.
     """
     if not use_auto_budget and budget is None:
         raise click.UsageError("Either --budget or --use-auto-budget must be provided.")
@@ -295,13 +329,22 @@ def rank(
             pubsub_provider=pubsub_provider,
         )
 
-        service.run_ranked_analysis(
+        items = service.run_ranked_analysis(
             budget=budget,
             use_auto_budget=use_auto_budget,
             budget_period=budget_period,
             zero_vote_budget_percent=zero_vote_budget_percent,
             max_messages=max_messages,
         )
+
+        if should_show_progress(no_progress):
+            cm = PROGRESS_FACTORY.make(items, label="Processing ranked analyses")
+        else:
+            cm = null_progress(items, label="Processing ranked analyses")
+
+        with cm as bar:
+            for _ in bar:
+                pass
 
         click.secho("Ranked analysis completed successfully!", fg="green")
     except Exception as e:

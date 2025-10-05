@@ -394,6 +394,7 @@ def test_analyze_procurement_happy_path(
 
     analysis_service.ai_provider.get_structured_analysis.assert_called_once()
     analysis_service.analysis_repo.save_analysis.assert_called_once()
+    analysis_service.budget_ledger_repo.save_expense.assert_called_once()
 
     saved_result: AnalysisResult = analysis_service.analysis_repo.save_analysis.call_args[1]["result"]
     assert saved_result.document_hash == "testhash"
@@ -616,7 +617,6 @@ def test_run_ranked_analysis_manual_budget(mock_run_specific: MagicMock, analysi
     )
 
     mock_run_specific.assert_called_once_with(mock_analysis.analysis_id)
-    analysis_service.budget_ledger_repo.save_expense.assert_called_once()
 
 
 @patch("public_detective.services.analysis.AnalysisService.run_specific_analysis")
@@ -756,7 +756,7 @@ def test_run_pre_analysis_no_procurements_found(
 
     analysis_service.run_pre_analysis(start_date, end_date, 10, 0)
 
-    assert f"No procurements were updated on {start_date}" in caplog.text
+    assert "Pre-analysis job for the entire date range has been completed." in caplog.text
 
 
 def test_analyze_procurement_no_procurement_id(analysis_service: AnalysisService) -> None:
