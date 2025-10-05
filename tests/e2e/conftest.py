@@ -220,7 +220,7 @@ def _wait_for_db(engine: Engine) -> None:
 def _run_migrations(engine: Engine) -> None:
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
-    lock_path = Path(tempfile.gettempdir()) / "e2e_alembic.lock"
+    lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
     try:
         with FileLock(str(lock_path)):
             command.upgrade(alembic_cfg, "head")

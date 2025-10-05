@@ -1,4 +1,5 @@
 import os
+import tempfile
 import time
 import uuid
 import zipfile
@@ -9,6 +10,7 @@ from typing import Any
 import pytest
 from alembic import command
 from alembic.config import Config
+from filelock import FileLock
 from public_detective.providers.config import ConfigProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
@@ -70,7 +72,10 @@ def db_session() -> Generator[Engine, Any, None]:
         alembic_cfg = Config("alembic.ini")
         alembic_cfg.set_main_option("sqlalchemy.url", db_url)
         alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
-        command.upgrade(alembic_cfg, "head")
+
+        lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
+        with FileLock(str(lock_path)):
+            command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:
             connection.execute(text(f"SET search_path TO {schema_name}"))
