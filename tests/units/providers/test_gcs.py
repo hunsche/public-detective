@@ -114,5 +114,5 @@ def test_get_client_real_credentials(mock_config_provider: MagicMock) -> None:
     provider = GcsProvider()
     with patch("public_detective.providers.gcs.Client") as mock_gcs_client:
         client = provider.get_client()
-        mock_gcs_client.assert_called_once_with()
+        mock_gcs_client.assert_called_once_with(project=mock_config.GCP_PROJECT)
         assert client is not None

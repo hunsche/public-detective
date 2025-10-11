@@ -12,8 +12,15 @@ from alembic import command
 from alembic.config import Config
 from filelock import FileLock
 from public_detective.providers.config import ConfigProvider
+from public_detective.providers.gcs import GcsProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+
+@pytest.fixture(scope="function")
+def gcs_provider() -> GcsProvider:
+    """Provides a GCS provider for integration tests."""
+    return GcsProvider()
 
 
 @pytest.fixture(scope="function")

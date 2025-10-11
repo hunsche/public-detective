@@ -40,7 +40,7 @@ services:
 
   gcs:
     image: fsouza/fake-gcs-server:latest
-    command: -scheme http -host 0.0.0.0 -port 8086
+    command: -scheme http -host 0.0.0.0 -port 8086 -public-host localhost
     ports:
       - "8086:8086"
     volumes:

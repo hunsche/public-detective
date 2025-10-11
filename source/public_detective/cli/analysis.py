@@ -46,20 +46,34 @@ def should_show_progress(no_progress_flag: bool) -> bool:
 
 
 @click.group("analysis")
-def analysis_group() -> None:
-    """Groups commands related to procurement analysis."""
-    pass
+@click.option(
+    "--gcs-path-prefix",
+    default=None,
+    help="[Internal Testing] Overwrites the base GCS path for uploads.",
+)
+@click.pass_context
+def analysis_group(ctx: click.Context, gcs_path_prefix: str | None) -> None:
+    """Groups commands related to procurement analysis.
+
+    Args:
+        ctx: The click context.
+        gcs_path_prefix: Overwrites the base GCS path for uploads.
+    """
+    ctx.obj = {"gcs_path_prefix": gcs_path_prefix}
 
 
 @analysis_group.command("run")
 @click.option("--analysis-id", type=UUID, required=True, help="The ID of the analysis to run.")
-def run(analysis_id: UUID) -> None:
+@click.pass_context
+def run(ctx: click.Context, analysis_id: UUID) -> None:
     """Triggers a specific procurement analysis by its ID.
 
     Args:
+        ctx: The click context.
         analysis_id: The ID of the analysis to run.
     """
     click.echo(f"Triggering analysis for analysis_id: {analysis_id}")
+    gcs_path_prefix = ctx.obj
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -84,6 +98,7 @@ def run(analysis_id: UUID) -> None:
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
+            gcs_path_prefix=gcs_path_prefix,
         )
 
         service.run_specific_analysis(analysis_id)
@@ -116,7 +131,9 @@ def run(analysis_id: UUID) -> None:
     help="Maximum number of messages to publish. If None, publishes all found.",
 )
 @click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
+@click.pass_context
 def prepare(
+    ctx: click.Context,
     start_date: datetime,
     end_date: datetime,
     batch_size: int,
@@ -127,6 +144,7 @@ def prepare(
     """Scans for new procurements and prepares them for analysis.
 
     Args:
+        ctx: The click context.
         start_date: Start date for the pre-analysis.
         end_date: End date for the pre-analysis.
         batch_size: Number of procurements to process in each batch.
@@ -137,6 +155,7 @@ def prepare(
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
+    gcs_path_prefix = ctx.obj
     db_engine = DatabaseManager.get_engine()
     pubsub_provider = PubSubProvider()
     gcs_provider = GcsProvider()
@@ -159,6 +178,7 @@ def prepare(
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
         pubsub_provider=pubsub_provider,
+        gcs_path_prefix=gcs_path_prefix,
     )
 
     try:
@@ -207,15 +227,18 @@ def prepare(
     help="The timeout in hours to consider a task stale and eligible for retry.",
     show_default=True,
 )
-def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> None:
+@click.pass_context
+def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> None:
     """Retries failed or stale procurement analyses.
 
     Args:
+        ctx: The click context.
         initial_backoff_hours: The initial backoff period in hours.
         max_retries: The maximum number of retries for a failed analysis.
         timeout_hours: The timeout in hours to consider a task stale.
     """
     click.echo("Searching for analyses to retry...")
+    gcs_path_prefix = ctx.obj
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -240,6 +263,7 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
+            gcs_path_prefix=gcs_path_prefix,
         )
 
         retried_count = service.retry_analyses(initial_backoff_hours, max_retries, timeout_hours)
@@ -276,7 +300,9 @@ def retry(initial_backoff_hours: int, max_retries: int, timeout_hours: int) -> N
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
 @click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
+@click.pass_context
 def rank(
+    ctx: click.Context,
     budget: Decimal | None,
     use_auto_budget: bool,
     budget_period: str | None,
@@ -287,6 +313,7 @@ def rank(
     """Triggers a ranked analysis of pending procurements based on budget.
 
     Args:
+        ctx: The click context.
         budget: The manual budget for the analysis run.
         use_auto_budget: Use automatic budget calculation based on donations.
         budget_period: The period for auto-budget calculation.
@@ -303,6 +330,8 @@ def rank(
         click.echo("Triggering ranked analysis with auto-budget.")
     else:
         click.echo(f"Triggering ranked analysis with a manual budget of {budget:.2f} BRL.")
+
+    gcs_path_prefix = ctx.obj
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -327,6 +356,7 @@ def rank(
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
             pubsub_provider=pubsub_provider,
+            gcs_path_prefix=gcs_path_prefix,
         )
 
         items = service.run_ranked_analysis(

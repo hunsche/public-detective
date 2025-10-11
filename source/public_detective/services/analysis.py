@@ -136,6 +136,7 @@ class AnalysisService:
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
         pubsub_provider: PubSubProvider | None = None,
+        gcs_path_prefix: str | None = None,
     ) -> None:
         """Initializes the service with its dependencies.
 
@@ -149,6 +150,7 @@ class AnalysisService:
             ai_provider: The provider for AI services.
             gcs_provider: The provider for Google Cloud Storage services.
             pubsub_provider: The provider for Pub/Sub services.
+            gcs_path_prefix: Overwrites the base GCS path for uploads.
         """
         self.procurement_repo = procurement_repo
         self.analysis_repo = analysis_repo
@@ -163,6 +165,7 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
+        self.gcs_path_prefix = gcs_path_prefix
 
     def _get_modality(self, candidates: list[AIFileCandidate]) -> Modality:
         """Determines the modality of an analysis based on file extensions.
@@ -506,7 +509,8 @@ class AnalysisService:
         bucket_name = self.config.GCP_GCS_BUCKET_PROCUREMENTS
         for candidate in candidates:
             source_document_db_id = source_docs_map[candidate.synthetic_id]
-            base_gcs_path = f"{procurement_id}/{analysis_id}/{source_document_db_id}"
+            standard_path = f"{procurement_id}/{analysis_id}/{source_document_db_id}"
+            base_gcs_path = f"{self.gcs_path_prefix}/{standard_path}" if self.gcs_path_prefix else standard_path
             original_gcs_path = f"{base_gcs_path}/{os.path.basename(candidate.original_path)}"
 
             self.gcs_provider.upload_file(

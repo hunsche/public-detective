@@ -33,13 +33,24 @@ def worker_group() -> None:
     default=None,
     help="Maximum number of output tokens for the AI model. Set to 'None' to remove the limit.",
 )
-def start(max_messages: int | None, timeout: int | None, max_output_tokens: str | None) -> None:
+@click.option(
+    "--gcs-path-prefix",
+    default=None,
+    help="[Internal Testing] Overwrites the base GCS path for uploads.",
+)
+def start(
+    max_messages: int | None,
+    timeout: int | None,
+    max_output_tokens: str | None,
+    gcs_path_prefix: str | None,
+) -> None:
     """Initializes and runs the Pub/Sub subscription worker.
 
     Args:
         max_messages: Maximum number of messages to process before exiting.
         timeout: Time in seconds to wait for a message.
         max_output_tokens: Maximum number of output tokens for the AI model.
+        gcs_path_prefix: Overwrites the base GCS path for uploads.
     """
     if max_messages is not None and timeout is None:
         timeout = 10
@@ -57,8 +68,12 @@ def start(max_messages: int | None, timeout: int | None, max_output_tokens: str 
             return
 
     try:
-        subscription = Subscription()
-        subscription.run(max_messages=max_messages, timeout=timeout, max_output_tokens=token_limit)
+        subscription = Subscription(gcs_path_prefix=gcs_path_prefix)
+        subscription.run(
+            max_messages=max_messages,
+            timeout=timeout,
+            max_output_tokens=token_limit,
+        )
     except KeyError as e:
         logger.critical(f"Execution stopped due to missing environment variables: {e}")
     except Exception as e:

@@ -59,6 +59,7 @@ class Subscription:
         self,
         analysis_service: AnalysisService | None = None,
         processing_complete_event: threading.Event | None = None,
+        gcs_path_prefix: str | None = None,
     ):
         """Initializes the worker, loading configuration and services.
 
@@ -70,6 +71,7 @@ class Subscription:
                 If not provided, it will be created internally.
             processing_complete_event: An optional event to signal when a
                 message has been fully processed.
+            gcs_path_prefix: Overwrites the base GCS path for uploads.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -100,6 +102,7 @@ class Subscription:
                 budget_ledger_repo=budget_ledger_repo,
                 ai_provider=ai_provider,
                 gcs_provider=gcs_provider,
+                gcs_path_prefix=gcs_path_prefix,
             )
 
         self.processed_messages_count = 0

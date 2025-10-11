@@ -6,7 +6,7 @@ import tempfile
 import threading
 import time
 import uuid
-from collections.abc import Callable, Generator
+from collections.abc import Generator
 from pathlib import Path
 
 import pytest
@@ -18,8 +18,15 @@ from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.storage import Client
 from public_detective.providers.config import ConfigProvider
+from public_detective.providers.gcs import GcsProvider
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+
+@pytest.fixture(scope="function")
+def gcs_provider() -> GcsProvider:
+    """Provides a GCS provider for E2E tests."""
+    return GcsProvider()
 
 
 def get_free_port() -> int:
@@ -217,48 +224,22 @@ def _wait_for_db(engine: Engine) -> None:
     pytest.fail("Database did not become available in time.")
 
 
-def _run_migrations(engine: Engine) -> None:
+def _run_migrations(engine: Engine, schema_name: str) -> None:
+    """Runs the Alembic migrations for the specified schema.
+
+    Args:
+        engine: The SQLAlchemy engine.
+        schema_name: The name of the database schema.
+    """
     alembic_cfg = Config("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
+    alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
     lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
     try:
         with FileLock(str(lock_path)):
             command.upgrade(alembic_cfg, "head")
     except Exception as e:
         pytest.fail(f"Alembic upgrade failed: {e}")
-
-
-@pytest.fixture(scope="function")
-def gcs_cleanup_manager() -> Generator[Callable[[str], None], None, None]:
-    """A fixture to manage GCS cleanup for E2E tests.
-
-    Yields:
-        A function to register a GCS prefix to be deleted.
-    """
-    prefixes_to_delete = []
-
-    def register_prefix(prefix: str) -> None:
-        """Registers a GCS prefix to be deleted after the test.
-
-        Args:
-            prefix: The GCS prefix to delete.
-        """
-        prefixes_to_delete.append(prefix)
-
-    yield register_prefix
-
-    config = ConfigProvider.get_config()
-    gcs_client = Client(project=config.GCP_PROJECT)
-    bucket = gcs_client.bucket(config.GCP_GCS_BUCKET_PROCUREMENTS)
-    if not bucket.exists():
-        return
-
-    for prefix in prefixes_to_delete:
-        try:
-            for blob in bucket.list_blobs(prefix=prefix):
-                blob.delete()
-        except exceptions.NotFound:
-            pass
 
 
 @pytest.fixture(scope="function")
@@ -278,7 +259,7 @@ def db_session() -> Generator[Engine, None, None]:
         connection.execute(text(f"CREATE SCHEMA {schema_name}"))
         connection.commit()
 
-    _run_migrations(engine)
+    _run_migrations(engine, schema_name)
 
     yield engine
 
@@ -296,3 +277,40 @@ def db_session() -> Generator[Engine, None, None]:
     engine.dispose()
     print("E2E test environment torn down.")
     ConfigProvider._config = None
+
+
+@pytest.fixture(scope="session", autouse=True)
+def session_gcs_cleanup() -> Generator[None, None, None]:
+    """A session-scoped fixture to clean up all e2e-test-* folders from GCS.
+
+    This acts as a final safeguard to ensure no test artifacts are left
+    behind, especially when tests are run in parallel and might be
+    terminated abruptly.
+    """
+    # This part runs before any tests
+    yield
+    # This part runs after all tests in the session are complete
+    print("\n--- Starting final session GCS cleanup ---")
+    config = ConfigProvider.get_config()
+    bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
+    gcs_client = Client(project=config.GCP_PROJECT)
+    bucket = gcs_client.bucket(bucket_name)
+
+    blobs_to_delete = list(bucket.list_blobs(prefix="e2e-test-"))
+    if not blobs_to_delete:
+        print("--- No leftover e2e-test-* folders found. Cleanup not needed. ---")
+        return
+
+    print(f"--- Found {len(blobs_to_delete)} blobs to clean up. Deleting... ---")
+    # To delete folders, we must delete all blobs within them.
+    # A more robust way is to get the unique prefixes and delete them.
+    prefixes = {blob.name.split("/")[0] for blob in blobs_to_delete}
+    for prefix in prefixes:
+        print(f"--- Deleting prefix: {prefix} ---")
+        prefix_blobs = list(bucket.list_blobs(prefix=prefix))
+        for blob in prefix_blobs:
+            try:
+                blob.delete()
+            except exceptions.NotFound:
+                pass
+    print("--- Final session GCS cleanup complete. ---")

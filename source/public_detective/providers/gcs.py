@@ -27,11 +27,11 @@ class GcsProvider:
             if config.GCP_GCS_HOST:
                 self._client = Client(
                     credentials=AnonymousCredentials(),
-                    project="test",
+                    project=config.GCP_PROJECT,
                     client_options={"api_endpoint": config.GCP_GCS_HOST},
                 )
             else:
-                self._client = Client()
+                self._client = Client(project=config.GCP_PROJECT)
         return self._client
 
     def upload_file(
@@ -40,6 +40,8 @@ class GcsProvider:
         destination_blob_name: str,
         content: bytes,
         content_type: str,
+        *,
+        metadata: dict | None = None,
     ) -> None:
         """Uploads a file to a GCS bucket.
 
@@ -48,10 +50,15 @@ class GcsProvider:
             destination_blob_name: The name of the blob to create.
             content: The content of the file to upload.
             content_type: The content type of the file.
+            metadata: Optional metadata to attach to the GCS object.
         """
         client = self.get_client()
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(destination_blob_name)
+
+        if metadata:
+            blob.metadata = metadata
+
         blob.upload_from_string(content, content_type=content_type)
 
     def download_file(self, bucket_name: str, source_blob_name: str) -> bytes:
@@ -68,3 +75,17 @@ class GcsProvider:
         bucket = client.bucket(bucket_name)
         blob = bucket.blob(source_blob_name)
         return cast(bytes, blob.download_as_bytes())
+
+    def list_blobs(self, bucket_name: str, prefix: str | None = None) -> list:
+        """Lists all the blobs in the bucket with a given prefix.
+
+        Args:
+            bucket_name: The name of the GCS bucket.
+            prefix: The prefix to filter the blobs.
+
+        Returns:
+            A list of blobs.
+        """
+        client = self.get_client()
+        bucket = client.bucket(bucket_name)
+        return list(bucket.list_blobs(prefix=prefix))
