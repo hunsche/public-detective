@@ -13,7 +13,6 @@ import re
 import tarfile
 import tempfile
 import zipfile
-from dataclasses import dataclass
 from datetime import date
 from http import HTTPStatus
 from urllib.parse import urljoin
@@ -33,12 +32,11 @@ from public_detective.models.procurements import (
 from public_detective.providers.config import Config, ConfigProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 from sqlalchemy import Engine, text
 
 
-@dataclass
-class ProcessedFile:
+class ProcessedFile(BaseModel):
     """Represents a single, processed file ready for analysis.
 
     Attributes:
@@ -315,9 +313,23 @@ class ProcurementsRepository:
                     )
             except Exception as e:
                 self.logger.warning(f"Could not process archive '{current_path}': {e}. Treating " "as a single file.")
-                file_collection.append(ProcessedFile(source_document_id, current_path, content, raw_document_metadata))
+                file_collection.append(
+                    ProcessedFile(
+                        source_document_id=source_document_id,
+                        relative_path=current_path,
+                        content=content,
+                        raw_document_metadata=raw_document_metadata,
+                    )
+                )
         else:
-            file_collection.append(ProcessedFile(source_document_id, current_path, content, raw_document_metadata))
+            file_collection.append(
+                ProcessedFile(
+                    source_document_id=source_document_id,
+                    relative_path=current_path,
+                    content=content,
+                    raw_document_metadata=raw_document_metadata,
+                )
+            )
 
     def create_zip_from_files(self, files: list[tuple[str, bytes]], control_number: str) -> bytes | None:
         """Creates a single, flat ZIP archive in memory from a list of files.
