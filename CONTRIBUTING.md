@@ -153,15 +153,15 @@ The diagram below illustrates the complete workflow:
 ```mermaid
 graph TD
     subgraph "Stage 1: Pre-analysis (Scheduled CLI)"
-        A[Start: `cli pre-analyze`] --> B{Fetch procurements from PNCP API};
+        A[Start: `pd analysis prepare`] --> B{Fetch procurements from PNCP API};
         B --> C[For each procurement...];
         C --> D{Calculate content hash<br>to ensure idempotency};
-        D --> E[Estimate analysis cost<br>(input tokens only)];
+        D --> E[Estimate analysis cost<br>input tokens only];
         E --> F[Save initial record to Database<br>Status: PENDING_ANALYSIS<br>Cost: *Estimated*];
     end
 
     subgraph "Stage 2: Analysis (On-demand Trigger)"
-        G[Start: `cli analyze`] --> H{User or scheduler triggers analysis<br>for a specific ID};
+        G[Start: `pd analysis run`] --> H{User or scheduler triggers analysis<br>for a specific ID};
         H --> I[Publish message to Pub/Sub topic];
     end
 
@@ -170,7 +170,7 @@ graph TD
         K --> L[Prepare files & build prompt];
         L --> M[Submit to Google Gemini API];
         M --> N[Receive AI analysis & token usage];
-        N --> O[Calculate *actual* total cost<br>(input + output + thinking)];
+        N --> O[Calculate *actual* total cost<br>input + output + thinking];
         O --> P{Save final results to Database<br>Status: ANALYSIS_SUCCESSFUL<br>Cost: *Actual*};
         P --> Q[Save actual expense to Budget Ledger];
     end
