@@ -6,7 +6,7 @@ test resources afterward in the emulated environment.
 
 from public_detective.providers.gcs import GcsProvider
 
-from tests.conftest import GcsCleanupManager
+from tests.integrations.conftest import GcsCleanupManager
 
 
 def test_gcs_metadata_and_cleanup_integration(

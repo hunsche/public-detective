@@ -9,16 +9,17 @@ from public_detective.repositories.procurements import ProcurementsRepository
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import run_command
+from tests.e2e.conftest import GcsCleanupManager, run_command
 
 
 @pytest.mark.timeout(240)
-def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
+def test_worker_flow(db_session: Engine, e2e_pubsub: tuple, gcs_cleanup_manager: GcsCleanupManager) -> None:
     """Tests the worker processing a single message.
 
     Args:
         db_session: The SQLAlchemy engine instance from the db_session fixture.
         e2e_pubsub: The pub/sub fixture.
+        gcs_cleanup_manager: The GCS cleanup fixture.
     """
     publisher, topic_path = e2e_pubsub
     analysis_id = uuid.uuid4()
@@ -113,7 +114,10 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple) -> None:
         f"GCP_PUBSUB_TOPIC_PROCUREMENTS='{topic_name}' "
         f"GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS='{subscription_name}'"
     )
-    worker_command = f"{env_vars} poetry run pd worker start --max-messages 1 --timeout 5"
+    gcs_prefix = gcs_cleanup_manager.prefix
+    worker_command = (
+        f"{env_vars} poetry run pd worker start --max-messages 1 --timeout 5 --gcs-path-prefix {gcs_prefix}"
+    )
     run_command(worker_command)
 
     with db_session.connect() as connection:

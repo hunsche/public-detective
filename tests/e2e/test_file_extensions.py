@@ -25,7 +25,7 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import MockPNCP, run_command
+from tests.e2e.conftest import GcsCleanupManager, MockPNCP, run_command
 
 
 # Helper functions to generate files
@@ -263,7 +263,7 @@ def test_file_extension_processing(
     tmp_path: Path,
     extension: str,
     mock_pncp_server: MockPNCP,
-    gcs_cleanup_manager: Callable[[str], None],
+    gcs_cleanup_manager: GcsCleanupManager,
 ) -> None:
     """
     Tests the full E2E processing for various file extensions by running the
@@ -295,7 +295,6 @@ def test_file_extension_processing(
     # 2. Configure mock PNCP server
     file_id = uuid.uuid4()
     procurement_control_number = f"file-ext-test-{uuid.uuid4().hex[:6]}"
-    gcs_cleanup_manager(procurement_control_number)
 
     mock_pncp_server.file_content = local_file_path.read_bytes()
     mock_pncp_server.file_metadata = [  # type: ignore
@@ -387,7 +386,8 @@ def test_file_extension_processing(
     print(f"Published message for analysis_id: {analysis_id}")
 
     # 5. Run the worker as a subprocess
-    worker_command = "poetry run pd worker start --max-messages 1 --timeout 15"
+    gcs_prefix = gcs_cleanup_manager.prefix
+    worker_command = f"poetry run pd worker start --max-messages 1 --timeout 15 --gcs-path-prefix {gcs_prefix}"
     run_command(worker_command)
 
     # 6. Assertions

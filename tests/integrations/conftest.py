@@ -4,6 +4,7 @@ import time
 import uuid
 import zipfile
 from collections.abc import Generator
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -11,10 +12,89 @@ import pytest
 from alembic import command
 from alembic.config import Config
 from filelock import FileLock
+from google.api_core import exceptions
 from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+
+class GcsCleanupManager(BaseModel):
+    """Manages the lifecycle of a temporary GCS folder for a test."""
+
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    prefix: str
+    bucket_name: str
+    gcs_provider: GcsProvider
+
+    @model_validator(mode="after")
+    def _create_test_marker_on_init(self) -> "GcsCleanupManager":
+        """Creates a marker to identify the test folder after initialization."""
+        self._create_test_marker()
+        return self
+
+    def _create_test_marker(self) -> None:
+        """Creates a sentinel object with metadata to mark the folder as a test resource."""
+        marker_blob_name = f"{self.prefix}/__test_marker__"
+        self.gcs_provider.upload_file(
+            bucket_name=self.bucket_name,
+            destination_blob_name=marker_blob_name,
+            content=b"",
+            content_type="text/plain",
+            metadata={
+                "is_test": "true",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "run_id": self.prefix,
+            },
+        )
+
+    def cleanup(self) -> None:
+        """Deletes all objects under the prefix, including the marker."""
+        gcs_client = self.gcs_provider.get_client()
+        bucket = gcs_client.bucket(self.bucket_name)
+
+        try:
+            blobs_to_delete = list(bucket.list_blobs(prefix=self.prefix))
+            print(f"--- Found {len(blobs_to_delete)} blobs to clean up for prefix {self.prefix} ---")
+            for blob in blobs_to_delete:
+                try:
+                    blob.delete()
+                except exceptions.NotFound:
+                    pass  # Object might have been deleted by another process
+            print(f"--- Cleanup successful for prefix {self.prefix} ---")
+        except exceptions.NotFound:
+            pass  # Bucket or prefix might already be gone
+
+
+@pytest.fixture(scope="function")
+def gcs_cleanup_manager(
+    db_session: Engine,  # noqa: F841
+    request: pytest.FixtureRequest,  # noqa: F841
+    gcs_provider: GcsProvider,
+) -> Generator[GcsCleanupManager, None, None]:
+    """A fixture to manage GCS cleanup for tests.
+
+    It creates a unique prefix for the test, marks it with a sentinel file,
+    and cleans up everything under that prefix after the test runs.
+
+    Args:
+        request: The pytest request object.
+        gcs_provider: A fixture that provides a configured GCS provider.
+
+    Yields:
+        An instance of the GcsCleanupManager.
+    """
+    config = ConfigProvider.get_config()
+    bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
+
+    unique_id = uuid.uuid4().hex[:8]
+    prefix = f"test-integration/{unique_id}"
+
+    manager = GcsCleanupManager(prefix=prefix, bucket_name=bucket_name, gcs_provider=gcs_provider)
+    yield manager
+    manager.cleanup()
 
 
 @pytest.fixture(scope="function")

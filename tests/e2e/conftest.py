@@ -7,6 +7,7 @@ import threading
 import time
 import uuid
 from collections.abc import Generator
+from datetime import datetime, timezone
 from pathlib import Path
 
 import pytest
@@ -16,9 +17,9 @@ from alembic.config import Config
 from filelock import FileLock
 from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
-from google.cloud.storage import Client
 from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
+from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -192,18 +193,6 @@ def _setup_environment(run_id: str) -> str:
     return schema_name
 
 
-def _setup_credentials(run_id: str) -> tuple[str | None, Path]:
-    original_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
-    credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")
-    if not credentials_json:
-        pytest.fail("GCP_SERVICE_ACCOUNT_CREDENTIALS must be set for E2E tests.")
-    temp_credentials_path = Path(f"tests/.tmp/temp_credentials_{run_id}.json")
-    temp_credentials_path.parent.mkdir(parents=True, exist_ok=True)
-    temp_credentials_path.write_text(credentials_json)
-    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(temp_credentials_path)
-    return original_credentials, temp_credentials_path
-
-
 def _create_engine(schema_name: str) -> Engine:
     config = ConfigProvider.get_config()
     db_url = (
@@ -243,15 +232,54 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
 
 
 @pytest.fixture(scope="function")
-def db_session() -> Generator[Engine, None, None]:
-    """Configures a fully isolated environment for a single E2E test function.
+def e2e_credentials() -> Generator[Path, None, None]:
+    """
+    Manages the lifecycle of temporary GCP credentials for an E2E test.
+
+    It creates a temporary JSON file from the GCP_SERVICE_ACCOUNT_CREDENTIALS
+    environment variable and sets GOOGLE_APPLICATION_CREDENTIALS to its path.
+    The temporary file is deleted after the test runs.
 
     Yields:
-        The SQLAlchemy engine.
+        The path to the temporary credentials file.
+    """
+    run_id = uuid.uuid4().hex[:8]
+    original_credentials = os.environ.get("GOOGLE_APPLICATION_CREDENTIALS")
+    credentials_json = os.environ.get("GCP_SERVICE_ACCOUNT_CREDENTIALS")
+
+    if not credentials_json:
+        pytest.fail("GCP_SERVICE_ACCOUNT_CREDENTIALS must be set for E2E tests.")
+
+    temp_credentials_path = Path(f"tests/.tmp/temp_credentials_{run_id}.json")
+    temp_credentials_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_credentials_path.write_text(credentials_json)
+    os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = str(temp_credentials_path)
+
+    yield temp_credentials_path
+
+    # Teardown: A limpeza acontece aqui, depois que todos os testes que usam a fixture terminam.
+    print("\n--- Tearing down E2E credentials ---")
+    if temp_credentials_path.exists():
+        temp_credentials_path.unlink()
+
+    if original_credentials is None:
+        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
+    else:
+        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_credentials
+    print("--- E2E credentials torn down ---")
+
+
+@pytest.fixture(scope="function")
+def db_session(e2e_credentials: Path) -> Generator[Engine, None, None]:  # noqa: F841
+    """
+    Configures a fully isolated environment for a single E2E test function.
+
+    Args:
+        e2e_credentials: A fixture that manages temporary GCP credentials,
+                         ensuring they are available for the duration of the test.
     """
     run_id = uuid.uuid4().hex[:8]
     schema_name = _setup_environment(run_id)
-    original_credentials, temp_credentials_path = _setup_credentials(run_id)
     engine = _create_engine(schema_name)
     _wait_for_db(engine)
 
@@ -263,54 +291,90 @@ def db_session() -> Generator[Engine, None, None]:
 
     yield engine
 
-    print("\n--- Tearing down E2E test environment ---")
-    if temp_credentials_path.exists():
-        temp_credentials_path.unlink()
-    if original_credentials is None:
-        os.environ.pop("GOOGLE_APPLICATION_CREDENTIALS", None)
-    else:
-        os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = original_credentials
-
+    # A lógica de limpeza de credenciais foi removida daqui.
+    print("\n--- Tearing down E2E database schema ---")
     with engine.connect() as connection:
         connection.execute(text(f"DROP SCHEMA IF EXISTS {schema_name} CASCADE"))
         connection.commit()
     engine.dispose()
-    print("E2E test environment torn down.")
+    print("--- E2E database schema torn down. ---")
     ConfigProvider._config = None
 
 
-@pytest.fixture(scope="session", autouse=True)
-def session_gcs_cleanup() -> Generator[None, None, None]:
-    """A session-scoped fixture to clean up all e2e-test-* folders from GCS.
+class GcsCleanupManager(BaseModel):
+    """Manages the lifecycle of a temporary GCS folder for a test."""
 
-    This acts as a final safeguard to ensure no test artifacts are left
-    behind, especially when tests are run in parallel and might be
-    terminated abruptly.
+    model_config = ConfigDict(arbitrary_types_allowed=True)
+
+    prefix: str
+    bucket_name: str
+    gcs_provider: GcsProvider
+
+    @model_validator(mode="after")
+    def _create_test_marker_on_init(self) -> "GcsCleanupManager":
+        """Creates a marker to identify the test folder after initialization."""
+        self._create_test_marker()
+        return self
+
+    def _create_test_marker(self) -> None:
+        """Creates a sentinel object with metadata to mark the folder as a test resource."""
+        marker_blob_name = f"{self.prefix}/__test_marker__"
+        self.gcs_provider.upload_file(
+            bucket_name=self.bucket_name,
+            destination_blob_name=marker_blob_name,
+            content=b"",
+            content_type="text/plain",
+            metadata={
+                "is_test": "true",
+                "created_at": datetime.now(timezone.utc).isoformat(),
+                "run_id": self.prefix,
+            },
+        )
+
+    def cleanup(self) -> None:
+        """Deletes all objects under the prefix, including the marker."""
+        # Use the provider's client, which is correctly configured for the emulator.
+        gcs_client = self.gcs_provider.get_client()
+        bucket = gcs_client.bucket(self.bucket_name)
+
+        try:
+            blobs_to_delete = list(bucket.list_blobs(prefix=self.prefix))
+            print(f"--- Found {len(blobs_to_delete)} blobs to clean up for prefix {self.prefix} ---")
+            for blob in blobs_to_delete:
+                try:
+                    blob.delete()
+                except exceptions.NotFound:
+                    pass  # Object might have been deleted by another process
+            print(f"--- Cleanup successful for prefix {self.prefix} ---")
+        except exceptions.NotFound:
+            pass  # Bucket or prefix might already be gone
+
+
+@pytest.fixture(scope="function")
+def gcs_cleanup_manager(
+    request: pytest.FixtureRequest,  # noqa: F841
+    gcs_provider: GcsProvider,
+    e2e_credentials: Path,  # noqa: F841
+) -> Generator[GcsCleanupManager, None, None]:
+    """A fixture to manage GCS cleanup for E2E tests.
+
+    It creates a unique prefix for the test, marks it with a sentinel file,
+    and cleans up everything under that prefix after the test runs.
+
+    Args:
+        request: The pytest request object.
+        gcs_provider: A fixture that provides a configured GCS provider.
+        e2e_credentials: The fixture that guarantees credentials are alive.
+
+    Yields:
+        An instance of the GcsCleanupManager.
     """
-    # This part runs before any tests
-    yield
-    # This part runs after all tests in the session are complete
-    print("\n--- Starting final session GCS cleanup ---")
     config = ConfigProvider.get_config()
     bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
-    gcs_client = Client(project=config.GCP_PROJECT)
-    bucket = gcs_client.bucket(bucket_name)
 
-    blobs_to_delete = list(bucket.list_blobs(prefix="e2e-test-"))
-    if not blobs_to_delete:
-        print("--- No leftover e2e-test-* folders found. Cleanup not needed. ---")
-        return
+    unique_id = uuid.uuid4().hex[:8]
+    prefix = f"test-e2e-{unique_id}"
 
-    print(f"--- Found {len(blobs_to_delete)} blobs to clean up. Deleting... ---")
-    # To delete folders, we must delete all blobs within them.
-    # A more robust way is to get the unique prefixes and delete them.
-    prefixes = {blob.name.split("/")[0] for blob in blobs_to_delete}
-    for prefix in prefixes:
-        print(f"--- Deleting prefix: {prefix} ---")
-        prefix_blobs = list(bucket.list_blobs(prefix=prefix))
-        for blob in prefix_blobs:
-            try:
-                blob.delete()
-            except exceptions.NotFound:
-                pass
-    print("--- Final session GCS cleanup complete. ---")
+    manager = GcsCleanupManager(prefix=prefix, bucket_name=bucket_name, gcs_provider=gcs_provider)
+    yield manager
+    manager.cleanup()

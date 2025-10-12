@@ -5,10 +5,12 @@ import uuid
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import run_command
+from tests.e2e.conftest import GcsCleanupManager, run_command
 
 
-def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None:  # noqa: F841
+def test_ranked_analysis_e2e_flow(
+    db_session: Engine, e2e_pubsub: tuple, gcs_cleanup_manager: GcsCleanupManager
+) -> None:  # noqa: F841
     """Tests the full E2E flow for ranked analysis against live dependencies.
 
     1. Pre-analyzes procurements, creating analysis records in the DB.
@@ -26,10 +28,12 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
     ibge_code = "3550308"
     max_items_to_process = 1
 
+    gcs_prefix = gcs_cleanup_manager.prefix
+
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
 
     pre_analyze_command = (
-        f"poetry run pd analysis prepare "
+        f"poetry run pd analysis --gcs-path-prefix {gcs_prefix} prepare "
         f"--start-date {target_date_str} --end-date {target_date_str} "
         f"--max-messages {max_items_to_process}"
     )
@@ -60,6 +64,7 @@ def test_ranked_analysis_e2e_flow(db_session: Engine, e2e_pubsub: tuple) -> None
 
     worker_command = (
         f"poetry run pd worker start "
+        f"--gcs-path-prefix {gcs_prefix} "
         f"--max-messages {max_items_to_process} "
         f"--timeout 15 "
         f"--max-output-tokens None"

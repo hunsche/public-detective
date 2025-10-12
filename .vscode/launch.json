@@ -5,12 +5,17 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Pytest",
+            "name": "Pytest Current File",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "module": "pytest",
             "purpose": [
                 "debug-test"
+            ],
+            "args": [
+                "${file}",
+                "-v",
+                "-s"
             ],
             "console": "integratedTerminal",
             "justMyCode": true
@@ -21,21 +26,9 @@
             "request": "launch",
             "program": "${workspaceFolder}/source/cli",
             "console": "integratedTerminal",
-            "args": [
-                // "start-date",
-                // "end-date"
-            ],
+            "args": [],
             "justMyCode": true,
             "envFile": "${workspaceFolder}/.env"
         },
-        {
-            "name": "Worker",
-            "type": "debugpy",
-            "request": "launch",
-            "program": "${workspaceFolder}/source/worker",
-            "console": "integratedTerminal",
-            "justMyCode": true,
-            "envFile": "${workspaceFolder}/.env"
-        }
     ]
 }

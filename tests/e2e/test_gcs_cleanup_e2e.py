@@ -11,8 +11,7 @@ from public_detective.providers.gcs import GcsProvider
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.conftest import GcsCleanupManager
-from tests.e2e.conftest import run_command
+from tests.e2e.conftest import GcsCleanupManager, run_command
 
 
 @pytest.mark.e2e
