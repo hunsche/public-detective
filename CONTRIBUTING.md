@@ -74,7 +74,7 @@ git checkout -b feature/my-new-amazing-feature
 ```
 
 <div align="center">
-  <img src="https://media0.giphy.com/media/v1.Y2lkPTc5MGI3NjExdDhhMzk3Y2Z5cmFkdWJpejg4NW9vZzQ5MXUzdDdkaDljMW40Z2hrZyZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/e5zHi5hgalk1sLVI1m/giphy.gif" alt="Branching out" width="400"/>
+  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZDNzZ2ZleWluM2p2dWhqY3Z2ZDNpM212c3ZkZzJzZzZzZzZzZzZzZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3oKIPnAiaMCws8nOsE/giphy.gif" alt="Branching out" width="400"/>
 </div>
 
 ### 3. Set Up Your Dev Lair (Environment)
