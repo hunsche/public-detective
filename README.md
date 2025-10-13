@@ -1,5 +1,3 @@
-# ✨ Public Detective ✨
-
 <div align="center">
 
 [![CI](https://github.com/hunsche/public-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
@@ -21,7 +19,9 @@
 </div>
 
 <div align="center">
-  <img src="https://media.giphy.com/media/v1.Y2lkPTc5MGI3NjExZDNzZ2ZleWluM2p2dWhqY3Z2ZDNpM212c3ZkZzJzZzZzZzZzZzZzZCZlcD12MV9pbnRlcm5hbF9naWZfYnlfaWQmY3Q9Zw/3oKIPnAiaMCws8nOsE/giphy.gif" alt="AI Detective" width="400"/>
+  <img src="docs/logo.svg" alt="Public Detective Logo" width="400"/>
+  <h1>Public Detective</h1>
+  <p style="font-family: 'Montserrat', 'Poppins', sans-serif; font-weight: 500; color: #39D6D6; font-size: 1.3em; margin-top: 0px;">Open Source Data Investigation</p>
 </div>
 
 <div align="center">
