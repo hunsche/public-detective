@@ -42,7 +42,8 @@ def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: 
     service.analysis_repo.save_pre_analysis.return_value = "new-analysis-id"
 
     with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
-        service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 100, 60, None)
+        # Consume the generator to trigger the logic
+        list(service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 100, 60, None))
         mock_pre_analyze.assert_called_once()
 
 
@@ -53,7 +54,8 @@ def test_run_pre_analysis_no_procurements_found(mock_dependencies: dict) -> None
     start_date = date(2025, 1, 1)
     end_date = date(2025, 1, 1)
 
-    service.run_pre_analysis(start_date, end_date, 100, 60, None)
+    # Consume the generator to trigger the logic
+    list(service.run_pre_analysis(start_date, end_date, 100, 60, None))
 
     service.procurement_repo.get_updated_procurements_with_raw_data.assert_called_once_with(target_date=start_date)
     service.analysis_repo.save_pre_analysis.assert_not_called()

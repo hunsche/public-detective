@@ -590,70 +590,40 @@ def test_pre_analysis_command_exception(
     assert result.exit_code != 0
 
 
-class FakeProgressFactory:
-    """A fake progress factory for testing."""
-
-    calls: list[str]
-
-    def __init__(self) -> None:
-        """Initializes the fake progress factory."""
-        self.calls = []
-
-    def make(self, iterable: list[int], label: str) -> object:
-        """Creates a fake progress bar.
-
-        Args:
-            iterable: The iterable to track.
-            label: The label for the progress bar.
-
-        Returns:
-            A fake context manager.
-        """
-        self.calls.append(label)
-
-        class _CM:
-            def __enter__(self) -> list[int]:
-                return iterable
-
-            def __exit__(self, _exc_type: None, _exc: None, _tb: None) -> None:
-                return
-
-        return _CM()
-
-
 @pytest.mark.parametrize(
-    "should_show, no_progress_flag, expected_called",
+    "should_show, no_progress_flag, progress_should_run",
     [
         (True, False, True),
         (False, False, False),
         (True, True, False),
     ],
 )
+@patch("public_detective.cli.analysis.Progress")
 @patch("public_detective.cli.analysis.should_show_progress")
 @patch("public_detective.cli.analysis.AnalysisService")
-def test_progress_bar_behavior(
+def test_prepare_progress_bar_behavior(
     mock_analysis_service: MagicMock,
     mock_should_show_progress: MagicMock,
+    mock_rich_progress: MagicMock,
     should_show: bool,
     no_progress_flag: bool,
-    expected_called: bool,
+    progress_should_run: bool,
 ) -> None:
-    """Tests that the progress bar is displayed based on the environment."""
-    fake = FakeProgressFactory()
-    mock_should_show_progress.return_value = should_show
-    mock_analysis_service.return_value.run_pre_analysis.return_value = [1, 2, 3]
+    """Tests that the progress bar is displayed correctly for the 'prepare' command."""
+    # This side effect correctly simulates the logic where the --no-progress flag
+    # takes precedence over the tty/CI check.
+    mock_should_show_progress.side_effect = lambda flag: should_show and not flag
 
-    with patch("public_detective.cli.analysis.PROGRESS_FACTORY", fake):
-        runner = CliRunner()
-        cli = create_cli()
-        args = ["analysis", "prepare"]
-        if no_progress_flag:
-            args.append("--no-progress")
-        result = runner.invoke(cli, args, color=False)
-        assert result.exit_code == 0, result.output
+    mock_analysis_service.return_value.run_pre_analysis.return_value = iter([])
 
-        if no_progress_flag:
-            assert not fake.calls
-        else:
-            assert mock_should_show_progress.called
-            assert (len(fake.calls) > 0) is expected_called
+    runner = CliRunner()
+    cli = create_cli()
+    args = ["analysis", "prepare"]
+    if no_progress_flag:
+        args.append("--no-progress")
+
+    result = runner.invoke(cli, args, color=False)
+    assert result.exit_code == 0, result.output
+
+    assert mock_should_show_progress.called
+    assert mock_rich_progress.called is progress_should_run

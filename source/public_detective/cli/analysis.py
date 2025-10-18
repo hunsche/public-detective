@@ -7,7 +7,6 @@ from decimal import Decimal
 from uuid import UUID
 
 import click
-from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
@@ -22,7 +21,9 @@ from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.services.analysis import AnalysisService
+from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 PROGRESS_FACTORY = ProgressFactory()
 
@@ -189,7 +190,7 @@ def prepare(
     )
 
     try:
-        items = service.run_pre_analysis(
+        event_generator = service.run_pre_analysis(
             start_date=start_date.date(),
             end_date=end_date.date(),
             batch_size=batch_size,
@@ -197,14 +198,56 @@ def prepare(
             max_messages=max_messages,
         )
 
-        if not no_progress and should_show_progress(no_progress):
-            cm = PROGRESS_FACTORY.make(items, label="Processing procurements")
-        else:
-            cm = null_progress(items, label="Processing procurements")
-
-        with cm as bar:
-            for _ in bar:
+        if not should_show_progress(no_progress):
+            # If no progress bar, just consume the generator
+            for _ in event_generator:
                 pass
+        else:
+            with Progress(
+                TextColumn("[bold blue]{task.description}"),
+                BarColumn(),
+                TaskProgressColumn(),
+                TimeRemainingColumn(),
+                transient=True,
+            ) as progress:
+                days_task_id = None
+                procurements_task_id = None
+
+                for event, data in event_generator:
+                    if event == "day_started":
+                        current_date, total_days = data
+                        if days_task_id is None:
+                            days_task_id = progress.add_task(
+                                f"Scanning date range ({total_days} days)", total=total_days
+                            )
+                        else:
+                            # A new day has started, so the previous day is complete.
+                            progress.update(days_task_id, advance=1)
+
+                        progress.update(
+                            days_task_id,
+                            description=f"Scanning day {current_date.strftime('%Y-%m-%d')}",
+                        )
+                        if procurements_task_id is not None:
+                            progress.remove_task(procurements_task_id)
+                            procurements_task_id = None
+
+                    elif event == "procurements_fetched":
+                        procurements_for_the_day = data
+                        if procurements_for_the_day:
+                            procurements_task_id = progress.add_task(
+                                f"  -> Processing {len(procurements_for_the_day)} procurements",
+                                total=len(procurements_for_the_day),
+                                start=True,
+                            )
+
+                    elif event == "procurement_processed":
+                        if procurements_task_id is not None:
+                            progress.update(procurements_task_id, advance=1)
+
+                # After the loop, advance the progress for the final day.
+                if days_task_id is not None and not progress.tasks[days_task_id].completed:
+                    progress.update(days_task_id, advance=1)
 
         click.secho("Pre-analysis completed successfully!", fg="green")
     except (AnalysisError, Exception) as e:
