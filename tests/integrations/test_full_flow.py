@@ -131,6 +131,7 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         patch.object(procurement_repo, "save_procurement_version"),
         patch.object(ai_provider, "count_tokens_for_analysis", return_value=(0, 0, 0)),
     ):
-        analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None)
+        # Consume the generator to trigger the logic
+        list(analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None))
 
     save_pre_analysis_mock.assert_called_once()

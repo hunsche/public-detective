@@ -5,6 +5,7 @@ import json
 import os
 import time
 from collections import defaultdict
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -761,8 +762,13 @@ class AnalysisService:
         batch_size: int,
         sleep_seconds: int,
         max_messages: int | None = None,
-    ) -> list[tuple[Procurement, dict[str, Any]]]:
-        """Runs the pre-analysis job for a given date range.
+    ) -> Iterator[tuple[str, Any]]:
+        """Runs the pre-analysis job for a given date range as a generator.
+
+        This method iterates through each day in the date range, fetches the
+        procurements for that day, and processes them incrementally. It yields
+        events to allow the caller (e.g., a CLI) to display detailed, real-time
+        progress.
 
         Args:
             start_date: The start date of the date range.
@@ -771,45 +777,55 @@ class AnalysisService:
             sleep_seconds: The number of seconds to sleep between batches.
             max_messages: The maximum number of messages to publish.
 
-        Returns:
-            A list of all procurements found.
+        Yields:
+            Tuples representing progress events:
+            - ("day_started", (current_date, total_days))
+            - ("procurements_fetched", procurements_for_the_day)
+            - ("procurement_processed", (procurement, raw_data))
         """
         try:
             self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
-            current_date = start_date
+            total_days = (end_date - start_date).days + 1
             messages_published_count = 0
+            processed_in_batch = 0
 
-            all_procurements = []
-            while current_date <= end_date:
-                procurements_with_raw = self.procurement_repo.get_updated_procurements_with_raw_data(
+            for day_index in range(total_days):
+                current_date = start_date + timedelta(days=day_index)
+                yield "day_started", (current_date, total_days)
+
+                procurements_for_the_day = self.procurement_repo.get_updated_procurements_with_raw_data(
                     target_date=current_date
                 )
-                all_procurements.extend(procurements_with_raw)
-                current_date += timedelta(days=1)
+                yield "procurements_fetched", procurements_for_the_day
 
-            for i in range(0, len(all_procurements), batch_size):
-                batch = all_procurements[i : i + batch_size]
-                self.logger.info(f"Processing batch with {len(batch)} procurements.")
+                if not procurements_for_the_day:
+                    continue
 
-                for procurement, raw_data in batch:
+                for procurement, raw_data in procurements_for_the_day:
+                    if max_messages is not None and messages_published_count >= max_messages:
+                        self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
+                        return
+
                     try:
                         self._pre_analyze_procurement(procurement, raw_data)
                         messages_published_count += 1
-                        if max_messages is not None and messages_published_count >= max_messages:
-                            self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
-                            return all_procurements
+                        processed_in_batch += 1
+                        yield "procurement_processed", (procurement, raw_data)
+
+                        is_last_item = (procurement, raw_data) == procurements_for_the_day[-1]
+                        if processed_in_batch % batch_size == 0 and not is_last_item:
+                            self.logger.info(
+                                f"Batch of {batch_size} processed. " f"Sleeping for {sleep_seconds} seconds."
+                            )
+                            time.sleep(sleep_seconds)
+
                     except Exception as e:
                         self.logger.error(
                             f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
                             exc_info=True,
                         )
 
-                if i + batch_size < len(all_procurements):
-                    self.logger.info(f"Sleeping for {sleep_seconds} seconds before next batch.")
-                    time.sleep(sleep_seconds)
-
             self.logger.info("Pre-analysis job for the entire date range has been completed.")
-            return all_procurements
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e
 

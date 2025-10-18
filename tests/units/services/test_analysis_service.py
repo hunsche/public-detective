@@ -754,7 +754,8 @@ def test_run_pre_analysis_no_procurements_found(
     end_date = date(2023, 1, 1)
     analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = []
 
-    analysis_service.run_pre_analysis(start_date, end_date, 10, 0)
+    # Consume the generator to trigger the logic
+    list(analysis_service.run_pre_analysis(start_date, end_date, 10, 0))
 
     assert "Pre-analysis job for the entire date range has been completed." in caplog.text
 

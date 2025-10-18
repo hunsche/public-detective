@@ -1,0 +1,14 @@
+[run]
+parallel = true
+concurrency = multiprocessing
+source = source/public_detective
+branch = true
+
+[report]
+fail_under = 95
+ignore_errors = false
+omit =
+    .venv/*
+    source/public_detective/__init__.py
+    source/public_detective/cli/__main__.py
+    source/public_detective/migrations/*
