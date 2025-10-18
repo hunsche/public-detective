@@ -2,3 +2,7 @@
 parallel = true
 concurrency = multiprocessing
 source = source/public_detective
+
+[report]
+omit =
+    source/public_detective/migrations/*
