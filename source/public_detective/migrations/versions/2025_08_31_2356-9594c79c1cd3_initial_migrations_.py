@@ -60,7 +60,7 @@ def upgrade() -> None:
             proposal_opening_date TIMESTAMPTZ,
             proposal_closing_date TIMESTAMPTZ,
             object_description TEXT NOT NULL,
-            total_awarded_value DECIMAL(28, 18),
+            total_awarded_value DECIMAL(32, 18),
             is_srp BOOLEAN NOT NULL,
             procurement_year INTEGER NOT NULL,
             procurement_sequence INTEGER NOT NULL,
@@ -68,7 +68,7 @@ def upgrade() -> None:
             last_update_date TIMESTAMPTZ NOT NULL,
             modality_id INTEGER NOT NULL,
             procurement_status_id INTEGER NOT NULL,
-            total_estimated_value DECIMAL(28, 18),
+            total_estimated_value DECIMAL(32, 18),
             version_number INTEGER NOT NULL,
             raw_data JSONB NOT NULL,
             content_hash VARCHAR(64),
@@ -98,10 +98,10 @@ def upgrade() -> None:
             input_tokens_used INTEGER,
             output_tokens_used INTEGER,
             thinking_tokens_used INTEGER,
-            cost_input_tokens DECIMAL(28, 18),
-            cost_output_tokens DECIMAL(28, 18),
-            cost_thinking_tokens DECIMAL(28, 18),
-            total_cost DECIMAL(28, 18),
+            cost_input_tokens DECIMAL(32, 18),
+            cost_output_tokens DECIMAL(32, 18),
+            cost_thinking_tokens DECIMAL(32, 18),
+            total_cost DECIMAL(32, 18),
             analysis_prompt TEXT,
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)
@@ -156,14 +156,14 @@ def upgrade() -> None:
         CREATE TABLE {donations_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             donor_identifier TEXT NOT NULL,
-            amount DECIMAL(28, 18) NOT NULL,
+            amount DECIMAL(32, 18) NOT NULL,
             transaction_id TEXT,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         );
         CREATE TABLE {budget_ledgers_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),
             transaction_type {transaction_type} NOT NULL,
-            amount DECIMAL(28, 18) NOT NULL,
+            amount DECIMAL(32, 18) NOT NULL,
             related_analysis_id UUID REFERENCES {procurement_analyses_table}(analysis_id),
             related_donation_id UUID REFERENCES {donations_table}(id),
             description TEXT,

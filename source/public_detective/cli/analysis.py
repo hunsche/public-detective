@@ -14,6 +14,7 @@ from public_detective.providers.ai import AiProvider
 from public_detective.providers.database import DatabaseManager
 from public_detective.providers.date import DateProvider
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
@@ -80,11 +81,14 @@ def run(ctx: click.Context, analysis_id: UUID) -> None:
         pubsub_provider = PubSubProvider()
         gcs_provider = GcsProvider()
         ai_provider = AiProvider(Analysis)
+        http_provider = HttpProvider()
 
         analysis_repo = AnalysisRepository(engine=db_engine)
         source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
-        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        procurement_repo = ProcurementsRepository(
+            engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+        )
         status_history_repo = StatusHistoryRepository(engine=db_engine)
         budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
@@ -160,11 +164,14 @@ def prepare(
     pubsub_provider = PubSubProvider()
     gcs_provider = GcsProvider()
     ai_provider = AiProvider(Analysis)
+    http_provider = HttpProvider()
 
     analysis_repo = AnalysisRepository(engine=db_engine)
     source_document_repo = SourceDocumentsRepository(engine=db_engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
-    procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    procurement_repo = ProcurementsRepository(
+        engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+    )
     status_history_repo = StatusHistoryRepository(engine=db_engine)
     budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
@@ -245,11 +252,14 @@ def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, time
         pubsub_provider = PubSubProvider()
         gcs_provider = GcsProvider()
         ai_provider = AiProvider(Analysis)
+        http_provider = HttpProvider()
 
         analysis_repo = AnalysisRepository(engine=db_engine)
         source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
-        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        procurement_repo = ProcurementsRepository(
+            engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+        )
         status_history_repo = StatusHistoryRepository(engine=db_engine)
         budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 
@@ -338,11 +348,14 @@ def rank(
         pubsub_provider = PubSubProvider()
         gcs_provider = GcsProvider()
         ai_provider = AiProvider(Analysis)
+        http_provider = HttpProvider()
 
         analysis_repo = AnalysisRepository(engine=db_engine)
         source_document_repo = SourceDocumentsRepository(engine=db_engine)
         file_record_repo = FileRecordsRepository(engine=db_engine)
-        procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+        procurement_repo = ProcurementsRepository(
+            engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+        )
         status_history_repo = StatusHistoryRepository(engine=db_engine)
         budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
 

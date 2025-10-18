@@ -58,12 +58,22 @@ def mock_pubsub_provider() -> MagicMock:
 
 
 @pytest.fixture
-def repo(mock_engine: MagicMock, mock_pubsub_provider: MagicMock) -> ProcurementsRepository:
+def mock_http_provider() -> MagicMock:
+    """Fixture for a mocked HttpProvider."""
+    return MagicMock()
+
+
+@pytest.fixture
+def repo(
+    mock_engine: MagicMock, mock_pubsub_provider: MagicMock, mock_http_provider: MagicMock
+) -> ProcurementsRepository:
     """Provides a ProcurementsRepository instance with mocked dependencies."""
     with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_config = MagicMock()
         mock_get_config.return_value = mock_config
-        return ProcurementsRepository(engine=mock_engine, pubsub_provider=mock_pubsub_provider)
+        return ProcurementsRepository(
+            engine=mock_engine, pubsub_provider=mock_pubsub_provider, http_provider=mock_http_provider
+        )
 
 
 def test_extract_from_zip(repo: ProcurementsRepository) -> None:
@@ -122,8 +132,7 @@ def test_extract_from_tar_empty_file(repo: ProcurementsRepository) -> None:
         assert result == []
 
 
-@patch("requests.get")
-def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_all_documents_metadata_success(repo: ProcurementsRepository) -> None:
     """Tests successful fetching and filtering of document metadata."""
     raw_doc1 = {
         "sequencialDocumento": 1,
@@ -154,7 +163,7 @@ def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: Procureme
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = [raw_doc1, raw_doc2]
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
 
     procurement = MagicMock(spec=Procurement)
     procurement.government_entity = MagicMock()
@@ -172,8 +181,7 @@ def test_get_all_documents_metadata_success(mock_get: MagicMock, repo: Procureme
     assert raw_meta == raw_doc1
 
 
-@patch("requests.get")
-def test_get_all_documents_metadata_all_active(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_all_documents_metadata_all_active(repo: ProcurementsRepository) -> None:
     """Tests fetching document metadata when all documents are active."""
     raw_doc1 = {
         "sequencialDocumento": 1,
@@ -191,7 +199,7 @@ def test_get_all_documents_metadata_all_active(mock_get: MagicMock, repo: Procur
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = [raw_doc1]
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
 
     procurement = MagicMock(spec=Procurement)
     procurement.government_entity = MagicMock()
@@ -206,10 +214,9 @@ def test_get_all_documents_metadata_all_active(mock_get: MagicMock, repo: Procur
     assert docs[0][1] == raw_doc1
 
 
-@patch("requests.get")
-def test_get_all_documents_metadata_request_error(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_all_documents_metadata_request_error(repo: ProcurementsRepository) -> None:
     """Tests handling of request errors when fetching document metadata."""
-    mock_get.side_effect = requests.RequestException
+    repo.http_provider.get.side_effect = requests.RequestException
     procurement = MagicMock(spec=Procurement)
     procurement.pncp_control_number = "123"
     procurement.government_entity = MagicMock()
@@ -221,13 +228,12 @@ def test_get_all_documents_metadata_request_error(mock_get: MagicMock, repo: Pro
     assert docs == []
 
 
-@patch("requests.get")
-def test_download_file_content_success(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_download_file_content_success(repo: ProcurementsRepository) -> None:
     """Tests successful download of file content."""
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.content = b"file content"
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
     content = repo._download_file_content("http://test.url/file.pdf")
     assert content == b"file content"
 
@@ -375,84 +381,73 @@ def test_create_zip_from_files_exception(mock_zipfile: MagicMock, repo: Procurem
     assert "Failed to create final ZIP archive for 123: Zip error" in caplog.text
 
 
-@patch("requests.get")
 def test_get_all_documents_metadata_request_exception(
-    mock_get: MagicMock, repo: ProcurementsRepository, mock_procurement: MagicMock, caplog: Any
+    repo: ProcurementsRepository, mock_procurement: MagicMock, caplog: Any
 ) -> None:
     """Tests handling of RequestException when fetching document metadata."""
-    mock_get.side_effect = requests.RequestException("Network error")
+    repo.http_provider.get.side_effect = requests.RequestException("Network error")
     repo.config.PNCP_INTEGRATION_API_URL = "http://dummy.url"
     result = repo._get_all_documents_metadata(mock_procurement)
     assert result == []
     assert "Failed to get/validate document list for 123: Network error" in caplog.text
 
 
-@patch("requests.get")
-def test_download_file_content_request_exception(
-    mock_get: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_download_file_content_request_exception(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of RequestException during file download."""
-    mock_get.side_effect = requests.RequestException("Download failed")
+    repo.http_provider.get.side_effect = requests.RequestException("Download failed")
     result = repo._download_file_content("http://example.com/file")
     assert result is None
     assert "Failed to download content from http://example.com/file: Download failed" in caplog.text
 
 
-@patch("requests.get")
 def test_get_all_documents_metadata_validation_error(
-    mock_get: MagicMock, repo: ProcurementsRepository, mock_procurement: MagicMock, caplog: Any
+    repo: ProcurementsRepository, mock_procurement: MagicMock, caplog: Any
 ) -> None:
     """Tests handling of ValidationError when fetching document metadata."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
     repo.config.PNCP_INTEGRATION_API_URL = "http://dummy.url"
     result = repo._get_all_documents_metadata(mock_procurement)
     assert result == []
     assert "Failed to get/validate document list for 123" in caplog.text
 
 
-@patch("requests.head")
-def test_determine_original_filename_request_exception(
-    mock_head: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_determine_original_filename_request_exception(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of RequestException when determining filename."""
-    mock_head.side_effect = requests.RequestException("HEAD request failed")
+    repo.http_provider.head.side_effect = requests.RequestException("HEAD request failed")
     result = repo._determine_original_filename("http://example.com/file")
     assert result is None
     assert "Could not determine filename from headers for http://example.com/file" in caplog.text
 
 
-@patch("requests.head")
-def test_determine_original_filename_no_header(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+def test_determine_original_filename_no_header(repo: ProcurementsRepository) -> None:
     """Tests handling of a missing Content-Disposition header."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.headers = {}  # No Content-Disposition header
-    mock_head.return_value = mock_response
+    repo.http_provider.head.return_value = mock_response
     filename = repo._determine_original_filename("http://example.com/file")
     assert filename is None
 
 
-@patch("requests.head")
-def test_determine_original_filename_header_no_filename(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+def test_determine_original_filename_header_no_filename(repo: ProcurementsRepository) -> None:
     """Tests handling of a Content-Disposition header that is missing the filename."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.headers = {"Content-Disposition": "attachment"}
-    mock_head.return_value = mock_response
+    repo.http_provider.head.return_value = mock_response
     filename = repo._determine_original_filename("http://example.com/file")
     assert filename is None
 
 
-@patch("requests.head")
-def test_determine_original_filename_success(mock_head: MagicMock, repo: ProcurementsRepository) -> None:
+def test_determine_original_filename_success(repo: ProcurementsRepository) -> None:
     """Tests successful extraction of filename from Content-Disposition header."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.headers = {"Content-Disposition": 'attachment; filename="test_file.pdf"'}
-    mock_head.return_value = mock_response
+    repo.http_provider.head.return_value = mock_response
     filename = repo._determine_original_filename("http://example.com/file")
     assert filename == "test_file.pdf"
 
@@ -469,12 +464,9 @@ def test_publish_procurement_to_pubsub_api_error(
     assert "Failed to publish message for 123: None Pub/Sub error" in caplog.text
 
 
-@patch("requests.get")
-def test_get_updated_procurements_request_exception(
-    mock_get: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_get_updated_procurements_request_exception(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of RequestException in get_updated_procurements."""
-    mock_get.side_effect = requests.exceptions.RequestException("API is down")
+    repo.http_provider.get.side_effect = requests.exceptions.RequestException("API is down")
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -483,15 +475,12 @@ def test_get_updated_procurements_request_exception(
     assert "Error fetching updates on page 1: API is down" in caplog.text
 
 
-@patch("requests.get")
-def test_get_updated_procurements_validation_error(
-    mock_get: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_get_updated_procurements_validation_error(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of ValidationError in get_updated_procurements."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -500,12 +489,9 @@ def test_get_updated_procurements_validation_error(
     assert "Data validation error on page 1" in caplog.text
 
 
-@patch("requests.get")
-def test_get_updated_procurements_with_raw_data_request_exception(
-    mock_get: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_get_updated_procurements_with_raw_data_request_exception(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of RequestException in get_updated_procurements_with_raw_data."""
-    mock_get.side_effect = requests.exceptions.RequestException("API is down")
+    repo.http_provider.get.side_effect = requests.exceptions.RequestException("API is down")
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -514,15 +500,12 @@ def test_get_updated_procurements_with_raw_data_request_exception(
     assert "Error fetching updates on page 1: API is down" in caplog.text
 
 
-@patch("requests.get")
-def test_get_updated_procurements_with_raw_data_validation_error(
-    mock_get: MagicMock, repo: ProcurementsRepository, caplog: Any
-) -> None:
+def test_get_updated_procurements_with_raw_data_validation_error(repo: ProcurementsRepository, caplog: Any) -> None:
     """Tests handling of ValidationError in get_updated_procurements_with_raw_data."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.OK
     mock_response.json.return_value = {"invalid": "data"}
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -531,12 +514,11 @@ def test_get_updated_procurements_with_raw_data_validation_error(
     assert "Data validation error on page 1" in caplog.text
 
 
-@patch("requests.get")
-def test_get_updated_procurements_with_raw_data_no_content(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_with_raw_data_no_content(repo: ProcurementsRepository) -> None:
     """Tests get_updated_procurements_with_raw_data with a 204 No Content response."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.NO_CONTENT
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -544,8 +526,7 @@ def test_get_updated_procurements_with_raw_data_no_content(mock_get: MagicMock, 
     assert result == []
 
 
-@patch("requests.get")
-def test_get_updated_procurements_with_raw_data_happy_path(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_with_raw_data_happy_path(repo: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements_with_raw_data."""
     raw_procurement_data = _get_mock_procurement_data("PNCP-456")
     mock_response_with_data = MagicMock()
@@ -561,7 +542,7 @@ def test_get_updated_procurements_with_raw_data_happy_path(mock_get: MagicMock, 
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
     # Simulate finding data for the first modality, then no data for the rest
-    mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
+    repo.http_provider.get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
 
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
@@ -576,8 +557,7 @@ def test_get_updated_procurements_with_raw_data_happy_path(mock_get: MagicMock, 
     assert raw_data == raw_procurement_data
 
 
-@patch("requests.get")
-def test_get_updated_procurements_with_raw_data_pagination(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_with_raw_data_pagination(repo: ProcurementsRepository) -> None:
     """Tests that the raw data procurement fetching logic correctly handles pagination."""
     raw_proc_page1 = _get_mock_procurement_data("PNCP-RAW-PAGE-1")
     raw_proc_page2 = _get_mock_procurement_data("PNCP-RAW-PAGE-2")
@@ -600,7 +580,9 @@ def test_get_updated_procurements_with_raw_data_pagination(mock_get: MagicMock, 
         "data": [raw_proc_page2],
     }
 
-    mock_get.side_effect = [mock_response_p1, mock_response_p2] + [MagicMock(status_code=HTTPStatus.NO_CONTENT)] * 3
+    repo.http_provider.get.side_effect = [mock_response_p1, mock_response_p2] + [
+        MagicMock(status_code=HTTPStatus.NO_CONTENT)
+    ] * 3
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = ["12345"]
     target_date = date(2023, 1, 1)
@@ -699,8 +681,7 @@ def test_save_procurement_version(repo: ProcurementsRepository, mock_procurement
     assert repo.engine.connect.return_value.__enter__.return_value.commit.call_count == 1
 
 
-@patch("requests.get")
-def test_get_updated_procurements_happy_path(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_happy_path(repo: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements."""
     mock_response_with_data = MagicMock()
     mock_response_with_data.status_code = HTTPStatus.OK
@@ -752,7 +733,7 @@ def test_get_updated_procurements_happy_path(mock_get: MagicMock, repo: Procurem
     mock_response_no_content = MagicMock()
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
-    mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 10
+    repo.http_provider.get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 10
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
@@ -761,12 +742,11 @@ def test_get_updated_procurements_happy_path(mock_get: MagicMock, repo: Procurem
     assert result[0].pncp_control_number == "PNCP-123"
 
 
-@patch("requests.get")
-def test_get_updated_procurements_no_content(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_no_content(repo: ProcurementsRepository) -> None:
     """Tests get_updated_procurements with a 204 No Content response."""
     mock_response = MagicMock()
     mock_response.status_code = HTTPStatus.NO_CONTENT
-    mock_get.return_value = mock_response
+    repo.http_provider.get.return_value = mock_response
 
     target_date = date(2023, 1, 1)
     result = repo.get_updated_procurements(target_date)
@@ -791,8 +771,7 @@ def test_get_latest_version_not_found(repo: ProcurementsRepository) -> None:
     assert result == 0
 
 
-@patch("requests.get")
-def test_get_updated_procurements_pagination(mock_get: MagicMock, repo: ProcurementsRepository) -> None:
+def test_get_updated_procurements_pagination(repo: ProcurementsRepository) -> None:
     """Tests that the procurement fetching logic correctly handles pagination."""
     raw_proc_page1 = _get_mock_procurement_data("PNCP-PAGE-1")
     raw_proc_page2 = _get_mock_procurement_data("PNCP-PAGE-2")
@@ -817,7 +796,9 @@ def test_get_updated_procurements_pagination(mock_get: MagicMock, repo: Procurem
         "data": [raw_proc_page2],
     }
 
-    mock_get.side_effect = [mock_response_p1, mock_response_p2] + [MagicMock(status_code=HTTPStatus.NO_CONTENT)] * 3
+    repo.http_provider.get.side_effect = [mock_response_p1, mock_response_p2] + [
+        MagicMock(status_code=HTTPStatus.NO_CONTENT)
+    ] * 3
 
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = ["12345"]  # Use a specific code to limit loops
@@ -829,13 +810,10 @@ def test_get_updated_procurements_pagination(mock_get: MagicMock, repo: Procurem
     assert result[0].pncp_control_number == "PNCP-PAGE-1"
     assert result[1].pncp_control_number == "PNCP-PAGE-2"
     # Ensure it called the API for both pages for the first modality
-    assert mock_get.call_count >= 2
+    assert repo.http_provider.get.call_count >= 2
 
 
-@patch("requests.get")
-def test_get_updated_procurements_happy_path_multiple_modalities(
-    mock_get: MagicMock, repo: ProcurementsRepository
-) -> None:
+def test_get_updated_procurements_happy_path_multiple_modalities(repo: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements across multiple modalities."""
     raw_procurement_data = _get_mock_procurement_data("PNCP-789")
     mock_response_with_data = MagicMock()
@@ -851,7 +829,7 @@ def test_get_updated_procurements_happy_path_multiple_modalities(
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
     # Simulate finding data for the first modality, then no data for the rest
-    mock_get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
+    repo.http_provider.get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
 
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]

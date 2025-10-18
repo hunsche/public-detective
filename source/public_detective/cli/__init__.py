@@ -1,6 +1,4 @@
-"""Initializes the CLI application and constructs the command groups."""
-
-import logging
+"""This module initializes the CLI application."""
 
 import click
 from public_detective.cli.analysis import analysis_group
@@ -64,9 +62,7 @@ def create_cli() -> click.Group:
             sync: If True, forces synchronous execution.
             output: The desired output format.
         """
-        logger = LoggingProvider().get_logger()
-        if log_level:
-            logger.setLevel(getattr(logging, log_level.upper()))
+        LoggingProvider().get_logger(level_override=log_level)
 
         if sync:
             import os

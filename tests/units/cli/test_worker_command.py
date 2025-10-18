@@ -91,14 +91,16 @@ def test_worker_start_with_max_output_tokens_int(
 
 @patch("public_detective.cli.worker.Subscription")
 @patch("public_detective.cli.worker.ConfigProvider")
-@patch("public_detective.cli.worker.logger")
+@patch("public_detective.cli.worker.LoggingProvider")
 def test_worker_start_invalid_max_output_tokens(
-    mock_logger: MagicMock,
+    mock_logging_provider: MagicMock,
     mock_config_provider: MagicMock,  # noqa: F841
     mock_subscription: MagicMock,
 ) -> None:
     """Test that an invalid max-output-tokens value is handled."""
     runner = CliRunner()
+    mock_logger = MagicMock()
+    mock_logging_provider.return_value.get_logger.return_value = mock_logger
 
     result = runner.invoke(worker_group, ["start", "--max-output-tokens", "invalid"])
 
@@ -111,14 +113,16 @@ def test_worker_start_invalid_max_output_tokens(
 
 @patch("public_detective.cli.worker.Subscription")
 @patch("public_detective.cli.worker.ConfigProvider")
-@patch("public_detective.cli.worker.logger")
+@patch("public_detective.cli.worker.LoggingProvider")
 def test_worker_start_key_error(
-    mock_logger: MagicMock,
+    mock_logging_provider: MagicMock,
     mock_config_provider: MagicMock,  # noqa: F841
     mock_subscription: MagicMock,
 ) -> None:
     """Test that a KeyError during subscription is handled."""
     runner = CliRunner()
+    mock_logger = MagicMock()
+    mock_logging_provider.return_value.get_logger.return_value = mock_logger
 
     mock_sub_instance = MagicMock()
     mock_sub_instance.run.side_effect = KeyError("Test KeyError")
@@ -134,14 +138,16 @@ def test_worker_start_key_error(
 
 @patch("public_detective.cli.worker.Subscription")
 @patch("public_detective.cli.worker.ConfigProvider")
-@patch("public_detective.cli.worker.logger")
+@patch("public_detective.cli.worker.LoggingProvider")
 def test_worker_start_generic_exception(
-    mock_logger: MagicMock,
+    mock_logging_provider: MagicMock,
     mock_config_provider: MagicMock,  # noqa: F841
     mock_subscription: MagicMock,
 ) -> None:
     """Test that a generic Exception during subscription is handled."""
     runner = CliRunner()
+    mock_logger = MagicMock()
+    mock_logging_provider.return_value.get_logger.return_value = mock_logger
 
     mock_sub_instance = MagicMock()
     mock_sub_instance.run.side_effect = Exception("Test Exception")

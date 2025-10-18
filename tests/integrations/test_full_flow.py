@@ -9,6 +9,7 @@ from public_detective.models.analyses import Analysis
 from public_detective.models.procurements import Procurement
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
@@ -99,10 +100,13 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
     db_engine = db_session
     pubsub_provider = PubSubProvider()
     gcs_provider = GcsProvider()
+    http_provider = HttpProvider()
     ai_provider = AiProvider(Analysis)
     analysis_repo = AnalysisRepository(engine=db_engine)
     file_record_repo = FileRecordsRepository(engine=db_engine)
-    procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=pubsub_provider)
+    procurement_repo = ProcurementsRepository(
+        engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+    )
     status_history_repo = StatusHistoryRepository(engine=db_engine)
     budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
     source_document_repo = SourceDocumentsRepository(engine=db_engine)

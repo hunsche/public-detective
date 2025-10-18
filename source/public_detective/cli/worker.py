@@ -5,8 +5,6 @@ from public_detective.providers.config import ConfigProvider
 from public_detective.providers.logging import LoggingProvider
 from public_detective.worker.subscription import Subscription
 
-logger = LoggingProvider().get_logger()
-
 
 @click.group("worker")
 def worker_group() -> None:
@@ -52,6 +50,7 @@ def start(
         max_output_tokens: Maximum number of output tokens for the AI model.
         gcs_path_prefix: Overwrites the base GCS path for uploads.
     """
+    logger = LoggingProvider().get_logger()
     if max_messages is not None and timeout is None:
         timeout = 10
 

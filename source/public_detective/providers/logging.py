@@ -60,8 +60,12 @@ class LoggingProvider:
             cls._instance = super().__new__(cls)
         return cls._instance
 
-    def _configure_logger(self) -> Logger:
+    def _configure_logger(self, log_level_override: str | None = None) -> Logger:
         """Private method to configure the logger. This is called only once.
+
+        Args:
+            log_level_override: A string representation of the log level to
+                set, overriding the config.
 
         Returns:
             The configured logger instance.
@@ -72,7 +76,7 @@ class LoggingProvider:
             return logger
 
         config = ConfigProvider.get_config()
-        log_level_str = config.LOG_LEVEL
+        log_level_str = log_level_override or config.LOG_LEVEL
         numeric_level = _nameToLevel.get(log_level_str.upper(), _nameToLevel["INFO"])
         logger.setLevel(numeric_level)
 
@@ -90,7 +94,7 @@ class LoggingProvider:
         logger.info(f"Logger configured with level: {log_level_str}")
         return logger
 
-    def get_logger(self, level: int | None = None) -> Logger:
+    def get_logger(self, level_override: str | None = None) -> Logger:
         """Returns the configured logger instance.
 
         If the logger has not been configured yet, this method will trigger
@@ -101,16 +105,13 @@ class LoggingProvider:
         allowing for dynamic level changes.
 
         Args:
-            level: An optional logging level to set on the logger.
+            level_override: An optional logging level to set on the logger.
 
         Returns:
             The configured logger instance.
         """
         if not self._logger:
-            self._logger = self._configure_logger()
-
-        if level is not None and self._logger:
-            self._logger.setLevel(level)
+            self._logger = self._configure_logger(level_override)
 
         return self._logger
 

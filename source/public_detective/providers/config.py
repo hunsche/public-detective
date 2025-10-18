@@ -36,6 +36,8 @@ class Config(BaseSettings):
     PNCP_PUBLIC_QUERY_API_URL: str = "https://pncp.gov.br/api/consulta/v1/"
     PNCP_INTEGRATION_API_URL: str = "https://pncp.gov.br/api/pncp/v1/"
 
+    HTTP_REQUEST_DELAY_SECONDS: float = 0.5
+
     LOG_LEVEL: str = "INFO"
 
     TARGET_IBGE_CODES: list[int] = [

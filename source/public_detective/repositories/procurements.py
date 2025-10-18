@@ -15,6 +15,7 @@ import tempfile
 import zipfile
 from datetime import date
 from http import HTTPStatus
+from typing import cast
 from urllib.parse import urljoin
 from uuid import UUID
 
@@ -30,6 +31,7 @@ from public_detective.models.procurements import (
     ProcurementModality,
 )
 from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
 from pydantic import BaseModel, ValidationError
@@ -73,18 +75,21 @@ class ProcurementsRepository:
     config: Config
     pubsub_provider: PubSubProvider
     engine: Engine
+    http_provider: HttpProvider
 
-    def __init__(self, engine: Engine, pubsub_provider: PubSubProvider) -> None:
+    def __init__(self, engine: Engine, pubsub_provider: PubSubProvider, http_provider: HttpProvider) -> None:
         """Initializes the repository with its dependencies.
 
         Args:
             engine: The SQLAlchemy Engine for database connections.
             pubsub_provider: The provider for Pub/Sub messaging.
+            http_provider: The provider for HTTP requests.
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pubsub_provider = pubsub_provider
         self.engine = engine
+        self.http_provider = http_provider
 
     def get_latest_version(self, pncp_control_number: str) -> int:
         """Retrieves the latest version number for a given procurement.
@@ -471,7 +476,7 @@ class ProcurementsRepository:
                 f"{procurement.procurement_year}/{procurement.procurement_sequence}/arquivos"
             )
             api_url = urljoin(self.config.PNCP_INTEGRATION_API_URL, endpoint)
-            response = requests.get(api_url, timeout=30)
+            response = self.http_provider.get(api_url)
             if response.status_code == HTTPStatus.NO_CONTENT:
                 return []
             response.raise_for_status()
@@ -500,10 +505,11 @@ class ProcurementsRepository:
             The byte content of the file, or `None` if the download fails.
         """
         try:
-            self.logger.debug(f"Downloading content from {url}")
-            response = requests.get(url, timeout=90)
+            response = self.http_provider.get(url, timeout=90)
             response.raise_for_status()
-            return response.content
+            if response.content:
+                return cast(bytes, response.content)
+            return None
         except requests.RequestException as e:
             self.logger.error(f"Failed to download content from {url}: {e}")
             return None
@@ -522,11 +528,11 @@ class ProcurementsRepository:
             The original filename if found in the header, otherwise `None`.
         """
         try:
-            response = requests.head(url, timeout=30, allow_redirects=True)
+            response = self.http_provider.head(url, allow_redirects=True)
             response.raise_for_status()
             content_disposition = response.headers.get("Content-Disposition")
             if content_disposition:
-                match = re.search(r'filename="?([^"]+)"?', content_disposition, re.IGNORECASE)
+                match = re.search(r'filename="?([^"+]+)"?', content_disposition, re.IGNORECASE)
                 if match:
                     return match.group(1)
         except requests.RequestException as e:
@@ -575,10 +581,9 @@ class ProcurementsRepository:
                     if city_code:
                         params["codigoMunicipioIbge"] = city_code
                     try:
-                        response = requests.get(
+                        response = self.http_provider.get(
                             urljoin(self.config.PNCP_PUBLIC_QUERY_API_URL, endpoint),
                             params=params,
-                            timeout=30,
                         )
                         if response.status_code == HTTPStatus.NO_CONTENT:
                             break
@@ -590,7 +595,7 @@ class ProcurementsRepository:
                         if page >= parsed_data.total_pages:
                             break
                         page += 1
-                    except requests.exceptions.RequestException as e:
+                    except requests.RequestException as e:
                         self.logger.error(f"Error fetching updates on page {page}: {e}")
                         break
                     except ValidationError as e:
@@ -641,11 +646,8 @@ class ProcurementsRepository:
                     if city_code:
                         params["codigoMunicipioIbge"] = city_code
                     try:
-                        response = requests.get(
-                            urljoin(self.config.PNCP_PUBLIC_QUERY_API_URL, endpoint),
-                            params=params,
-                            timeout=30,
-                        )
+                        api_url = urljoin(self.config.PNCP_PUBLIC_QUERY_API_URL, endpoint)
+                        response = self.http_provider.get(api_url, params=params)
                         if response.status_code == HTTPStatus.NO_CONTENT:
                             break
                         response.raise_for_status()
@@ -660,7 +662,7 @@ class ProcurementsRepository:
                         if page >= parsed_data.total_pages:
                             break
                         page += 1
-                    except requests.exceptions.RequestException as e:
+                    except requests.RequestException as e:
                         self.logger.error(f"Error fetching updates on page {page}: {e}")
                         break
                     except ValidationError as e:
