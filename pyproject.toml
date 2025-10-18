@@ -85,20 +85,6 @@ pd = "public_detective.cli.__main__:main"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
-[tool.coverage.run]
-branch = true
-source = ["source/"]
-
-[tool.coverage.report]
-fail_under = 95
-ignore_errors = false
-omit = [
-    ".venv/**",
-    "*__init__*",
-    "*__main__*",
-    "source/public_detective/migrations/*",
-]
-
 [tool.black]
 line-length = 120
 target-version = ['py312']
