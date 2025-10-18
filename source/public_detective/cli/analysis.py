@@ -7,6 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import click
+from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
@@ -21,7 +22,6 @@ from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
-from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.services.analysis import AnalysisService
 from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
@@ -199,7 +199,6 @@ def prepare(
         )
 
         if not should_show_progress(no_progress):
-            # If no progress bar, just consume the generator
             for _ in event_generator:
                 pass
         else:
@@ -221,7 +220,6 @@ def prepare(
                                 f"Scanning date range ({total_days} days)", total=total_days
                             )
                         else:
-                            # A new day has started, so the previous day is complete.
                             progress.update(days_task_id, advance=1)
 
                         progress.update(
@@ -245,7 +243,6 @@ def prepare(
                         if procurements_task_id is not None:
                             progress.update(procurements_task_id, advance=1)
 
-                # After the loop, advance the progress for the final day.
                 if days_task_id is not None and not progress.tasks[days_task_id].completed:
                     progress.update(days_task_id, advance=1)
 

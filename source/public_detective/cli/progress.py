@@ -1,8 +1,8 @@
 """This module provides a factory for creating and configuring progress bars."""
 
-from collections.abc import Sized
+from collections.abc import Generator, Iterable
 from contextlib import contextmanager
-from typing import Generator, TypeVar
+from typing import Any, TypeVar
 
 import click
 
@@ -12,7 +12,7 @@ T = TypeVar("T")
 class ProgressFactory:
     """A factory for creating and configuring progress bars."""
 
-    def make(self, iterable: Sized, label: str) -> click.progressbar:
+    def make(self, iterable: Iterable[T], label: str) -> Any:
         """Creates a new progress bar.
 
         Args:
@@ -32,7 +32,7 @@ class ProgressFactory:
 
 
 @contextmanager
-def null_progress(iterable: Sized, label: str) -> Generator[Sized, None, None]:  # noqa: F841
+def null_progress(iterable: Iterable[T], label: str) -> Generator[Iterable[T], None, None]:  # noqa: F841
     """A null progress bar that does nothing.
 
     Args:

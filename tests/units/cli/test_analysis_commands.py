@@ -1,4 +1,6 @@
+from collections.abc import Iterator
 from datetime import date
+from typing import Any
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
@@ -614,7 +616,13 @@ def test_prepare_progress_bar_behavior(
     # takes precedence over the tty/CI check.
     mock_should_show_progress.side_effect = lambda flag: should_show and not flag
 
-    mock_analysis_service.return_value.run_pre_analysis.return_value = iter([])
+    # Provide a mock generator that yields events to test the progress bar logic
+    def mock_generator() -> Iterator[tuple[str, Any]]:
+        yield "day_started", (date(2025, 1, 1), 1)
+        yield "procurements_fetched", [1]
+        yield "procurement_processed", (None, None)
+
+    mock_analysis_service.return_value.run_pre_analysis.return_value = mock_generator()
 
     runner = CliRunner()
     cli = create_cli()
@@ -627,3 +635,21 @@ def test_prepare_progress_bar_behavior(
 
     assert mock_should_show_progress.called
     assert mock_rich_progress.called is progress_should_run
+
+
+@patch("public_detective.cli.analysis.AnalysisService")
+@patch("public_detective.cli.analysis.DatabaseManager")
+def test_prepare_command_exception_handling(mock_db_manager: MagicMock, mock_analysis_service: MagicMock) -> None:
+    """Tests that the prepare command handles exceptions from the service gracefully."""
+    error_message = "Service failure"
+    # We need to import the exception from the correct module to patch it
+    from public_detective.exceptions.analysis import AnalysisError
+
+    mock_analysis_service.return_value.run_pre_analysis.side_effect = AnalysisError(error_message)
+
+    runner = CliRunner()
+    cli = create_cli()
+    result = runner.invoke(cli, ["analysis", "prepare"])
+
+    assert result.exit_code != 0
+    assert f"An error occurred: {error_message}" in result.output
