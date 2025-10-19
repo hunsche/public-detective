@@ -4,6 +4,7 @@ import uuid
 
 import pytest
 from public_detective.models.procurements import Procurement
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.procurements import ProcurementsRepository
 from sqlalchemy import text
@@ -27,7 +28,10 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple, gcs_cleanup_manager:
     version_number = 1
 
     pubsub_provider = PubSubProvider()
-    procurement_repo = ProcurementsRepository(engine=db_session, pubsub_provider=pubsub_provider)
+    http_provider = HttpProvider()
+    procurement_repo = ProcurementsRepository(
+        engine=db_session, pubsub_provider=pubsub_provider, http_provider=http_provider
+    )
 
     raw_data_json = json.dumps(
         {

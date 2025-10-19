@@ -13,12 +13,20 @@ import pytest
 from docx import Document
 from openpyxl import Workbook
 from PIL import Image
+from public_detective.models.analyses import Analysis
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
+from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import ConfigProvider
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.pubsub import PubSubProvider
-from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.file_records import FileRecordsRepository
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
+from public_detective.repositories.source_documents import SourceDocumentsRepository
+from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
@@ -317,10 +325,7 @@ def test_file_extension_processing(
     os.environ["PNCP_INTEGRATION_API_URL"] = mock_pncp_server.url
 
     # 3. Setup database records
-    analysis_id = uuid.uuid4()
     version_number = 1
-
-    procurement_repo = ProcurementsRepository(engine=db_session, pubsub_provider=PubSubProvider())
     raw_data_json = json.dumps(
         {
             "anoCompra": 2025,
@@ -355,42 +360,70 @@ def test_file_extension_processing(
         }
     )
     procurement_model = Procurement.model_validate(json.loads(raw_data_json))
-    procurement_repo.save_procurement_version(
-        procurement=procurement_model,
-        raw_data=raw_data_json,
-        version_number=version_number,
-        content_hash=f"dummy_hash_{analysis_id}",
+
+    # 4. Run pre-analysis
+    db_engine = db_session
+    pubsub_provider = PubSubProvider()
+    gcs_provider = GcsProvider()
+    ai_provider = AiProvider(Analysis)
+    http_provider = HttpProvider()
+
+    analysis_repo = AnalysisRepository(engine=db_engine)
+    source_document_repo = SourceDocumentsRepository(engine=db_engine)
+    file_record_repo = FileRecordsRepository(engine=db_engine)
+    procurement_repo = ProcurementsRepository(
+        engine=db_engine, pubsub_provider=pubsub_provider, http_provider=http_provider
+    )
+    status_history_repo = StatusHistoryRepository(engine=db_engine)
+    budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)
+
+    service = AnalysisService(
+        procurement_repo=procurement_repo,
+        analysis_repo=analysis_repo,
+        source_document_repo=source_document_repo,
+        file_record_repo=file_record_repo,
+        status_history_repo=status_history_repo,
+        budget_ledger_repo=budget_ledger_repo,
+        ai_provider=ai_provider,
+        gcs_provider=gcs_provider,
+        pubsub_provider=pubsub_provider,
+        gcs_path_prefix=gcs_cleanup_manager.prefix,
     )
 
-    with db_session.connect() as connection:
-        connection.execute(
-            text(
-                """INSERT INTO procurement_analyses (
-                    analysis_id, procurement_control_number, version_number, status, analysis_prompt
-                )
-                   VALUES (
-                    :analysis_id, :procurement_control_number, :version_number, 'PENDING_ANALYSIS', ''
-                )"""
-            ),
-            {
-                "analysis_id": analysis_id,
-                "procurement_control_number": procurement_control_number,
-                "version_number": version_number,
-            },
+    # Mock the document processing to avoid actual HTTP calls
+    service.procurement_repo.process_procurement_documents = lambda p: [
+        ProcessedFile(
+            source_document_id=str(file_id),
+            raw_document_metadata=mock_pncp_server.file_metadata[0],
+            relative_path=file_name,
+            content=local_file_path.read_bytes(),
         )
-        connection.commit()
-    # 4. Trigger worker by publishing a message
+    ]
+
+    service._pre_analyze_procurement(procurement_model, json.loads(raw_data_json))
+
+    # 5. Fetch the created analysis_id
+    with db_session.connect() as connection:
+        analysis_id = connection.execute(
+            text(
+                """SELECT analysis_id FROM procurement_analyses
+                WHERE procurement_control_number = :pcn AND version_number = :vn"""
+            ),
+            {"pcn": procurement_control_number, "vn": version_number},
+        ).scalar_one()
+
+    # 6. Trigger worker by publishing a message
     message_data = {"analysis_id": str(analysis_id)}
     message_json = json.dumps(message_data)
     publisher.publish(topic_path, message_json.encode())
     print(f"Published message for analysis_id: {analysis_id}")
 
-    # 5. Run the worker as a subprocess
+    # 7. Run the worker as a subprocess
     gcs_prefix = gcs_cleanup_manager.prefix
     worker_command = f"poetry run pd worker start --max-messages 1 --timeout 15 --gcs-path-prefix {gcs_prefix}"
     run_command(worker_command)
 
-    # 6. Assertions
+    # 8. Assertions
     with db_session.connect() as connection:
         final_status = connection.execute(
             text("SELECT status FROM procurement_analyses WHERE analysis_id = :analysis_id"),
