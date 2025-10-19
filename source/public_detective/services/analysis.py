@@ -914,7 +914,7 @@ class AnalysisService:
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
         all_candidates = self._prepare_ai_candidates(all_original_files)
-        final_candidates, _ = self._select_files_by_token_limit(all_candidates, procurement)
+        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
         files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
         procurement_content_hash = self._calculate_procurement_hash(procurement, all_original_files)
@@ -937,9 +937,9 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        base_prompt_text = self._build_analysis_prompt(procurement, final_candidates, [])
+        final_prompt_text = self._build_analysis_prompt(procurement, final_candidates, warnings)
         uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
-        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(base_prompt_text, uris_for_token_count)
+        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(final_prompt_text, uris_for_token_count)
 
         output_tokens = 0
         thinking_tokens = 0
