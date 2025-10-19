@@ -8,7 +8,7 @@ branch = true
 fail_under = 95
 ignore_errors = false
 omit =
-    .venv/*
-    source/public_detective/__init__.py
-    source/public_detective/cli/__main__.py
+    .venv/**
+    *__init__*
+    *__main__*
     source/public_detective/migrations/*

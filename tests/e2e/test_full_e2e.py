@@ -8,9 +8,7 @@ from sqlalchemy.engine import Engine
 from tests.e2e.conftest import GcsCleanupManager, run_command
 
 
-def test_ranked_analysis_e2e_flow(
-    db_session: Engine, e2e_pubsub: tuple, gcs_cleanup_manager: GcsCleanupManager
-) -> None:  # noqa: F841
+def test_ranked_analysis_e2e_flow(db_session: Engine, gcs_cleanup_manager: GcsCleanupManager) -> None:  # noqa: F841
     """Tests the full E2E flow for ranked analysis against live dependencies.
 
     1. Pre-analyzes procurements, creating analysis records in the DB.
@@ -103,6 +101,6 @@ def test_ranked_analysis_e2e_flow(
             if not records:
                 print("[]")
             else:
-                serializable_records = [{key: str(value) for key, value in record.items()} for record in records]
-                print(json.dumps(serializable_records, indent=2, ensure_ascii=False))
+                serializable_records = [dict(record) for record in records]
+                print(json.dumps(serializable_records, indent=2, ensure_ascii=False, default=str))
     print("\n--- Data Dump Complete ---")

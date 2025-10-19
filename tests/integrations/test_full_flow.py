@@ -1,7 +1,7 @@
 import json
 from datetime import date
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
@@ -14,7 +14,7 @@ from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.repositories.budget_ledger import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
-from public_detective.repositories.procurements import ProcurementsRepository
+from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
@@ -124,9 +124,24 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
 
     with (
         patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
-        patch.object(procurement_repo, "process_procurement_documents", return_value=[]),
+        patch.object(
+            procurement_repo,
+            "process_procurement_documents",
+            return_value=[
+                MagicMock(
+                    spec=ProcessedFile,
+                    content=b"test",
+                    relative_path="test.txt",
+                    source_document_id="doc1",
+                    raw_document_metadata={},
+                )
+            ],
+        ),
         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
+        patch.object(analysis_service, "_process_and_save_source_documents", return_value={}),
+        patch.object(analysis_service, "_upload_and_save_initial_records"),
         patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
+        patch.object(procurement_repo, "get_procurement_uuid", return_value=str(uuid4())),
         patch.object(procurement_repo, "get_latest_version", return_value=1),
         patch.object(procurement_repo, "save_procurement_version"),
         patch.object(ai_provider, "count_tokens_for_analysis", return_value=(0, 0, 0)),

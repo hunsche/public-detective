@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 from aiohttp import web
 from alembic import command
-from alembic.config import Config
+from alembic.config import Config as AlembicConfig
 from filelock import FileLock
 from google.api_core import exceptions
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
@@ -220,7 +220,7 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
         engine: The SQLAlchemy engine.
         schema_name: The name of the database schema.
     """
-    alembic_cfg = Config("alembic.ini")
+    alembic_cfg = AlembicConfig("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
     alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
     lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
@@ -270,7 +270,7 @@ def e2e_credentials() -> Generator[Path, None, None]:
 
 
 @pytest.fixture(scope="function")
-def db_session(e2e_credentials: Path) -> Generator[Engine, None, None]:  # noqa: F841
+def db_session(e2e_credentials: Path) -> Generator[Engine, None, None]:  # noqa: F841  # noqa: F841
     """
     Configures a fully isolated environment for a single E2E test function.
 
