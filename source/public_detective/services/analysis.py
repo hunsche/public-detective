@@ -427,7 +427,9 @@ class AnalysisService:
         return candidates
 
     def _select_files_by_token_limit(
-        self, candidates: list[AIFileCandidate], procurement: Procurement
+        self,
+        candidates: list[AIFileCandidate],
+        procurement: Procurement,
     ) -> tuple[list[AIFileCandidate], list[str]]:
         """Selects which files to include based on the AI model's token limit.
 
@@ -438,7 +440,7 @@ class AnalysisService:
         Returns:
             A tuple containing the list of selected candidates and a list of warnings.
         """
-        candidates.sort(key=lambda candidate: self._get_priority(candidate.original_path))
+        candidates.sort(key=self._get_priority)
         max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
         warnings = []
 
@@ -457,13 +459,17 @@ class AnalysisService:
             else:
                 candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
 
-        excluded_names = [
-            os.path.basename(candidate.original_path) for candidate in candidates if not candidate.is_included
-        ]
-        if excluded_names:
-            warnings.append(
-                Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=", ".join(excluded_names))
-            )
+        excluded_by_reason = defaultdict(list)
+        for candidate in candidates:
+            if not candidate.is_included and candidate.exclusion_reason:
+                excluded_by_reason[candidate.exclusion_reason].append(os.path.basename(candidate.original_path))
+
+        for reason, files in excluded_by_reason.items():
+            files_str = ", ".join(files)
+            if reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED:
+                warnings.append(Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=files_str))
+            else:
+                warnings.append(f"Arquivos ignorados por '{reason}': {files_str}")
 
         return candidates, warnings
 
@@ -579,40 +585,51 @@ class AnalysisService:
                 nesting_level=candidate.original_path.count(os.sep),
                 included_in_analysis=False,
                 exclusion_reason=candidate.exclusion_reason,
-                prioritization_logic=self._get_priority_as_string(candidate.original_path),
+                prioritization_logic=self._get_priority_as_string(candidate),
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
             )
             candidate.file_record_id = self.file_record_repo.save_file_record(file_record)
 
-    def _get_priority(self, file_path: str) -> int:
-        """Determines the priority of a file based on keywords in its name.
+    def _get_priority(self, candidate: AIFileCandidate) -> int:
+        """Determines the priority of a file based on its metadata and name.
 
         Args:
-            file_path: The path of the file to prioritize.
+            candidate: The AIFileCandidate to prioritize.
 
         Returns:
             The priority of the file as an integer.
         """
-        path_lower = file_path.lower()
+        document_type_name = candidate.raw_document_metadata.get("tipoDocumentoNome", "").lower()
+        for i, keyword in enumerate(self._FILE_PRIORITY_ORDER):
+            if keyword in document_type_name:
+                return i
+
+        path_lower = candidate.original_path.lower()
         for i, keyword in enumerate(self._FILE_PRIORITY_ORDER):
             if keyword in path_lower:
                 return i
+
         return len(self._FILE_PRIORITY_ORDER)
 
-    def _get_priority_as_string(self, file_path: str) -> str:
-        """Returns the priority keyword found in the file path.
+    def _get_priority_as_string(self, candidate: AIFileCandidate) -> str:
+        """Returns the priority keyword found in the file's metadata or path.
 
         Args:
-            file_path: The path of the file to prioritize.
+            candidate: The AIFileCandidate to get the priority string for.
 
         Returns:
-            The priority keyword found in the file path.
+            The priority keyword found in the file's metadata or path.
         """
-        path_lower = file_path.lower()
+        document_type_name = candidate.raw_document_metadata.get("tipoDocumentoNome", "").lower()
+        for keyword in self._FILE_PRIORITY_ORDER:
+            if keyword in document_type_name:
+                message: str = PrioritizationLogic.BY_METADATA.format(keyword=keyword)
+                return message
+        path_lower = candidate.original_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in path_lower:
-                message: str = PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
-                return message
+                keyword_message: str = PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
+                return keyword_message
         no_priority_message: str = PrioritizationLogic.NO_PRIORITY
         return no_priority_message
 
@@ -632,7 +649,28 @@ class AnalysisService:
         Returns:
             The prompt for the AI.
         """
-        procurement_json = procurement.model_dump_json(by_alias=True, indent=2)
+        procurement_summary = {
+            "Objeto": procurement.object_description,
+            "Modalidade": procurement.modality,
+            "Órgão": procurement.government_entity.name,
+            "Unidade": procurement.entity_unit.unit_name,
+            "Valor Estimado": (
+                f"R$ {procurement.total_estimated_value:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+                if procurement.total_estimated_value is not None
+                else "N/A"
+            ),
+            "Abertura das Propostas": (
+                procurement.proposal_opening_date.strftime("%d/%m/%Y %H:%M")
+                if procurement.proposal_opening_date
+                else "N/A"
+            ),
+            "Encerramento das Propostas": (
+                procurement.proposal_closing_date.strftime("%d/%m/%Y %H:%M")
+                if procurement.proposal_closing_date
+                else "N/A"
+            ),
+        }
+        procurement_summary_str = json.dumps(procurement_summary, indent=2, ensure_ascii=False)
 
         source_doc_files = defaultdict(list)
         for candidate in candidates:
@@ -644,12 +682,14 @@ class AnalysisService:
             meta = files[0].raw_document_metadata
             title = meta.get("titulo", "N/A")
             doc_type = meta.get("tipoDocumentoNome", "N/A")
+            doc_type_description = meta.get("tipoDocumentoDescricao", "N/A")
             pub_date = meta.get("dataPublicacaoPncp", "N/A")
 
             file_list = "\n".join([f"- `{os.path.basename(f.ai_path)}`" for f in files])
 
             context_part = (
-                f"**Fonte do Documento:** {title} (Tipo: {doc_type}, Publicado em: {pub_date})\n"
+                f"**Fonte do Documento:** {title} (Tipo: {doc_type} - "
+                f"{doc_type_description}, Publicado em: {pub_date})\n"
                 f"**Arquivos extraídos desta fonte:**\n{file_list}"
             )
             document_context_parts.append(context_part)
@@ -676,9 +716,9 @@ class AnalysisService:
         contexto geral. Em seguida, use a lista de documentos e arquivos para
         entender a origem de cada anexo.
 
-        --- METADADOS DA LICITAÇÃO (JSON) ---
-        {procurement_json}
-        --- FIM DOS METADADOS ---
+        --- SUMÁRIO DA LICITAÇÃO ---
+        {procurement_summary_str}
+        --- FIM DO SUMÁRIO ---
 
         --- CONTEXTO DOS DOCUMENTOS ANEXADOS ---
         {document_context_section}
@@ -738,6 +778,44 @@ class AnalysisService:
             else:
                 hasher.update(content)
         return hasher.hexdigest()
+
+    def _calculate_procurement_hash(self, procurement: Procurement, files: list[ProcessedFile]) -> str:
+        """Calculates a SHA-256 hash for a procurement based on key fields and file metadata.
+
+        Args:
+            procurement: The procurement to hash.
+            files: The list of files to include in the hash.
+
+        Returns:
+            The SHA-256 hash of the procurement.
+        """
+        procurement_key_data = {
+            "process_number": procurement.process_number,
+            "object_description": procurement.object_description,
+            "legal_support": procurement.legal_support.model_dump(by_alias=True),
+            "is_srp": procurement.is_srp,
+            "modality": procurement.modality,
+            "pncp_control_number": procurement.pncp_control_number,
+            "procurement_status": procurement.procurement_status,
+            "total_estimated_value": procurement.total_estimated_value,
+            "total_awarded_value": procurement.total_awarded_value,
+            "proposal_opening_date": procurement.proposal_opening_date,
+            "proposal_closing_date": procurement.proposal_closing_date,
+            "government_entity": procurement.government_entity.model_dump(by_alias=True),
+            "entity_unit": procurement.entity_unit.model_dump(by_alias=True),
+            "dispute_method": procurement.dispute_method,
+        }
+
+        files_metadata = [
+            {"relative_path": file.relative_path, "metadata": file.raw_document_metadata}
+            for file in sorted(files, key=lambda x: x.relative_path)
+        ]
+
+        procurement_data_str = json.dumps(procurement_key_data, sort_keys=True, default=str)
+        files_metadata_str = json.dumps(files_metadata, sort_keys=True)
+
+        combined_data = procurement_data_str + files_metadata_str
+        return hashlib.sha256(combined_data.encode("utf-8")).hexdigest()
 
     def run_specific_analysis(self, analysis_id: UUID) -> None:
         """Triggers an analysis for a specific ID by publishing a message.
@@ -863,13 +941,13 @@ class AnalysisService:
         final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
         files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
-        raw_data_str = json.dumps(raw_data, sort_keys=True)
-        all_files_content = b"".join(file.content for file in sorted(all_original_files, key=lambda x: x.relative_path))
-        procurement_content_hash = hashlib.sha256(raw_data_str.encode("utf-8") + all_files_content).hexdigest()
+        procurement_content_hash = self._calculate_procurement_hash(procurement, all_original_files)
 
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
             self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
+
+        raw_data_str = json.dumps(raw_data, sort_keys=True)
 
         analysis_document_hash = self._calculate_hash(files_for_ai)
 

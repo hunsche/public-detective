@@ -15,6 +15,7 @@ class ExclusionReason:
 class PrioritizationLogic:
     """Provides standardized messages for why a file was prioritized."""
 
+    BY_METADATA: str = "Priorizado por conter o termo '{keyword}' nos metadados."
     BY_KEYWORD: str = "Priorizado por conter o termo '{keyword}' no nome."
     NO_PRIORITY: str = "Sem priorização."
 
