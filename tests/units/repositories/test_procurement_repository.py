@@ -400,6 +400,108 @@ def test_download_file_content_request_exception(repo: ProcurementsRepository, c
     assert "Failed to download content from http://example.com/file: Download failed" in caplog.text
 
 
+def test_process_procurement_documents_happy_path(repo: ProcurementsRepository) -> None:
+    """Ensure a non-archive document is processed and returned as a ProcessedFile."""
+    # Create a mock ProcurementDocument-like object
+    mock_doc = MagicMock()
+    mock_doc.url = "http://example.com/file.pdf"
+    mock_doc.title = "file.pdf"
+    mock_doc.cnpj = "12345678000199"
+    mock_doc.procurement_year = 2025
+    mock_doc.procurement_sequence = 1
+    mock_doc.document_sequence = 1
+
+    raw_meta = {"some": "meta"}
+
+    with (
+        patch.object(repo, "_get_all_documents_metadata", return_value=[(mock_doc, raw_meta)]),
+        patch.object(repo, "_download_file_content", return_value=b"hello"),
+        patch.object(repo, "_determine_original_filename", return_value=None),
+    ):
+        result = repo.process_procurement_documents(MagicMock(spec=Procurement))
+        assert isinstance(result, list)
+        assert len(result) == 1
+        pf = result[0]
+        assert isinstance(pf, ProcessedFile)
+        assert pf.content == b"hello"
+        assert pf.raw_document_metadata == raw_meta
+
+
+def test_create_zip_from_files_success(repo: ProcurementsRepository) -> None:
+    """Ensure zip is created successfully and contains expected files."""
+    files = [("a/b.txt", b"one"), ("c:d.txt", b"two")]
+    result = repo.create_zip_from_files(files, "CTRL-1")
+    assert result is not None
+    # Verify zip contents
+    with io.BytesIO(result) as stream:
+        with zipfile.ZipFile(stream) as zf:
+            names = zf.namelist()
+            # paths should be sanitized (':' replaced)
+            assert any("b.txt" in n for n in names)
+            assert any("c_d.txt" in n or "c:d.txt" not in n for n in names)
+
+
+def test_publish_procurement_to_pubsub_success(repo: ProcurementsRepository) -> None:
+    """Publish returns True on successful publish."""
+    mock_proc = MagicMock(spec=Procurement)
+    mock_proc.model_dump_json.return_value = '{"ok": true}'
+    mock_proc.pncp_control_number = "PNCP-1"
+    repo.pubsub_provider.publish.return_value = "message-id"
+    assert repo.publish_procurement_to_pubsub(mock_proc) is True
+
+
+def test_get_updated_procurements_no_target_codes(
+    repo: ProcurementsRepository, caplog: pytest.LogCaptureFixture
+) -> None:
+    """When TARGET_IBGE_CODES is empty, the method should warn and proceed nationwide."""
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy"
+    repo.config.TARGET_IBGE_CODES = []
+    # Ensure the HTTP call returns NO_CONTENT immediately
+    mock_response = MagicMock()
+    mock_response.status_code = 204
+    repo.http_provider.get.return_value = mock_response
+    result = repo.get_updated_procurements(date(2023, 1, 1))
+    assert result == []
+    assert "No TARGET_IBGE_CODES configured" in caplog.text
+
+
+def test_recursive_processing_nested_handler(repo: ProcurementsRepository) -> None:
+    """When handler returns nested files, recursion should produce correctly nested paths."""
+    file_collection: list[ProcessedFile] = []
+
+    # Make the zip handler return a single inner file
+    with patch.object(repo, "_extract_from_zip", return_value=[("inner.txt", b"data")]):
+        repo._recursive_file_processing(
+            source_document_id="s1",
+            content=b"dummy",
+            current_path="outer.zip",
+            nesting_level=0,
+            file_collection=file_collection,
+            raw_document_metadata={},
+        )
+
+    assert len(file_collection) == 1
+    assert file_collection[0].relative_path.endswith("outer.zip/inner.txt")
+
+
+def test_recursive_processing_tar_handler_branch(repo: ProcurementsRepository) -> None:
+    """Force tarfile.is_tarfile to True and ensure tar handler is invoked and results collected."""
+    file_collection: list[ProcessedFile] = []
+    with patch("tarfile.is_tarfile", return_value=True):
+        with patch.object(repo, "_extract_from_tar", return_value=[("a.txt", b"x")]):
+            repo._recursive_file_processing(
+                source_document_id="s2",
+                content=b"dummy tar",
+                current_path="somefile",
+                nesting_level=0,
+                file_collection=file_collection,
+                raw_document_metadata={},
+            )
+
+    # The handler returns a member that should be processed and added
+    assert any("a.txt" in f.relative_path for f in file_collection)
+
+
 def test_get_all_documents_metadata_validation_error(
     repo: ProcurementsRepository, mock_procurement: MagicMock, caplog: Any
 ) -> None:

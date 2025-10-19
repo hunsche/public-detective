@@ -94,7 +94,27 @@ class FileRecordsRepository:
         self.logger.info(f"Fetching all file records for analysis_id {analysis_id}.")
         sql = text(
             """
-            SELECT * FROM file_records WHERE analysis_id = :analysis_id;
+            SELECT
+                fr.id,
+                fr.created_at,
+                fr.updated_at,
+                fr.source_document_id,
+                fr.file_name,
+                fr.gcs_path,
+                fr.extension,
+                fr.size_bytes,
+                fr.nesting_level,
+                fr.included_in_analysis,
+                fr.exclusion_reason,
+                fr.prioritization_logic,
+                fr.prepared_content_gcs_uris,
+                fr.raw_document_metadata
+            FROM
+                file_records fr
+            JOIN
+                procurement_source_documents psd ON fr.source_document_id = psd.id
+            WHERE
+                psd.analysis_id = :analysis_id;
             """
         )
         with self.engine.connect() as conn:

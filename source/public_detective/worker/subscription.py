@@ -23,6 +23,7 @@ from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
 from public_detective.providers.database import DatabaseManager
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import Message, PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
@@ -86,10 +87,13 @@ class Subscription:
             gcs_provider = GcsProvider()
             ai_provider = AiProvider(Analysis)
 
+            http_provider = HttpProvider()
             analysis_repo = AnalysisRepository(engine=db_engine)
             source_document_repo = SourceDocumentsRepository(engine=db_engine)
             file_record_repo = FileRecordsRepository(engine=db_engine)
-            self.procurement_repo = ProcurementsRepository(engine=db_engine, pubsub_provider=self.pubsub_provider)
+            self.procurement_repo = ProcurementsRepository(
+                engine=db_engine, pubsub_provider=self.pubsub_provider, http_provider=http_provider
+            )
 
             status_history_repo = StatusHistoryRepository(engine=db_engine)
             budget_ledger_repo = BudgetLedgerRepository(engine=db_engine)

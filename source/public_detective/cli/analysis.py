@@ -75,7 +75,7 @@ def run(ctx: click.Context, analysis_id: UUID) -> None:
         analysis_id: The ID of the analysis to run.
     """
     click.echo(f"Triggering analysis for analysis_id: {analysis_id}")
-    gcs_path_prefix = ctx.obj
+    gcs_path_prefix = ctx.obj.get("gcs_path_prefix")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -160,7 +160,7 @@ def prepare(
     if start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
-    gcs_path_prefix = ctx.obj
+    gcs_path_prefix = ctx.obj.get("gcs_path_prefix")
     db_engine = DatabaseManager.get_engine()
     pubsub_provider = PubSubProvider()
     gcs_provider = GcsProvider()
@@ -285,7 +285,7 @@ def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, time
         timeout_hours: The timeout in hours to consider a task stale.
     """
     click.echo("Searching for analyses to retry...")
-    gcs_path_prefix = ctx.obj
+    gcs_path_prefix = ctx.obj.get("gcs_path_prefix")
 
     try:
         db_engine = DatabaseManager.get_engine()
@@ -381,7 +381,7 @@ def rank(
     else:
         click.echo(f"Triggering ranked analysis with a manual budget of {budget:.2f} BRL.")
 
-    gcs_path_prefix = ctx.obj
+    gcs_path_prefix = ctx.obj.get("gcs_path_prefix")
 
     try:
         db_engine = DatabaseManager.get_engine()

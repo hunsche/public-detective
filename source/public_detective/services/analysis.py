@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import time
+import uuid
 from collections import defaultdict
 from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
@@ -168,17 +169,19 @@ class AnalysisService:
         self.pricing_service = PricingService()
         self.gcs_path_prefix = gcs_path_prefix
 
-    def _get_modality(self, candidates: list[AIFileCandidate]) -> Modality:
+    def _get_modality_from_exts(self, extensions: list[str | None]) -> Modality:
         """Determines the modality of an analysis based on file extensions.
 
         Args:
-            candidates: A list of AIFileCandidate objects.
+            extensions: A list of file extensions.
 
         Returns:
             The modality of the analysis.
         """
-        for candidate in candidates:
-            ext = os.path.splitext(candidate.ai_path)[1].lower()
+        for ext in extensions:
+            if not ext:
+                continue
+            ext = "." + ext.lower()
             if ext in self._VIDEO_EXTENSIONS:
                 return Modality.VIDEO
             if ext in self._AUDIO_EXTENSIONS:
@@ -252,83 +255,102 @@ class AnalysisService:
             analysis_id: The ID of the analysis.
             max_output_tokens: The maximum number of output tokens for the AI model.
         """
-        control_number = procurement.pncp_control_number
-        self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
-
         procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, version_number)
         if not procurement_id:
-            raise AnalysisError(f"Could not find procurement UUID for {control_number} v{version_number}")
-
-        processed_files = self.procurement_repo.process_procurement_documents(procurement)
-        if not processed_files:
-            self.logger.warning(f"No files found for {control_number}. Aborting.")
-            return
-
-        all_candidates = self._prepare_ai_candidates(processed_files)
-
-        source_docs_map = self._process_and_save_source_documents(analysis_id, all_candidates)
-        self._upload_and_save_initial_records(procurement_id, analysis_id, all_candidates, source_docs_map)
-
-        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
-        self._update_selected_file_records(final_candidates)
-
-        files_for_ai_uris = [
-            uri for candidate in final_candidates if candidate.is_included for uri in candidate.ai_gcs_uris
-        ]
-        if not files_for_ai_uris:
-            self.logger.error(f"No supported files left after filtering for {control_number}.")
-            return
-
-        files_for_hash = [
-            (candidate.ai_path, candidate.ai_content) for candidate in final_candidates if candidate.is_included
-        ]
-        document_hash = self._calculate_hash(files_for_hash)
-        modality = self._get_modality(final_candidates)
-
-        try:
-            prompt = self._build_analysis_prompt(procurement, final_candidates, warnings)
-            ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
-                prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
+            raise AnalysisError(
+                f"Could not find procurement UUID for {procurement.pncp_control_number} v{version_number}"
             )
 
-            gcs_base_path = f"{procurement_id}/{analysis_id}"
+        correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
+        with LoggingProvider().set_correlation_id(correlation_id):
+            control_number = procurement.pncp_control_number
+            self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
 
-            final_result = AnalysisResult(
-                procurement_control_number=control_number,
-                version_number=version_number,
-                ai_analysis=ai_analysis,
-                warnings=warnings,
-                document_hash=document_hash,
-                original_documents_gcs_path=gcs_base_path,
-                processed_documents_gcs_path=None,
-                analysis_prompt=prompt,
-            )
-            input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
-                input_tokens, output_tokens, thinking_tokens, modality=modality
-            )
-            self.analysis_repo.save_analysis(
-                analysis_id=analysis_id,
-                result=final_result,
-                input_tokens=input_tokens,
-                output_tokens=output_tokens,
-                thinking_tokens=thinking_tokens,
-                input_cost=input_cost,
-                output_cost=output_cost,
-                thinking_cost=thinking_cost,
-                total_cost=total_cost,
-            )
+            analysis_record = self.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis_record:
+                raise AnalysisError(f"Analysis record {analysis_id} not found.")
 
-            self.budget_ledger_repo.save_expense(
-                analysis_id,
-                total_cost,
-                f"Análise da licitação {procurement.pncp_control_number} (v{version_number}).",
-            )
+            file_records = self.file_record_repo.get_all_file_records_by_analysis_id(str(analysis_id))
+            if not file_records:
+                self.logger.warning(f"No file records found for analysis {analysis_id}. Aborting.")
+                self._update_status_with_history(
+                    analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, "No file records found for analysis."
+                )
+                return
 
-            self.logger.info(f"Successfully completed analysis for {control_number}.")
+            included_records = [rec for rec in file_records if rec.get("included_in_analysis")]
+            if not included_records:
+                self.logger.error(f"No files were selected for analysis for {control_number}. Aborting.")
+                self._update_status_with_history(
+                    analysis_id,
+                    ProcurementAnalysisStatus.ANALYSIS_FAILED,
+                    "No files were selected for analysis during pre-analysis.",
+                )
+                return
 
-        except Exception as e:
-            self.logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
-            raise
+            files_for_ai_uris = [
+                uri
+                for rec in included_records
+                if rec.get("prepared_content_gcs_uris")
+                for uri in rec["prepared_content_gcs_uris"]
+            ]
+            if not files_for_ai_uris:
+                files_for_ai_uris = [
+                    f"gs://{self.config.GCP_GCS_BUCKET_PROCUREMENTS}/{rec['gcs_path']}" for rec in included_records
+                ]
+
+            document_hash = analysis_record.document_hash
+            exts = [rec.get("extension") for rec in included_records]
+            modality = self._get_modality_from_exts(exts)
+            prompt = analysis_record.analysis_prompt
+            warnings = analysis_record.warnings or []
+
+            try:
+                ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
+                    prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
+                )
+
+                procurement_id = self.procurement_repo.get_procurement_uuid(
+                    procurement.pncp_control_number, version_number
+                )
+                gcs_base_path = f"{procurement_id}/{analysis_id}"
+
+                final_result = AnalysisResult(
+                    procurement_control_number=control_number,
+                    version_number=version_number,
+                    ai_analysis=ai_analysis,
+                    warnings=warnings,
+                    document_hash=document_hash,
+                    original_documents_gcs_path=gcs_base_path,
+                    processed_documents_gcs_path=None,
+                    analysis_prompt=prompt,
+                )
+                input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                    input_tokens, output_tokens, thinking_tokens, modality=modality
+                )
+                self.analysis_repo.save_analysis(
+                    analysis_id=analysis_id,
+                    result=final_result,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    thinking_tokens=thinking_tokens,
+                    input_cost=input_cost,
+                    output_cost=output_cost,
+                    thinking_cost=thinking_cost,
+                    total_cost=total_cost,
+                )
+
+                self.budget_ledger_repo.save_expense(
+                    analysis_id,
+                    total_cost,
+                    f"Análise da licitação {procurement.pncp_control_number} (v{version_number}).",
+                )
+
+                self.logger.info(f"Successfully completed analysis for {control_number}.")
+
+            except Exception as e:
+                self.logger.error(f"Analysis pipeline failed for {control_number}: {e}", exc_info=True)
+                raise
 
     def _prepare_ai_candidates(self, all_files: list[ProcessedFile]) -> list[AIFileCandidate]:
         """Prepares a list of AIFileCandidate objects from raw file data.
@@ -405,7 +427,9 @@ class AnalysisService:
         return candidates
 
     def _select_files_by_token_limit(
-        self, candidates: list[AIFileCandidate], procurement: Procurement
+        self,
+        candidates: list[AIFileCandidate],
+        procurement: Procurement,
     ) -> tuple[list[AIFileCandidate], list[str]]:
         """Selects which files to include based on the AI model's token limit.
 
@@ -937,13 +961,17 @@ class AnalysisService:
             content_hash=procurement_content_hash,
         )
 
-        final_prompt_text = self._build_analysis_prompt(procurement, final_candidates, warnings)
+        procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, new_version)
+        if not procurement_id:
+            raise AnalysisError(f"Could not find procurement UUID for {procurement.pncp_control_number} v{new_version}")
+
+        prompt = self._build_analysis_prompt(procurement, final_candidates, warnings)
         uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
-        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(final_prompt_text, uris_for_token_count)
+        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
 
         output_tokens = 0
         thinking_tokens = 0
-        modality = self._get_modality(final_candidates)
+        modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
         input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
             input_tokens, output_tokens, thinking_tokens, modality=modality
         )
@@ -959,10 +987,19 @@ class AnalysisService:
             output_cost=output_cost,
             thinking_cost=thinking_cost,
             total_cost=total_cost,
+            analysis_prompt=prompt,
+            warnings=warnings,
         )
-        self.status_history_repo.create_record(
-            analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
-        )
+
+        correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
+        with LoggingProvider().set_correlation_id(correlation_id):
+            self.status_history_repo.create_record(
+                analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
+            )
+
+            source_docs_map = self._process_and_save_source_documents(analysis_id, all_candidates)
+            self._upload_and_save_initial_records(procurement_id, analysis_id, all_candidates, source_docs_map)
+            self._update_selected_file_records(final_candidates)
 
     def run_ranked_analysis(
         self,

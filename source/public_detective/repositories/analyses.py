@@ -157,8 +157,10 @@ class AnalysisRepository:
             "risk_score_rationale": result.ai_analysis.risk_score_rationale if result.ai_analysis else "",
             "procurement_summary": result.ai_analysis.procurement_summary if result.ai_analysis else "",
             "analysis_summary": result.ai_analysis.analysis_summary if result.ai_analysis else "",
-            "red_flags": json.dumps(
-                [flag.model_dump(mode="json") for flag in result.ai_analysis.red_flags] if result.ai_analysis else []
+            "red_flags": (
+                json.dumps([flag.model_dump() for flag in result.ai_analysis.red_flags], default=str)
+                if result.ai_analysis
+                else "[]"
             ),
             "seo_keywords": result.ai_analysis.seo_keywords if result.ai_analysis else [],
             "warnings": result.warnings,
@@ -260,6 +262,7 @@ class AnalysisRepository:
         thinking_cost: Decimal,
         total_cost: Decimal,
         analysis_prompt: str = "",
+        warnings: list[str] | None = None,
     ) -> UUID:
         """Saves a new, pending analysis record to the database.
 
@@ -281,6 +284,7 @@ class AnalysisRepository:
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
             analysis_prompt: The prompt used for the analysis.
+            warnings: A list of warnings generated during pre-analysis.
 
         Returns:
             The newly created `analysis_id` for the record.
@@ -292,12 +296,12 @@ class AnalysisRepository:
                 procurement_control_number, version_number, status, document_hash,
                 input_tokens_used, output_tokens_used, thinking_tokens_used,
                 cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
-                analysis_prompt
+                analysis_prompt, warnings
             ) VALUES (
                 :procurement_control_number, :version_number, :status, :document_hash,
                 :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
                 :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
-                :analysis_prompt
+                :analysis_prompt, :warnings
             )
             RETURNING analysis_id;
             """
@@ -315,6 +319,7 @@ class AnalysisRepository:
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
             "analysis_prompt": analysis_prompt,
+            "warnings": warnings or [],
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)

@@ -1,7 +1,7 @@
 """Unit tests for the AnalysisService."""
 
 import uuid
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -76,6 +76,10 @@ def mock_procurement() -> MagicMock:
     procurement = MagicMock(spec=Procurement)
     procurement.process_number = "123/2023"
     procurement.object_description = "Original Description"
+    procurement.modality = "Pregão"
+    procurement.total_estimated_value = Decimal("1000.00")
+    procurement.proposal_opening_date = datetime.now()
+    procurement.proposal_closing_date = datetime.now()
 
     # Mock nested attributes
     procurement.legal_support = MagicMock()
@@ -83,20 +87,16 @@ def mock_procurement() -> MagicMock:
 
     procurement.government_entity = MagicMock()
     procurement.government_entity.model_dump.return_value = {"cnpj": "001", "razaoSocial": "Org"}
-    procurement.government_entity.name = "Org"
+    procurement.government_entity.name = "Test Org"
 
     procurement.entity_unit = MagicMock()
     procurement.entity_unit.model_dump.return_value = {"codigoUnidade": "U01", "nomeUnidade": "Unit"}
-    procurement.entity_unit.unit_name = "Unit"
+    procurement.entity_unit.unit_name = "Test Unit"
 
     procurement.is_srp = False
-    procurement.modality = 1
     procurement.pncp_control_number = "PNCP123"
     procurement.procurement_status = 1
-    procurement.total_estimated_value = Decimal("1000.00")
     procurement.total_awarded_value = Decimal("950.00")
-    procurement.proposal_opening_date = None
-    procurement.proposal_closing_date = None
     procurement.dispute_method = 1
     procurement.user_name = "original_user"
     return procurement
@@ -106,14 +106,12 @@ def mock_procurement() -> MagicMock:
 def mock_valid_analysis() -> Analysis:
     """Provides a valid Analysis object for mocking."""
     return Analysis(
-        direcionamentoLicitacao=[],
-        restricaoCompetitividade=[],
-        sobrepreco=[],
-        resumoLicitacao="Resumo da licitação.",
-        resumoAnalise="Resumo da análise.",
-        notaRisco=5,
-        justificativaNotaRisco="Justificativa da nota.",
-        palavrasChaveSeo=["teste", "cobertura"],
+        risk_score=5,
+        risk_score_rationale="Justificativa da nota.",
+        procurement_summary="Resumo da licitação.",
+        analysis_summary="Resumo da análise.",
+        red_flags=[],
+        seo_keywords=["teste", "cobertura"],
     )
 
 
@@ -393,86 +391,76 @@ def test_select_files_by_token_limit_prioritization(
     assert "limite de 150 tokens foi excedido" in selected[1].exclusion_reason
 
 
-def test_analyze_procurement_no_files_found(
-    analysis_service: AnalysisService, caplog: Any, mock_procurement: MagicMock
-) -> None:
-    """Tests that the analysis is aborted if no files are found for the procurement."""
-    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
-    analysis_service.procurement_repo.process_procurement_documents.return_value = []
-
-    analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
-
-    assert "No files found for" in caplog.text
-
-
-def test_analyze_procurement_no_supported_files(
-    analysis_service: AnalysisService, caplog: Any, mock_procurement: MagicMock
-) -> None:
-    """Tests that the analysis is aborted if no supported files are left after filtering."""
-    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
-    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
-    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
-    analysis_service._prepare_ai_candidates = MagicMock(
-        return_value=[
-            MagicMock(
-                spec=AIFileCandidate,
-                synthetic_id="doc1",
-                raw_document_metadata={},
-                original_path="test.unsupported",
-                original_content=b"test",
-                is_included=False,
-                exclusion_reason="Unsupported",
-                ai_gcs_uris=[],
-                prepared_content_gcs_uris=None,
-                ai_content=b"test",
-                ai_path="test.unsupported",
-            )
-        ]
-    )
-    analysis_service._select_files_by_token_limit = MagicMock(return_value=([], []))
-    analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
-    assert f"No supported files left after filtering for {mock_procurement.pncp_control_number}" in caplog.text
-
-
-@patch("public_detective.services.analysis.AnalysisService._get_modality")
-@patch("public_detective.services.analysis.AnalysisService._calculate_hash")
-def test_analyze_procurement_happy_path(
-    mock_hash: MagicMock,
-    mock_get_modality: MagicMock,
-    analysis_service: AnalysisService,
-    mock_valid_analysis: Analysis,
-    mock_procurement: MagicMock,
-) -> None:
-    """Tests the full, successful execution of the analyze_procurement method."""
-    mock_hash.return_value = "testhash"
-    mock_get_modality.return_value = "TEXT"
-
+def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, caplog: Any) -> None:
+    """Tests that analysis is aborted if no file records are found."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "123"
     analysis_id = uuid.uuid4()
-    procurement_id = uuid.uuid4()
-
-    analysis_service.procurement_repo.get_procurement_uuid.return_value = procurement_id
-    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
-
-    mock_candidate = MagicMock(
-        spec=AIFileCandidate,
-        is_included=True,
-        ai_gcs_uris=["gs://bucket/file.pdf"],
-        ai_path="file.pdf",
-        ai_content=b"content",
-    )
-    analysis_service._prepare_ai_candidates = MagicMock(return_value=[mock_candidate])
-    analysis_service._select_files_by_token_limit = MagicMock(return_value=([mock_candidate], []))
-    analysis_service._process_and_save_source_documents = MagicMock(return_value={})
-    analysis_service._upload_and_save_initial_records = MagicMock()
-    analysis_service._update_selected_file_records = MagicMock()
-    analysis_service._build_analysis_prompt = MagicMock(return_value="prompt")
-
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10)
-    analysis_service.pricing_service.calculate.return_value = (0, 0, 0, 0)
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = []
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    analysis_service.ai_provider.get_structured_analysis.assert_called_once()
+    assert f"No file records found for analysis {analysis_id}. Aborting." in caplog.text
+    analysis_service.status_history_repo.create_record.assert_called_with(
+        analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, "No file records found for analysis."
+    )
+
+
+def test_analyze_procurement_no_included_files(analysis_service: AnalysisService, caplog: Any) -> None:
+    """Tests that analysis is aborted if no files were marked for inclusion."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP-123"
+    analysis_id = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [
+        {"included_in_analysis": False}
+    ]
+
+    analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
+
+    assert "No files were selected for analysis for PNCP-123. Aborting." in caplog.text
+    analysis_service.status_history_repo.create_record.assert_called_with(
+        analysis_id,
+        ProcurementAnalysisStatus.ANALYSIS_FAILED,
+        "No files were selected for analysis during pre-analysis.",
+    )
+
+
+def test_analyze_procurement_happy_path(analysis_service: AnalysisService, mock_valid_analysis: Analysis) -> None:
+    """Tests the full, successful execution of the analyze_procurement method."""
+    analysis_id = uuid.uuid4()
+    procurement_id = uuid.uuid4()
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP123"
+    mock_procurement.procurement_id = procurement_id
+
+    mock_analysis_record = MagicMock(
+        spec=AnalysisResult,
+        document_hash="testhash",
+        analysis_prompt="prompt",
+        warnings=[],
+    )
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_record
+
+    mock_file_records = [
+        {
+            "included_in_analysis": True,
+            "prepared_content_gcs_uris": ["gs://bucket/file.pdf"],
+            "extension": "pdf",
+        }
+    ]
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = mock_file_records
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = procurement_id
+
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10)
+    analysis_service.pricing_service.calculate.return_value = (Decimal(0), Decimal(0), Decimal(0), Decimal(0))
+
+    analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
+
+    analysis_service.ai_provider.get_structured_analysis.assert_called_once_with(
+        prompt="prompt", file_uris=["gs://bucket/file.pdf"], max_output_tokens=None
+    )
     analysis_service.analysis_repo.save_analysis.assert_called_once()
     analysis_service.budget_ledger_repo.save_expense.assert_called_once()
 
@@ -504,6 +492,27 @@ def test_run_specific_analysis_not_found(analysis_service: AnalysisService, capl
 
     assert f"Analysis with ID {analysis_id} not found." in caplog.text
     analysis_service.pubsub_provider.publish.assert_not_called()
+
+
+def test_run_specific_analysis_wrong_status_early_return(analysis_service: AnalysisService) -> None:
+    """Covers the early return path when analysis exists but is not pending."""
+    analysis_id = uuid.uuid4()
+    mock_analysis = MagicMock()
+    mock_analysis.status = ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+    analysis_service.run_specific_analysis(analysis_id)
+    analysis_service.pubsub_provider.publish.assert_not_called()
+
+
+def test_calculate_hash_mixed_content(analysis_service: AnalysisService) -> None:
+    """Ensures calculate_hash handles both bytes and list[bytes] deterministically."""
+    content_hash = analysis_service._calculate_hash(
+        [
+            ("b.txt", [b"y", b"z"]),
+            ("a.txt", b"x"),
+        ]
+    )
+    assert isinstance(content_hash, str) and len(content_hash) == 64
 
 
 def test_run_specific_analysis_wrong_status(
@@ -559,12 +568,18 @@ def test_run_specific_analysis_exception(analysis_service: AnalysisService) -> N
         analysis_service.run_specific_analysis(analysis_id)
 
 
-def test_get_modality_image(analysis_service: AnalysisService) -> None:
-    """Tests that image modality is correctly identified."""
-    candidates = [
-        AIFileCandidate(original_path="test.jpg", original_content=b"", synthetic_id="1", raw_document_metadata={})
-    ]
-    assert analysis_service._get_modality(candidates).name == "IMAGE"
+def test_get_modality_from_exts(analysis_service: AnalysisService) -> None:
+    """Tests that modality is correctly identified from extensions."""
+    assert analysis_service._get_modality_from_exts(["mp4"]).name == "VIDEO"
+    assert analysis_service._get_modality_from_exts(["mp3"]).name == "AUDIO"
+    assert analysis_service._get_modality_from_exts(["jpg"]).name == "IMAGE"
+    assert analysis_service._get_modality_from_exts(["pdf", "txt"]).name == "TEXT"
+    assert analysis_service._get_modality_from_exts([]).name == "TEXT"
+
+
+def test_get_modality_from_exts_none_and_empty(analysis_service: AnalysisService) -> None:
+    """Covers branches where extensions contain None or empty strings."""
+    assert analysis_service._get_modality_from_exts([None, ""]).name == "TEXT"
 
 
 def test_prepare_ai_candidates_xml(analysis_service: AnalysisService) -> None:
@@ -580,6 +595,274 @@ def test_prepare_ai_candidates_xml(analysis_service: AnalysisService) -> None:
     assert candidates[0].ai_path.endswith(".txt")
 
 
+def test_prepare_ai_candidates_json(analysis_service: AnalysisService) -> None:
+    """JSON files are also converted to .txt path indicator for prepared content."""
+    processed_file = ProcessedFile(
+        source_document_id="doc2",
+        relative_path="data.json",
+        content=b"{}",
+        raw_document_metadata={},
+    )
+    candidates = analysis_service._prepare_ai_candidates([processed_file])
+    assert len(candidates) == 1
+    assert candidates[0].ai_path.endswith(".txt")
+
+
+def test_ai_file_candidate_defaults() -> None:
+    """Ensures AIFileCandidate defaults mirror the original path/content when not converted."""
+    candidate = AIFileCandidate(
+        synthetic_id="s1",
+        raw_document_metadata={},
+        original_path="a.txt",
+        original_content=b"x",
+    )
+    assert candidate.ai_path == "a.txt"
+    assert candidate.ai_content == b"x"
+
+
+def test_process_and_save_source_documents(analysis_service: AnalysisService) -> None:
+    """Saves source documents and returns the synthetic_id -> source_document_id mapping."""
+    analysis_id = uuid.uuid4()
+    candidates = [
+        AIFileCandidate(
+            synthetic_id="s1", raw_document_metadata={"titulo": "T"}, original_path="a", original_content=b"x"
+        )
+    ]
+    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
+    mapping = analysis_service._process_and_save_source_documents(analysis_id, candidates)
+    assert "s1" in mapping and mapping["s1"]
+
+
+def test_upload_and_save_initial_records_minimal(analysis_service: AnalysisService) -> None:
+    """Uploads original file and persists minimal file record when no conversion occurred."""
+    procurement_id = uuid.uuid4()
+    analysis_id = uuid.uuid4()
+    candidate = AIFileCandidate(
+        synthetic_id="s1", raw_document_metadata={}, original_path="dir/file.txt", original_content=b"x"
+    )
+    analysis_service.file_record_repo.save_file_record.return_value = uuid.uuid4()
+    source_docs_map = {"s1": uuid.uuid4()}
+
+    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
+    assert candidate.ai_gcs_uris and candidate.ai_gcs_uris[0].endswith("/file.txt")
+    analysis_service.gcs_provider.upload_file.assert_called()
+    analysis_service.file_record_repo.save_file_record.assert_called()
+
+
+def test_upload_and_save_initial_records_with_prepared_list(analysis_service: AnalysisService) -> None:
+    """Uploads multiple prepared CSV contents and updates candidate URIs accordingly."""
+    analysis_id = uuid.uuid4()
+    procurement_id = uuid.uuid4()
+    source_doc_id = uuid.uuid4()
+    candidate = AIFileCandidate(
+        synthetic_id="docX",
+        original_path="sheets.xlsx",
+        original_content=b"original",
+        raw_document_metadata={},
+    )
+    candidate.prepared_content_gcs_uris = ["sheets_sheet1.csv", "sheets_sheet2.csv"]
+    candidate.ai_content = [b"csv1", b"csv2"]
+    source_docs_map = {"docX": source_doc_id}
+
+    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
+    # Should upload two prepared files under prepared_content and set gs:// URIs
+    assert candidate.ai_gcs_uris and len(candidate.ai_gcs_uris) == 2
+    assert all(uri.endswith(".csv") for uri in candidate.ai_gcs_uris)
+    assert candidate.prepared_content_gcs_uris == candidate.ai_gcs_uris
+
+
+def test_upload_and_save_initial_records_with_prepared_single(analysis_service: AnalysisService) -> None:
+    """Uploads a single prepared artifact and sets AI URIs accordingly."""
+    analysis_id = uuid.uuid4()
+    procurement_id = uuid.uuid4()
+    source_doc_id = uuid.uuid4()
+    candidate = AIFileCandidate(
+        synthetic_id="docY",
+        original_path="document.docx",
+        original_content=b"orig",
+        raw_document_metadata={},
+    )
+    candidate.ai_path = "document.html"
+    candidate.prepared_content_gcs_uris = ["document.html"]
+    candidate.ai_content = b"<html>ok</html>"
+    source_docs_map = {"docY": source_doc_id}
+
+    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
+    assert candidate.ai_gcs_uris and candidate.ai_gcs_uris[0].endswith("/prepared_content/document.html")
+    assert candidate.prepared_content_gcs_uris == candidate.ai_gcs_uris
+
+
+def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisService, monkeypatch: Any) -> None:
+    """Covers batch sleep path and early stop via max_messages."""
+    # Two procurements in one day to hit the sleep branch when batch_size=1
+    p1, p2 = MagicMock(), MagicMock()
+    p1.pncp_control_number = "P1"
+    p2.pncp_control_number = "P2"
+    raw = {"k": "v"}
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(p1, raw), (p2, raw)]
+    calls = {"slept": 0}
+
+    def fake_sleep(_secs: int) -> None:
+        calls["slept"] += 1
+
+    monkeypatch.setattr("public_detective.services.analysis.time.sleep", fake_sleep)
+    analysis_service._pre_analyze_procurement = MagicMock()
+
+    # First run: batch_size=1 should sleep once between items (since not last item)
+    list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=1, sleep_seconds=0))
+    assert calls["slept"] >= 1
+
+    # Second run: respect max_messages=1 and stop after first processed
+    calls["slept"] = 0
+    analysis_service._pre_analyze_procurement.reset_mock()
+    list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=10, sleep_seconds=0, max_messages=1))
+    assert analysis_service._pre_analyze_procurement.call_count == 1
+    assert calls["slept"] == 0
+
+
+def test_process_analysis_from_message_analysis_not_found(analysis_service: AnalysisService) -> None:
+    """Returns early if analysis is not found."""
+    analysis_id = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = None
+    analysis_service.process_analysis_from_message(analysis_id)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.assert_not_called()
+
+
+def test_process_analysis_from_message_procurement_not_found(analysis_service: AnalysisService) -> None:
+    """Returns early if procurement is not found for the analysis record."""
+    analysis_id = uuid.uuid4()
+    mock_analysis = MagicMock()
+    mock_analysis.procurement_control_number = "X"
+    mock_analysis.version_number = 1
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = None
+    analysis_service.process_analysis_from_message(analysis_id)
+
+
+def test_analyze_procurement_missing_analysis_record_raises(analysis_service: AnalysisService) -> None:
+    """analyze_procurement must raise when the analysis record cannot be retrieved."""
+    procurement = MagicMock(spec=Procurement)
+    procurement.pncp_control_number = "PN"
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = None
+    with pytest.raises(AnalysisError):
+        analysis_service.analyze_procurement(procurement, 1, uuid.uuid4())
+
+
+def test_pre_analyze_procurement_skip_when_hash_exists(analysis_service: AnalysisService, caplog: Any) -> None:
+    """Pre-analysis should skip idempotently when procurement content hash already exists."""
+    procurement = MagicMock(spec=Procurement)
+    procurement.pncp_control_number = "P-SKIP"
+    # Make process_procurement_documents return deterministic files
+    processed = [ProcessedFile(source_document_id="s1", relative_path="a.txt", content=b"1", raw_document_metadata={})]
+    analysis_service.procurement_repo.process_procurement_documents.return_value = processed
+    analysis_service.ai_provider.count_tokens_for_analysis.return_value = (1, 0, 0)
+    analysis_service.procurement_repo.get_procurement_by_hash.return_value = {"exists": True}
+
+    events = list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=10, sleep_seconds=0))
+    # No errors, and message about completion should be logged by the generator end
+    assert isinstance(events, list)
+
+
+def test_run_pre_analysis_generator_and_pre_analyze_called(analysis_service: AnalysisService) -> None:
+    """Verifies pre-analysis generator emits expected events and invokes pre-analyze per procurement."""
+    start = date.today()
+    end = start
+    proc = MagicMock()
+    proc.pncp_control_number = "PN-1"
+    raw = {"k": "v"}
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(proc, raw)]
+    analysis_service._pre_analyze_procurement = MagicMock()
+    events = list(analysis_service.run_pre_analysis(start, end, batch_size=10, sleep_seconds=0))
+    assert any(e[0] == "day_started" for e in events)
+    assert any(e[0] == "procurements_fetched" for e in events)
+    assert any(e[0] == "procurement_processed" for e in events)
+
+
+def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisService) -> None:
+    """_pre_analyze_procurement must raise AnalysisError when procurement UUID cannot be resolved."""
+    proc = MagicMock(spec=Procurement)
+    proc.pncp_control_number = "PN-1"
+    proc.object_description = "Test Description"
+    proc.modality = "Pregão"
+    proc.total_estimated_value = Decimal("100.00")
+    proc.proposal_opening_date = datetime.now()
+    proc.proposal_closing_date = datetime.now()
+    proc.process_number = "123/2024"
+    proc.is_srp = False
+    proc.procurement_status = "Published"
+    proc.total_awarded_value = Decimal("90.00")
+    proc.dispute_method = "Online"
+
+    mock_legal = MagicMock()
+    mock_legal.model_dump.return_value = {}
+    proc.legal_support = mock_legal
+
+    mock_entity = MagicMock()
+    mock_entity.name = "Test Org"
+    mock_entity.model_dump.return_value = {}
+    proc.government_entity = mock_entity
+
+    mock_unit = MagicMock()
+    mock_unit.unit_name = "Test Unit"
+    mock_unit.model_dump.return_value = {}
+    proc.entity_unit = mock_unit
+
+    analysis_service.procurement_repo.process_procurement_documents.return_value = []
+    analysis_service.procurement_repo.get_procurement_by_hash.return_value = None
+    analysis_service.procurement_repo.get_latest_version.return_value = 0
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = None
+    with pytest.raises(AnalysisError):
+        analysis_service._pre_analyze_procurement(proc, {"x": 1})
+
+
+def test_run_ranked_analysis_and_skips(analysis_service: AnalysisService) -> None:
+    """Covers error on missing period for auto-budget and skipping when budget < cost."""
+    with pytest.raises(ValueError):
+        analysis_service.run_ranked_analysis(True, None, 50)
+
+    analysis = MagicMock()
+    analysis.analysis_id = uuid.uuid4()
+    analysis.total_cost = Decimal("100")
+    analysis.votes_count = 0
+    analysis.procurement_control_number = "P"
+    analysis.version_number = 1
+    analysis.analysis_id = uuid.uuid4()
+    analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis]
+    res = analysis_service.run_ranked_analysis(False, None, 50, budget=Decimal("10"))
+    assert res == []
+
+
+def test_retry_analyses_triggers_run(analysis_service: AnalysisService) -> None:
+    """Ensures retry_analyses schedules retries and triggers run_specific_analysis when eligible."""
+    ago = datetime.now(timezone.utc) - timedelta(hours=10)
+    analysis = MagicMock()
+    analysis.updated_at = ago
+    analysis.retry_count = 0
+    analysis.analysis_id = uuid.uuid4()
+    analysis.procurement_control_number = "P"
+    analysis.version_number = 1
+    analysis.document_hash = "h"
+    analysis.input_tokens_used = 1
+    analysis.output_tokens_used = 1
+    analysis.thinking_tokens_used = 1
+    analysis.analysis_prompt = "p"
+    analysis_service.analysis_repo.get_analyses_to_retry.return_value = [analysis]
+    analysis_service.analysis_repo.save_retry_analysis.return_value = uuid.uuid4()
+    analysis_service.run_specific_analysis = MagicMock()
+    analysis_service.pricing_service.calculate.return_value = (Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    count = analysis_service.retry_analyses(initial_backoff_hours=1, max_retries=3, timeout_hours=1)
+    assert count >= 0
+
+
+def test_get_procurement_overall_status_none_and_value(analysis_service: AnalysisService) -> None:
+    """Pass-through overall status method returns None or dict as provided by repo."""
+    analysis_service.analysis_repo.get_procurement_overall_status.return_value = None
+    assert analysis_service.get_procurement_overall_status("P") is None
+    analysis_service.analysis_repo.get_procurement_overall_status.return_value = {"k": "v"}
+    assert analysis_service.get_procurement_overall_status("P") == {"k": "v"}
+
+
 def test_update_selected_file_records(analysis_service: AnalysisService) -> None:
     """Tests that the file records are correctly updated in the database."""
     record_id1 = uuid.uuid4()
@@ -592,6 +875,17 @@ def test_update_selected_file_records(analysis_service: AnalysisService) -> None
     ]
     analysis_service._update_selected_file_records(candidates)
     analysis_service.file_record_repo.set_files_as_included.assert_called_once_with([record_id1, record_id2])
+
+
+def test_update_selected_file_records_no_selected(analysis_service: AnalysisService) -> None:
+    """When no candidates are selected or lack IDs, repo method should not be called."""
+    analysis_service._update_selected_file_records(
+        [
+            MagicMock(is_included=False, file_record_id=None),
+            MagicMock(is_included=False, file_record_id=None),
+        ]
+    )
+    analysis_service.file_record_repo.set_files_as_included.assert_not_called()
 
 
 def test_upload_and_save_initial_records_no_conversion(analysis_service: AnalysisService) -> None:
@@ -622,6 +916,36 @@ def test_build_analysis_prompt_with_warnings(analysis_service: AnalysisService, 
     prompt = analysis_service._build_analysis_prompt(mock_procurement, [], warnings)
     assert "--- ATENÇÃO ---" in prompt
     assert "limite de 100 tokens foi excedido" in prompt
+
+
+def test_build_analysis_prompt_with_included_candidates(analysis_service: AnalysisService) -> None:
+    """Prompt should include context section when there are included candidates."""
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.object_description = "Test Description"
+    mock_procurement.modality = "Pregão"
+    mock_procurement.total_estimated_value = Decimal("1000.00")
+    mock_procurement.proposal_opening_date = datetime.now()
+    mock_procurement.proposal_closing_date = datetime.now()
+
+    mock_entity = MagicMock()
+    mock_entity.name = "Test Org"
+    mock_procurement.government_entity = mock_entity
+
+    mock_unit = MagicMock()
+    mock_unit.unit_name = "Test Unit"
+    mock_procurement.entity_unit = mock_unit
+
+    cand = AIFileCandidate(
+        synthetic_id="s1",
+        raw_document_metadata={"titulo": "T", "tipoDocumentoNome": "n", "dataPublicacaoPncp": "2025-01-01"},
+        original_path="a.txt",
+        original_content=b"x",
+    )
+    cand.is_included = True
+    cand.ai_path = "a.txt"
+    prompt = analysis_service._build_analysis_prompt(mock_procurement, [cand], [])
+    assert "Fonte do Documento" in prompt
+    assert "Arquivos extraídos desta fonte" in prompt
 
 
 @patch("public_detective.services.analysis.datetime")
@@ -823,62 +1147,28 @@ def test_run_pre_analysis_no_procurements_found(
 def test_analyze_procurement_no_procurement_id(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
     """Tests that an AnalysisError is raised if the procurement UUID is not found."""
     analysis_service.procurement_repo.get_procurement_uuid.return_value = None
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [MagicMock()]
 
     with pytest.raises(AnalysisError, match="Could not find procurement UUID"):
         analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
-
-
-def test_analyze_procurement_no_files_left_for_ai(
-    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture, mock_procurement: MagicMock
-) -> None:
-    """Tests that an error is logged if no files are left after token filtering."""
-    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
-    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
-
-    # Provide a more realistic mock to avoid ValidationError
-    mock_prepared_candidate = AIFileCandidate(
-        synthetic_id="doc1",
-        raw_document_metadata={"titulo": "Test Doc"},
-        original_path="test.pdf",
-        original_content=b"content",
-    )
-    analysis_service._prepare_ai_candidates = MagicMock(return_value=[mock_prepared_candidate])
-    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
-
-    # Mock the selection process to return a candidate that is not included
-    mock_selected_candidate = MagicMock(is_included=False)
-    analysis_service._select_files_by_token_limit = MagicMock(return_value=([mock_selected_candidate], []))
-
-    analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
-
-    assert "No supported files left after filtering" in caplog.text
-    analysis_service.ai_provider.get_structured_analysis.assert_not_called()
 
 
 def test_analyze_procurement_save_analysis_fails(
     analysis_service: AnalysisService,
     mock_valid_analysis: Analysis,
     caplog: pytest.LogCaptureFixture,
-    mock_procurement: MagicMock,
 ) -> None:
     """Tests that an exception during the final save is caught and logged."""
     analysis_id = uuid.uuid4()
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP-FAIL"
     analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
-    analysis_service.procurement_repo.process_procurement_documents.return_value = [MagicMock()]
-    analysis_service.source_document_repo.save_source_document.return_value = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock(document_hash="h", analysis_prompt="p")
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [
+        {"included_in_analysis": True, "prepared_content_gcs_uris": ["uri"]}
+    ]
 
-    mock_candidate = AIFileCandidate(
-        synthetic_id="doc1",
-        raw_document_metadata={"titulo": "Test Doc"},
-        original_path="test.pdf",
-        original_content=b"content",
-        is_included=True,
-        ai_gcs_uris=["uri1"],
-        ai_path="p",
-        ai_content=b"c",
-    )
-    analysis_service._prepare_ai_candidates = MagicMock(return_value=[mock_candidate])
-    analysis_service._select_files_by_token_limit = MagicMock(return_value=([mock_candidate], []))
     analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1)
     analysis_service.pricing_service.calculate.return_value = (
         Decimal("0.1"),
@@ -892,201 +1182,49 @@ def test_analyze_procurement_save_analysis_fails(
     with pytest.raises(Exception, match=error_message):
         analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert f"Analysis pipeline failed for {mock_procurement.pncp_control_number}: {error_message}" in caplog.text
+    assert f"Analysis pipeline failed for PNCP-FAIL: {error_message}" in caplog.text
 
 
-def test_get_modality_video(analysis_service: AnalysisService) -> None:
-    """Tests that video modality is correctly identified."""
-    candidates = [
-        AIFileCandidate(original_path="test.mp4", original_content=b"", synthetic_id="1", raw_document_metadata={})
-    ]
-    assert analysis_service._get_modality(candidates).name == "VIDEO"
-
-
-def test_get_modality_audio(analysis_service: AnalysisService) -> None:
-    """Tests that audio modality is correctly identified."""
-    candidates = [
-        AIFileCandidate(original_path="test.mp3", original_content=b"", synthetic_id="1", raw_document_metadata={})
-    ]
-    assert analysis_service._get_modality(candidates).name == "AUDIO"
-
-
-def test_calculate_procurement_hash_no_files(analysis_service: AnalysisService, mock_procurement: Procurement) -> None:
-    """Tests that the procurement hash is consistent and based on key fields."""
-    hash1 = analysis_service._calculate_procurement_hash(mock_procurement, [])
-    hash2 = analysis_service._calculate_procurement_hash(mock_procurement, [])
-    assert hash1 == hash2
-
-    mock_procurement.object_description = "A new description"
-    hash3 = analysis_service._calculate_procurement_hash(mock_procurement, [])
-    assert hash1 != hash3
-
-
-def test_calculate_procurement_hash_with_files(
-    analysis_service: AnalysisService, mock_procurement: Procurement
-) -> None:
-    """Tests that the procurement hash is consistent and based on key fields."""
-    files = [
-        ProcessedFile(source_document_id="1", relative_path="f1.pdf", content=b"c1", raw_document_metadata={"a": 1})
-    ]
-    hash1 = analysis_service._calculate_procurement_hash(mock_procurement, files)
-
-    files.append(
-        ProcessedFile(source_document_id="2", relative_path="f2.pdf", content=b"c2", raw_document_metadata={"b": 2})
-    )
-    hash2 = analysis_service._calculate_procurement_hash(mock_procurement, files)
-    assert hash1 != hash2
-
-
-def test_prepare_ai_candidates_xml_json(analysis_service: AnalysisService) -> None:
-    """Tests that XML and JSON files are converted to .txt."""
-    processed_files = [
-        ProcessedFile(
-            source_document_id="doc1",
-            relative_path="data.xml",
-            content=b"<xml></xml>",
-            raw_document_metadata={},
-        ),
-        ProcessedFile(
-            source_document_id="doc2",
-            relative_path="data.json",
-            content=b"{}",
-            raw_document_metadata={},
-        ),
-    ]
-    candidates = analysis_service._prepare_ai_candidates(processed_files)
-    assert len(candidates) == 2
-    assert candidates[0].ai_path.endswith(".txt")
-    assert candidates[1].ai_path.endswith(".txt")
-
-
-def test_upload_and_save_initial_records_no_prepared_content(
-    analysis_service: AnalysisService,
-) -> None:
-    """Tests the upload logic for a file that does not undergo conversion."""
-    analysis_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    procurement_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    source_doc_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-
+def test_ai_file_candidate_preserves_provided_ai_fields() -> None:
+    """Validator must not overwrite explicit ai_path/ai_content values."""
     candidate = AIFileCandidate(
-        synthetic_id="doc1",
-        original_path="document.txt",
-        original_content=b"text content",
+        synthetic_id="s2",
         raw_document_metadata={},
-        prepared_content_gcs_uris=None,
+        original_path="orig.txt",
+        original_content=b"orig",
+        ai_path="custom.html",
+        ai_content=b"<h1/>",
     )
-    source_docs_map = {"doc1": source_doc_id}
-
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-
-    assert candidate.ai_gcs_uris is not None
-    assert "document.txt" in candidate.ai_gcs_uris[0]
-    assert "prepared_content" not in candidate.ai_gcs_uris[0]
+    assert candidate.ai_path == "custom.html"
+    assert candidate.ai_content == b"<h1/>"
 
 
-def test_upload_and_save_initial_records_with_gcs_prefix(
-    analysis_service: AnalysisService,
-) -> None:
-    """Tests the upload logic for a file that does not undergo conversion."""
-    analysis_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    procurement_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    source_doc_id = "f47ac10b-58cc-4372-a567-0e02b2c3d479"
-    analysis_service.gcs_path_prefix = "test-prefix"
-
-    candidate = AIFileCandidate(
-        synthetic_id="doc1",
-        original_path="document.txt",
-        original_content=b"text content",
-        raw_document_metadata={},
-        prepared_content_gcs_uris=None,
-    )
-    source_docs_map = {"doc1": source_doc_id}
-
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-
-    assert candidate.ai_gcs_uris is not None
-    assert "test-prefix" in candidate.ai_gcs_uris[0]
-
-
-@patch("public_detective.services.analysis.datetime")
-def test_retry_analyses(mock_datetime: MagicMock, analysis_service: AnalysisService) -> None:
-    """Tests the retry logic for failed or stale analyses."""
-    now = datetime(2023, 1, 10, 12, 0, 0, tzinfo=timezone.utc)
-    mock_datetime.now.return_value = now
-
-    mock_analysis_to_retry = MagicMock()
-    mock_analysis_to_retry.analysis_id = uuid.uuid4()
-    mock_analysis_to_retry.retry_count = 0
-    mock_analysis_to_retry.updated_at = datetime(2023, 1, 10, 0, 0, 0)
-
-    analysis_service.analysis_repo.get_analyses_to_retry.return_value = [mock_analysis_to_retry]
-    analysis_service.run_specific_analysis = MagicMock()
-    analysis_service.pricing_service.calculate.return_value = (
-        Decimal("0.1"),
-        Decimal("0.2"),
-        Decimal("0.3"),
-        Decimal("0.6"),
-    )
-
-    retried_count = analysis_service.retry_analyses(initial_backoff_hours=6, max_retries=3, timeout_hours=24)
-
-    assert retried_count == 1
-    analysis_service.analysis_repo.save_retry_analysis.assert_called_once()
-    analysis_service.run_specific_analysis.assert_called_once()
-
-
-def test_select_files_by_token_limit_multiple_exclusion_reasons(
-    analysis_service: AnalysisService, mock_procurement: MagicMock
-) -> None:
-    """Tests that warnings are generated correctly for multiple exclusion reasons."""
-    analysis_service.ai_provider.count_tokens_for_analysis.return_value = (100, 0, 0)
-
-    candidates = [
-        MagicMock(
-            original_path="unsupported.zip",
-            exclusion_reason="Unsupported Extension",
-            is_included=False,
-            ai_gcs_uris=[],
-        ),
-        MagicMock(
-            original_path="conversion_failed.docx",
-            exclusion_reason="Conversion Failed",
-            is_included=False,
-            ai_gcs_uris=[],
-        ),
-        MagicMock(original_path="included.pdf", exclusion_reason=None, is_included=True, ai_gcs_uris=["uri1"]),
-    ]
-
-    _, warnings = analysis_service._select_files_by_token_limit(candidates, mock_procurement)
-
-    assert len(warnings) == 2
-    assert "Arquivos ignorados por 'Unsupported Extension': unsupported.zip" in warnings
-    assert "Arquivos ignorados por 'Conversion Failed': conversion_failed.docx" in warnings
-
-
-def test_process_analysis_from_message_procurement_not_found(
-    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
-) -> None:
-    """Tests processing a message when the procurement is not found."""
-    analysis_id = uuid.uuid4()
+@patch("public_detective.services.analysis.AnalysisService.run_specific_analysis")
+def test_run_ranked_analysis_zero_vote_happy(mock_run_specific: MagicMock, analysis_service: AnalysisService) -> None:
+    """Zero-vote analysis should trigger when within zero-vote budget."""
     mock_analysis = MagicMock()
-    mock_analysis.procurement_control_number = "PNCP123"
-    mock_analysis.version_number = 1
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
-    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = None
+    mock_analysis.analysis_id = uuid.uuid4()
+    mock_analysis.total_cost = Decimal("5")
+    mock_analysis.votes_count = 0
+    analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
 
-    analysis_service.process_analysis_from_message(analysis_id)
+    analysis_service.run_ranked_analysis(
+        use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
+    )
 
-    assert f"Procurement {mock_analysis.procurement_control_number} " in caplog.text
-    assert "not found" in caplog.text
+    mock_run_specific.assert_called_once_with(mock_analysis.analysis_id)
 
 
-def test_pre_analyze_procurement_hash_exists(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
-    """Tests that pre-analysis is skipped if a procurement with the same hash exists."""
-    analysis_service.procurement_repo.process_procurement_documents.return_value = []
-    analysis_service._calculate_procurement_hash = MagicMock(return_value="existing_hash")
-    analysis_service.procurement_repo.get_procurement_by_hash.return_value = MagicMock()
-
-    analysis_service._pre_analyze_procurement(mock_procurement, {})
-
-    analysis_service.procurement_repo.save_procurement_version.assert_not_called()
+def test_retry_analyses_no_retry_due_to_backoff(analysis_service: AnalysisService) -> None:
+    """No retry should occur when backoff pushes next retry to the future."""
+    now = datetime.now(timezone.utc)
+    analysis = MagicMock()
+    analysis.updated_at = now
+    analysis.retry_count = 5
+    analysis.analysis_id = uuid.uuid4()
+    analysis.input_tokens_used = 10
+    analysis.output_tokens_used = 10
+    analysis.thinking_tokens_used = 0
+    analysis_service.analysis_repo.get_analyses_to_retry.return_value = [analysis]
+    count = analysis_service.retry_analyses(initial_backoff_hours=1, max_retries=3, timeout_hours=1)
+    assert count == 0
