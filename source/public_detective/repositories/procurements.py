@@ -13,9 +13,10 @@ import re
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Iterator
 from datetime import date
 from http import HTTPStatus
-from typing import cast
+from typing import Any, cast
 from urllib.parse import urljoin
 from uuid import UUID
 
@@ -604,21 +605,25 @@ class ProcurementsRepository:
         self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
         return all_procurements
 
-    def get_updated_procurements_with_raw_data(self, target_date: date) -> list[tuple[Procurement, dict]]:
-        """Fetches procurements updated on a date, with their raw JSON data.
-
-        This method is similar to `get_updated_procurements` but also
-        returns the raw JSON dictionary for each procurement. This is useful
-        when the original, unaltered data is needed for storage or auditing.
-
+    def get_updated_procurements_with_raw_data(
+        self, target_date: date
+    ) -> Iterator[tuple[str, Any | tuple[Procurement, dict]]]:
+        """Fetches updated procurements with raw data as a generator.
+        This method queries the PNCP API for procurements updated on a specific
+        date. It yields events to report progress, such as when a modality
+        search begins, the total number of pages found, and each batch of
+        procurements as it is fetched.
         Args:
-            target_date: The specific date to query for updates.
-
-        Returns:
-            A list of tuples, where each tuple contains the parsed
-            `Procurement` model and its corresponding raw data dictionary.
+            target_date: The date to query for procurement updates.
+        Yields:
+            Tuples representing different stages of the fetching process:
+            - ("modality_started", modality_name): Indicates the start of
+              fetching for a new procurement modality.
+            - ("pages_total", total_pages): Provides the total number of pages
+              to be fetched for the current modality.
+            - ("procurements_page", (procurement, raw_data)): Yields a tuple
+              containing a `Procurement` object and its raw JSON data.
         """
-        all_procurements: list[tuple[Procurement, dict]] = []
         modalities_to_check = [
             ProcurementModality.ELECTRONIC_REVERSE_AUCTION,
             ProcurementModality.BIDDING_WAIVER,
@@ -634,8 +639,10 @@ class ProcurementsRepository:
             if city_code:
                 self.logger.info(f"Searching for city with IBGE code: {city_code}")
             for modality in modalities_to_check:
+                yield "modality_started", modality.name
                 page = 1
-                while True:
+                total_pages = 1
+                while page <= total_pages:
                     endpoint = "contratacoes/atualizacao"
                     params = {
                         "dataInicial": target_date.strftime("%Y%m%d"),
@@ -653,14 +660,14 @@ class ProcurementsRepository:
                         response.raise_for_status()
                         raw_json = response.json()
                         parsed_data = ProcurementListResponse.model_validate(raw_json)
+                        if page == 1:
+                            total_pages = parsed_data.total_pages
+                            yield "pages_total", total_pages
                         if not parsed_data.data:
                             break
-
                         for i, procurement_model in enumerate(parsed_data.data):
-                            all_procurements.append((procurement_model, raw_json["data"][i]))
-
-                        if page >= parsed_data.total_pages:
-                            break
+                            yield "procurements_page", (procurement_model, raw_json["data"][i])
+                        yield "page_fetched", page
                         page += 1
                     except requests.RequestException as e:
                         self.logger.error(f"Error fetching updates on page {page}: {e}")
@@ -668,8 +675,6 @@ class ProcurementsRepository:
                     except ValidationError as e:
                         self.logger.error(f"Data validation error on page {page}: {e}")
                         break
-        self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
-        return all_procurements
 
     def publish_procurement_to_pubsub(self, procurement: Procurement) -> bool:
         """Publishes a procurement object to the configured Pub/Sub topic.
