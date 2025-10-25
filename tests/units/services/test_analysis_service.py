@@ -1228,3 +1228,38 @@ def test_retry_analyses_no_retry_due_to_backoff(analysis_service: AnalysisServic
     analysis_service.analysis_repo.get_analyses_to_retry.return_value = [analysis]
     count = analysis_service.retry_analyses(initial_backoff_hours=1, max_retries=3, timeout_hours=1)
     assert count == 0
+
+
+def test_run_pre_analysis_by_control_number_happy_path(
+    analysis_service: AnalysisService, mock_procurement: MagicMock
+) -> None:
+    """Tests the pre-analysis for a single procurement by control number."""
+    control_number = "PNCP123456"
+    raw_data = {"some": "data"}
+    analysis_service.procurement_repo.get_procurement_by_control_number.return_value = (mock_procurement, raw_data)
+    analysis_service._pre_analyze_procurement = MagicMock()
+
+    event_generator = analysis_service.run_pre_analysis_by_control_number(control_number)
+    events = list(event_generator)
+
+    analysis_service.procurement_repo.get_procurement_by_control_number.assert_called_once_with(control_number)
+    analysis_service._pre_analyze_procurement.assert_called_once_with(mock_procurement, raw_data)
+
+    assert any(e[0] == "day_started" for e in events)
+    assert any(e[0] == "procurements_fetched" for e in events)
+    assert any(e[0] == "procurement_processed" for e in events)
+
+
+def test_run_pre_analysis_by_control_number_not_found(
+    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Tests the case where the procurement is not found by control number."""
+    control_number = "PNCP-NOT-FOUND"
+    analysis_service.procurement_repo.get_procurement_by_control_number.return_value = (None, None)
+    analysis_service._pre_analyze_procurement = MagicMock()
+
+    event_generator = analysis_service.run_pre_analysis_by_control_number(control_number)
+    list(event_generator)
+
+    assert f"Procurement with PNCP control number {control_number} not found." in caplog.text
+    analysis_service._pre_analyze_procurement.assert_not_called()

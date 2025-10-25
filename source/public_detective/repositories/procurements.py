@@ -222,6 +222,33 @@ class ProcurementsRepository:
             ).scalar_one_or_none()
         return result
 
+    def get_procurement_by_control_number(self, pncp_control_number: str) -> tuple[Procurement | None, dict | None]:
+        """Fetches a single procurement and its raw data by its PNCP control number.
+
+        Args:
+            pncp_control_number: The control number of the procurement.
+
+        Returns:
+            A tuple containing the parsed `Procurement` model and its raw
+            JSON data, or (None, None) if not found or an error occurs.
+        """
+        try:
+            cnpj = pncp_control_number[:8]
+            year = pncp_control_number[16:20]
+            sequence = pncp_control_number[20:26]
+
+            endpoint = f"orgaos/{cnpj}/compras/{year}/{sequence}"
+            api_url = urljoin(self.config.PNCP_INTEGRATION_API_URL, endpoint)
+            response = self.http_provider.get(api_url)
+            response.raise_for_status()
+
+            raw_data = response.json()
+            procurement = Procurement.model_validate(raw_data)
+            return procurement, raw_data
+        except (requests.RequestException, ValidationError) as e:
+            self.logger.error(f"Failed to get/validate procurement for {pncp_control_number}: {e}")
+            return None, None
+
     def process_procurement_documents(self, procurement: Procurement) -> list[ProcessedFile]:
         """Downloads and processes all documents for a given procurement.
 

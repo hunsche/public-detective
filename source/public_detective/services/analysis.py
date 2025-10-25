@@ -929,6 +929,42 @@ class AnalysisService:
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e
 
+    def run_pre_analysis_by_control_number(
+        self,
+        pncp_control_number: str,
+    ) -> Iterator[tuple[str, Any]]:
+        """Runs the pre-analysis job for a single procurement by its control number.
+
+        This generator fetches a specific procurement and its raw data, then
+        processes it, yielding events compatible with the batch pre-analysis
+        flow for consistent progress tracking.
+
+        Args:
+            pncp_control_number: The PNCP control number of the procurement.
+
+        Yields:
+            Tuples representing progress events, mirroring the batch flow.
+        """
+        try:
+            self.logger.info(f"Starting pre-analysis for PNCP control number: {pncp_control_number}")
+            yield "day_started", (date.today(), 1)
+
+            procurement, raw_data = self.procurement_repo.get_procurement_by_control_number(pncp_control_number)
+            if not procurement or not raw_data:
+                self.logger.error(f"Procurement with PNCP control number {pncp_control_number} not found.")
+                return
+
+            yield "procurements_fetched", [(procurement, raw_data)]
+
+            self._pre_analyze_procurement(procurement, raw_data)
+            yield "procurement_processed", (procurement, raw_data)
+
+            self.logger.info(f"Successfully pre-analyzed procurement {pncp_control_number}.")
+        except Exception as e:
+            raise AnalysisError(
+                f"An unexpected error occurred during pre-analysis for {pncp_control_number}: {e}"
+            ) from e
+
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict) -> None:
         """Performs the pre-analysis for a single procurement.
 
