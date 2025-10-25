@@ -7,7 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import click
-from public_detective.cli.progress import ProgressFactory, null_progress, null_spinner
+from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider

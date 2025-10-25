@@ -609,12 +609,15 @@ class ProcurementsRepository:
         self, target_date: date
     ) -> Iterator[tuple[str, Any | tuple[Procurement, dict]]]:
         """Fetches updated procurements with raw data as a generator.
+
         This method queries the PNCP API for procurements updated on a specific
         date. It yields events to report progress, such as when a modality
         search begins, the total number of pages found, and each batch of
         procurements as it is fetched.
+
         Args:
             target_date: The date to query for procurement updates.
+
         Yields:
             Tuples representing different stages of the fetching process:
             - ("modality_started", modality_name): Indicates the start of

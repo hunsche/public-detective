@@ -34,8 +34,10 @@ class ProgressFactory:
     @contextmanager
     def spinner(self, label: str) -> Generator[None, None, None]:
         """Creates a new spinner.
+
         Args:
             label: The label for the spinner.
+
         Yields:
             None.
         """
@@ -65,8 +67,10 @@ def null_progress(iterable: Iterable[T], label: str) -> Generator[Iterable[T], N
 @contextmanager
 def null_spinner(label: str) -> Generator[None, None, None]:  # noqa: F841
     """A null spinner that does nothing.
+
     Args:
         label: The label for the spinner.
+
     Yields:
         None
     """

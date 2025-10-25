@@ -894,9 +894,7 @@ class AnalysisService:
                 current_date = start_date + timedelta(days=day_index)
                 yield "day_started", (current_date, total_days)
                 procurements_for_the_day = []
-                event_generator = self.procurement_repo.get_updated_procurements_with_raw_data(
-                    target_date=current_date
-                )
+                event_generator = self.procurement_repo.get_updated_procurements_with_raw_data(target_date=current_date)
                 for event, data in event_generator:
                     if event == "modality_started":
                         modality_name = data
