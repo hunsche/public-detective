@@ -211,6 +211,7 @@ def prepare(
             ) as progress:
                 days_task_id = None
                 procurements_task_id = None
+                pages_task_id = None
 
                 for event, data in event_generator:
                     if event == "day_started":
@@ -228,15 +229,31 @@ def prepare(
                         )
                         if procurements_task_id is not None:
                             progress.remove_task(procurements_task_id)
-                            procurements_task_id = None
+                        procurements_task_id = None
+
+                    elif event == "fetching_pages_started":
+                        modality_name, total_pages = data
+                        if pages_task_id is not None:
+                            progress.remove_task(pages_task_id)
+                        pages_task_id = progress.add_task(
+                            f"  -> Fetching pages for {modality_name}",
+                            total=total_pages,
+                        )
+
+                    elif event == "page_fetched":
+                        if pages_task_id is not None:
+                            progress.update(pages_task_id, advance=1)
 
                     elif event == "procurements_fetched":
+                        if pages_task_id is not None:
+                            progress.remove_task(pages_task_id)
+                        pages_task_id = None
+
                         procurements_for_the_day = data
                         if procurements_for_the_day:
                             procurements_task_id = progress.add_task(
                                 f"  -> Processing {len(procurements_for_the_day)} procurements",
                                 total=len(procurements_for_the_day),
-                                start=True,
                             )
 
                     elif event == "procurement_processed":
