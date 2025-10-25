@@ -1,6 +1,8 @@
 """Unit tests for the pre-analysis service functions."""
 
+from collections.abc import Iterator
 from datetime import date
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,13 +38,16 @@ def mock_dependencies() -> dict:
 def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: Procurement) -> None:
     """Test the happy path for run_pre_analysis."""
     service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(mock_procurement, {})]
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Iterator[tuple[str, Any]]:
+        yield "procurement_found", (mock_procurement, {})
+
+    service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     service.procurement_repo.get_latest_version.return_value = 0
     service.procurement_repo.get_procurement_by_hash.return_value = False
     service.analysis_repo.save_pre_analysis.return_value = "new-analysis-id"
 
     with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
-        # Consume the generator to trigger the logic
         list(service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 100, 60, None))
         mock_pre_analyze.assert_called_once()
 
@@ -50,11 +55,14 @@ def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: 
 def test_run_pre_analysis_no_procurements_found(mock_dependencies: dict) -> None:
     """Tests that the pre-analysis job handles dates with no procurements."""
     service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = []
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Iterator[tuple[str, Any]]:
+        yield from ()
+
+    service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     start_date = date(2025, 1, 1)
     end_date = date(2025, 1, 1)
 
-    # Consume the generator to trigger the logic
     list(service.run_pre_analysis(start_date, end_date, 100, 60, None))
 
     service.procurement_repo.get_updated_procurements_with_raw_data.assert_called_once_with(target_date=start_date)

@@ -661,7 +661,7 @@ def test_prepare_command_exception_handling(mock_db_manager: MagicMock, mock_ana
 def test_prepare_command_spinner_and_progress_interaction(
     mock_progress_class: MagicMock,
     mock_analysis_service: MagicMock,
-    mock_should_show: MagicMock,
+    _mock_should_show: MagicMock,
 ) -> None:
     """Tests the interaction between the spinner and progress bar during 'prepare'."""
 

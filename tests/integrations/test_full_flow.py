@@ -1,4 +1,5 @@
 import json
+from collections.abc import Iterator
 from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -122,8 +123,12 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         pubsub_provider=pubsub_provider,
     )
 
+    def mock_generator(*args: Any, **kwargs: Any) -> Iterator[tuple[str, Any]]:
+        """A mock generator to simulate the repository's behavior."""
+        yield "procurement_found", (mock_procurement, {})
+
     with (
-        patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
+        patch.object(procurement_repo, "get_updated_procurements_with_raw_data", side_effect=mock_generator),
         patch.object(
             procurement_repo,
             "process_procurement_documents",

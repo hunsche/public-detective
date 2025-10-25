@@ -13,9 +13,9 @@ import re
 import tarfile
 import tempfile
 import zipfile
+from collections.abc import Iterator
 from datetime import date
 from http import HTTPStatus
-from collections.abc import Iterator
 from typing import Any, cast
 from urllib.parse import urljoin
 from uuid import UUID

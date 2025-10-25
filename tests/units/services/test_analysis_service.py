@@ -1,6 +1,7 @@
 """Unit tests for the AnalysisService."""
 
 import uuid
+from collections.abc import Iterator
 from datetime import date, datetime, timedelta, timezone
 from decimal import Decimal
 from typing import Any
@@ -694,12 +695,18 @@ def test_upload_and_save_initial_records_with_prepared_single(analysis_service: 
 
 def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisService, monkeypatch: Any) -> None:
     """Covers batch sleep path and early stop via max_messages."""
-    # Two procurements in one day to hit the sleep branch when batch_size=1
     p1, p2 = MagicMock(), MagicMock()
     p1.pncp_control_number = "P1"
     p2.pncp_control_number = "P2"
     raw = {"k": "v"}
-    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(p1, raw), (p2, raw)]
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Iterator[tuple[str, Any]]:
+        yield "fetching_pages_started", (None, "TEST")
+        yield "procurement_found", (p1, raw)
+        yield "procurement_found", (p2, raw)
+        yield "fetching_pages_finished", (None, "TEST")
+
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = mock_generator()
     calls = {"slept": 0}
 
     def fake_sleep(_secs: int) -> None:
@@ -708,13 +715,12 @@ def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisServi
     monkeypatch.setattr("public_detective.services.analysis.time.sleep", fake_sleep)
     analysis_service._pre_analyze_procurement = MagicMock()
 
-    # First run: batch_size=1 should sleep once between items (since not last item)
-    list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=1, sleep_seconds=0))
-    assert calls["slept"] >= 1
+    list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=1, sleep_seconds=1))
+    assert calls["slept"] == 1
 
-    # Second run: respect max_messages=1 and stop after first processed
     calls["slept"] = 0
     analysis_service._pre_analyze_procurement.reset_mock()
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = mock_generator()
     list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=10, sleep_seconds=0, max_messages=1))
     assert analysis_service._pre_analyze_procurement.call_count == 1
     assert calls["slept"] == 0
@@ -771,9 +777,16 @@ def test_run_pre_analysis_generator_and_pre_analyze_called(analysis_service: Ana
     proc = MagicMock()
     proc.pncp_control_number = "PN-1"
     raw = {"k": "v"}
-    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(proc, raw)]
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Iterator[tuple[str, Any]]:
+        yield "procurement_found", (proc, raw)
+
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = mock_generator()
     analysis_service._pre_analyze_procurement = MagicMock()
+
     events = list(analysis_service.run_pre_analysis(start, end, batch_size=10, sleep_seconds=0))
+
+    analysis_service._pre_analyze_procurement.assert_called_once_with(proc, raw)
     assert any(e[0] == "day_started" for e in events)
     assert any(e[0] == "procurements_fetched" for e in events)
     assert any(e[0] == "procurement_processed" for e in events)
