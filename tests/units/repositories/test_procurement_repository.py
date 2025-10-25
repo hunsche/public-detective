@@ -597,8 +597,13 @@ def test_get_updated_procurements_with_raw_data_request_exception(repo: Procurem
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
-    result = repo.get_updated_procurements_with_raw_data(target_date)
-    assert result == []
+
+    result_events = list(repo.get_updated_procurements_with_raw_data(target_date))
+    procurements = [data for event, data in result_events if event == "procurement_found"]
+
+    assert procurements == []
+    assert any(event == "fetching_pages_started" for event, _ in result_events)
+    assert any(event == "fetching_pages_finished" for event, _ in result_events)
     assert "Error fetching updates on page 1: API is down" in caplog.text
 
 
@@ -611,8 +616,13 @@ def test_get_updated_procurements_with_raw_data_validation_error(repo: Procureme
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
-    result = repo.get_updated_procurements_with_raw_data(target_date)
-    assert result == []
+
+    result_events = list(repo.get_updated_procurements_with_raw_data(target_date))
+    procurements = [data for event, data in result_events if event == "procurement_found"]
+
+    assert procurements == []
+    assert any(event == "fetching_pages_started" for event, _ in result_events)
+    assert any(event == "fetching_pages_finished" for event, _ in result_events)
     assert "Data validation error on page 1" in caplog.text
 
 
@@ -624,8 +634,12 @@ def test_get_updated_procurements_with_raw_data_no_content(repo: ProcurementsRep
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
-    result = repo.get_updated_procurements_with_raw_data(target_date)
-    assert result == []
+
+    result_events = list(repo.get_updated_procurements_with_raw_data(target_date))
+    procurements = [data for event, data in result_events if event == "procurement_found"]
+
+    assert procurements == []
+    assert len(result_events) > 0
 
 
 def test_get_updated_procurements_with_raw_data_happy_path(repo: ProcurementsRepository) -> None:
@@ -643,20 +657,22 @@ def test_get_updated_procurements_with_raw_data_happy_path(repo: ProcurementsRep
     mock_response_no_content = MagicMock()
     mock_response_no_content.status_code = HTTPStatus.NO_CONTENT
 
-    # Simulate finding data for the first modality, then no data for the rest
     repo.http_provider.get.side_effect = [mock_response_with_data] + [mock_response_no_content] * 3
 
     repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
     repo.config.TARGET_IBGE_CODES = [None]
     target_date = date(2023, 1, 1)
 
-    result = repo.get_updated_procurements_with_raw_data(target_date)
+    result_events = list(repo.get_updated_procurements_with_raw_data(target_date))
+    procurements = [data for event, data in result_events if event == "procurement_found"]
 
-    assert len(result) == 1
-    procurement_model, raw_data = result[0]
+    assert len(procurements) == 1
+    procurement_model, raw_data = procurements[0]
     assert isinstance(procurement_model, Procurement)
     assert procurement_model.pncp_control_number == "PNCP-456"
     assert raw_data == raw_procurement_data
+    assert any(event == "fetching_pages_started" for event, _ in result_events)
+    assert any(event == "fetching_pages_finished" for event, _ in result_events)
 
 
 def test_get_updated_procurements_with_raw_data_pagination(repo: ProcurementsRepository) -> None:
@@ -689,13 +705,14 @@ def test_get_updated_procurements_with_raw_data_pagination(repo: ProcurementsRep
     repo.config.TARGET_IBGE_CODES = ["12345"]
     target_date = date(2023, 1, 1)
 
-    result = repo.get_updated_procurements_with_raw_data(target_date)
+    result_events = list(repo.get_updated_procurements_with_raw_data(target_date))
+    procurements = [data for event, data in result_events if event == "procurement_found"]
 
-    assert len(result) == 2
-    assert result[0][0].pncp_control_number == "PNCP-RAW-PAGE-1"
-    assert result[1][0].pncp_control_number == "PNCP-RAW-PAGE-2"
-    assert result[0][1] == raw_proc_page1
-    assert result[1][1] == raw_proc_page2
+    assert len(procurements) == 2
+    assert procurements[0][0].pncp_control_number == "PNCP-RAW-PAGE-1"
+    assert procurements[1][0].pncp_control_number == "PNCP-RAW-PAGE-2"
+    assert procurements[0][1] == raw_proc_page1
+    assert procurements[1][1] == raw_proc_page2
 
 
 @patch.object(ProcurementsRepository, "_extract_from_zip", side_effect=Exception("ZIP processing error"))

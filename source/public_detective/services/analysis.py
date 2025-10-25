@@ -893,15 +893,21 @@ class AnalysisService:
                 current_date = start_date + timedelta(days=day_index)
                 yield "day_started", (current_date, total_days)
 
-                procurements_for_the_day = self.procurement_repo.get_updated_procurements_with_raw_data(
-                    target_date=current_date
-                )
+                procurements_for_the_day = []
+                repo_generator = self.procurement_repo.get_updated_procurements_with_raw_data(target_date=current_date)
+
+                for event, data in repo_generator:
+                    if event == "procurement_found":
+                        procurements_for_the_day.append(data)
+                    else:
+                        yield event, data
+
                 yield "procurements_fetched", procurements_for_the_day
 
                 if not procurements_for_the_day:
                     continue
 
-                for procurement, raw_data in procurements_for_the_day:
+                for i, (procurement, raw_data) in enumerate(procurements_for_the_day):
                     if max_messages is not None and messages_published_count >= max_messages:
                         self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
                         return
@@ -912,7 +918,7 @@ class AnalysisService:
                         processed_in_batch += 1
                         yield "procurement_processed", (procurement, raw_data)
 
-                        is_last_item = (procurement, raw_data) == procurements_for_the_day[-1]
+                        is_last_item = i == len(procurements_for_the_day) - 1
                         if processed_in_batch % batch_size == 0 and not is_last_item:
                             self.logger.info(
                                 f"Batch of {batch_size} processed. " f"Sleeping for {sleep_seconds} seconds."
@@ -924,7 +930,6 @@ class AnalysisService:
                             f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
                             exc_info=True,
                         )
-
             self.logger.info("Pre-analysis job for the entire date range has been completed.")
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e

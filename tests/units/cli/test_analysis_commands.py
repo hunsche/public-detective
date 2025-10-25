@@ -653,3 +653,46 @@ def test_prepare_command_exception_handling(mock_db_manager: MagicMock, mock_ana
 
     assert result.exit_code != 0
     assert f"An error occurred: {error_message}" in result.output
+
+
+@patch("public_detective.cli.analysis.should_show_progress", return_value=True)
+@patch("public_detective.cli.analysis.AnalysisService")
+@patch("public_detective.cli.analysis.Progress")
+def test_prepare_command_spinner_and_progress_interaction(
+    mock_progress_class: MagicMock,
+    mock_analysis_service: MagicMock,
+    mock_should_show: MagicMock,
+) -> None:
+    """Tests the interaction between the spinner and progress bar during 'prepare'."""
+
+    def mock_event_generator() -> Iterator[tuple[str, Any]]:
+        yield "day_started", (MagicMock(), 1)
+        yield "fetching_pages_started", ("12345", "MODALITY_A")
+        yield "fetching_pages_finished", ("12345", "MODALITY_A")
+        yield "procurements_fetched", [1, 2, 3]
+        yield "procurement_processed", (MagicMock(), {})
+        yield "procurement_processed", (MagicMock(), {})
+        yield "procurement_processed", (MagicMock(), {})
+
+    mock_analysis_service.return_value.run_pre_analysis.return_value = mock_event_generator()
+    mock_progress_instance = MagicMock()
+    mock_progress_instance.add_task.side_effect = [0, 1, 2]
+    mock_progress_class.return_value.__enter__.return_value = mock_progress_instance
+    runner = CliRunner()
+    cli = create_cli()
+
+    result = runner.invoke(cli, ["analysis", "prepare"])
+
+    assert result.exit_code == 0, result.output
+    add_task_calls = mock_progress_instance.add_task.call_args_list
+    descriptions = []
+    for pos_args, kw_args in add_task_calls:
+        if pos_args:
+            descriptions.append(pos_args[0])
+        if "description" in kw_args:
+            descriptions.append(kw_args["description"])
+
+    assert any("Scanning" in d for d in descriptions)
+    assert any("Fetching pages" in d for d in descriptions)
+    assert any("Processing" in d for d in descriptions)
+    mock_progress_instance.remove_task.assert_called()

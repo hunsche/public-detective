@@ -15,7 +15,8 @@ import tempfile
 import zipfile
 from datetime import date
 from http import HTTPStatus
-from typing import cast
+from collections.abc import Iterator
+from typing import Any, cast
 from urllib.parse import urljoin
 from uuid import UUID
 
@@ -604,21 +605,25 @@ class ProcurementsRepository:
         self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
         return all_procurements
 
-    def get_updated_procurements_with_raw_data(self, target_date: date) -> list[tuple[Procurement, dict]]:
-        """Fetches procurements updated on a date, with their raw JSON data.
+    def get_updated_procurements_with_raw_data(
+        self, target_date: date
+    ) -> Iterator[tuple[str, Any | tuple[Procurement, dict]]]:
+        """Fetches procurements updated on a date, yielding progress events.
 
-        This method is similar to `get_updated_procurements` but also
-        returns the raw JSON dictionary for each procurement. This is useful
-        when the original, unaltered data is needed for storage or auditing.
+        This method queries the PNCP API for all procurements that were
+        updated on the given date. It iterates through modalities and city
+        codes, yielding events to signal the start and end of page fetching,
+        and yielding each found procurement with its raw data.
 
         Args:
             target_date: The specific date to query for updates.
 
-        Returns:
-            A list of tuples, where each tuple contains the parsed
-            `Procurement` model and its corresponding raw data dictionary.
+        Yields:
+            Tuples representing progress events:
+            - ("fetching_pages_started", (city_code, modality_name))
+            - ("procurement_found", (procurement_model, raw_data))
+            - ("fetching_pages_finished", (city_code, modality_name))
         """
-        all_procurements: list[tuple[Procurement, dict]] = []
         modalities_to_check = [
             ProcurementModality.ELECTRONIC_REVERSE_AUCTION,
             ProcurementModality.BIDDING_WAIVER,
@@ -635,6 +640,7 @@ class ProcurementsRepository:
                 self.logger.info(f"Searching for city with IBGE code: {city_code}")
             for modality in modalities_to_check:
                 page = 1
+                yield "fetching_pages_started", (city_code, modality.name)
                 while True:
                     endpoint = "contratacoes/atualizacao"
                     params = {
@@ -657,7 +663,7 @@ class ProcurementsRepository:
                             break
 
                         for i, procurement_model in enumerate(parsed_data.data):
-                            all_procurements.append((procurement_model, raw_json["data"][i]))
+                            yield "procurement_found", (procurement_model, raw_json["data"][i])
 
                         if page >= parsed_data.total_pages:
                             break
@@ -668,8 +674,8 @@ class ProcurementsRepository:
                     except ValidationError as e:
                         self.logger.error(f"Data validation error on page {page}: {e}")
                         break
-        self.logger.info(f"Finished fetching. Total procurements: {len(all_procurements)}")
-        return all_procurements
+                yield "fetching_pages_finished", (city_code, modality.name)
+        self.logger.info(f"Finished fetching procurements for {target_date}.")
 
     def publish_procurement_to_pubsub(self, procurement: Procurement) -> bool:
         """Publishes a procurement object to the configured Pub/Sub topic.

@@ -23,7 +23,7 @@ from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
 from public_detective.repositories.status_history import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
-from rich.progress import BarColumn, Progress, TaskProgressColumn, TextColumn, TimeRemainingColumn
+from rich.progress import BarColumn, Progress, SpinnerColumn, TaskProgressColumn, TextColumn, TimeRemainingColumn
 
 PROGRESS_FACTORY = ProgressFactory()
 
@@ -203,6 +203,7 @@ def prepare(
                 pass
         else:
             with Progress(
+                SpinnerColumn(),
                 TextColumn("[bold blue]{task.description}"),
                 BarColumn(),
                 TaskProgressColumn(),
@@ -211,6 +212,7 @@ def prepare(
             ) as progress:
                 days_task_id = None
                 procurements_task_id = None
+                spinner_task_id = None
 
                 for event, data in event_generator:
                     if event == "day_started":
@@ -230,6 +232,20 @@ def prepare(
                             progress.remove_task(procurements_task_id)
                             procurements_task_id = None
 
+                    elif event == "fetching_pages_started":
+                        city_code, modality_name = data
+                        city_str = f" for city {city_code}" if city_code else " for all configured cities"
+                        modality_str = modality_name.replace("_", " ").title()
+                        if spinner_task_id is None:
+                            spinner_task_id = progress.add_task(
+                                description=f"  -> Fetching pages for '{modality_str}'{city_str}...", total=None
+                            )
+
+                    elif event == "fetching_pages_finished":
+                        if spinner_task_id is not None:
+                            progress.remove_task(spinner_task_id)
+                            spinner_task_id = None
+
                     elif event == "procurements_fetched":
                         procurements_for_the_day = data
                         if procurements_for_the_day:
@@ -245,7 +261,6 @@ def prepare(
 
                 if days_task_id is not None and not progress.tasks[days_task_id].completed:
                     progress.update(days_task_id, advance=1)
-
         click.secho("Pre-analysis completed successfully!", fg="green")
     except (AnalysisError, Exception) as e:
         click.secho(f"An error occurred: {e}", fg="red")
