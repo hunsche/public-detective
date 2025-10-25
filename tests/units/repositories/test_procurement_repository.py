@@ -946,3 +946,38 @@ def test_get_updated_procurements_happy_path_multiple_modalities(repo: Procureme
 
     assert len(result) == 1
     assert result[0].pncp_control_number == "PNCP-789"
+
+
+def test_get_procurement_by_control_number_success(repo: ProcurementsRepository) -> None:
+    """Tests fetching a single procurement by control number successfully."""
+    control_number = "12345678000199-1-123456/2024"
+    raw_data = _get_mock_procurement_data(control_number)
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.json.return_value = raw_data
+    repo.http_provider.get.return_value = mock_response
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurement, result_raw_data = repo.get_procurement_by_control_number(control_number)
+
+    assert procurement is not None
+    assert isinstance(procurement, Procurement)
+    assert procurement.pncp_control_number == control_number
+    assert result_raw_data == raw_data
+    repo.http_provider.get.assert_called_once_with("http://test.api/orgaos/12345678000199/compras/2024/123456")
+
+
+def test_get_procurement_by_control_number_not_found(repo: ProcurementsRepository, caplog: Any) -> None:
+    """Tests fetching a single procurement that is not found (404)."""
+    control_number = "12345678000199-1-123456/2024"
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.NOT_FOUND
+    mock_response.raise_for_status.side_effect = requests.HTTPError
+    repo.http_provider.get.return_value = mock_response
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    procurement, raw_data = repo.get_procurement_by_control_number(control_number)
+
+    assert procurement is None
+    assert raw_data is None
+    assert f"Failed to get/validate procurement for {control_number}" in caplog.text

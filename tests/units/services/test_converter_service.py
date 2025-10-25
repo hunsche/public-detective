@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from openpyxl.worksheet.worksheet import Worksheet
 from public_detective.services.converter import ConverterService
 
 
@@ -82,10 +83,11 @@ def test_spreadsheet_to_csvs_xls() -> None:
         mock_sheet.nrows = 1
         mock_sheet.row_values.return_value = ["a", "b"]
         mock_workbook.sheet_names.return_value = ["sheet1"]
-        result = service.spreadsheet_to_csvs(dummy_xls_content, ".xls")
-        assert len(result) == 1
-        assert result[0][0] == "sheet1.csv"
-        assert result[0][1] == b"a,b\r\n"
+        files, warnings = service.spreadsheet_to_csvs(dummy_xls_content, ".xls")
+        assert len(files) == 1
+        assert files[0][0] == "sheet1.csv"
+        assert files[0][1] == b"a,b\r\n"
+        assert len(warnings) == 0
 
 
 def test_spreadsheet_to_csvs_xlsx() -> None:
@@ -94,13 +96,15 @@ def test_spreadsheet_to_csvs_xlsx() -> None:
     dummy_xlsx_content = b"dummy xlsx content"
     with patch("openpyxl.load_workbook") as mock_load_workbook:
         mock_workbook = mock_load_workbook.return_value
-        mock_sheet = mock_workbook.__getitem__.return_value
+        mock_sheet = MagicMock(spec=Worksheet)
         mock_sheet.iter_rows.return_value = [[MagicMock(value="a"), MagicMock(value="b")]]
+        mock_workbook.__getitem__.return_value = mock_sheet
         mock_workbook.sheetnames = ["sheet1"]
-        result = service.spreadsheet_to_csvs(dummy_xlsx_content, ".xlsx")
-        assert len(result) == 1
-        assert result[0][0] == "sheet1.csv"
-        assert result[0][1] == b"a,b\r\n"
+        files, warnings = service.spreadsheet_to_csvs(dummy_xlsx_content, ".xlsx")
+        assert len(files) == 1
+        assert files[0][0] == "sheet1.csv"
+        assert files[0][1] == b"a,b\r\n"
+        assert len(warnings) == 0
 
 
 def test_spreadsheet_to_csvs_xlsb() -> None:
@@ -108,10 +112,11 @@ def test_spreadsheet_to_csvs_xlsb() -> None:
     service = ConverterService()
     with open("tests/fixtures/file_samples/valid_test.xlsb", "rb") as f:
         xlsb_content = f.read()
-    result = service.spreadsheet_to_csvs(xlsb_content, ".xlsb")
-    assert len(result) == 3
-    assert result[0][0] == "Sheet1.csv"
-    assert result[0][1].startswith(b"Welcome to File Extension FYI Center!")
+    files, warnings = service.spreadsheet_to_csvs(xlsb_content, ".xlsb")
+    assert len(files) == 3
+    assert files[0][0] == "Sheet1.csv"
+    assert files[0][1].startswith(b"Welcome to File Extension FYI Center!")
+    assert len(warnings) == 0
 
 
 @patch("imageio.get_reader")

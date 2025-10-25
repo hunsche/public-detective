@@ -9,6 +9,7 @@ import uuid
 from collections.abc import Generator
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 import pytest
 from aiohttp import web
@@ -22,6 +23,25 @@ from public_detective.providers.gcs import GcsProvider
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
+
+
+def pytest_addoption(parser: Any) -> None:
+    parser.addoption(
+        "--pncp-control-number",
+        action="store",
+        default=None,
+        help="Procurement control number to test.",
+    )
+
+
+def pytest_generate_tests(metafunc: Any) -> None:
+    if "pncp_control_number" in metafunc.fixturenames and metafunc.function.__name__ == "test_debug_failed_conversion":
+        number = metafunc.config.getoption("pncp_control_number")
+        if number:
+            metafunc.parametrize("pncp_control_number", [number])
+        else:
+            # Parametrize with an empty list to skip the test if no number is provided
+            metafunc.parametrize("pncp_control_number", [])
 
 
 @pytest.fixture(scope="function")

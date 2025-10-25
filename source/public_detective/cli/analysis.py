@@ -7,6 +7,7 @@ from decimal import Decimal
 from uuid import UUID
 
 import click
+from click.core import ParameterSource
 from public_detective.cli.progress import ProgressFactory, null_progress
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
@@ -116,6 +117,12 @@ def run(ctx: click.Context, analysis_id: UUID) -> None:
 
 @analysis_group.command("prepare")
 @click.option(
+    "--pncp-control-number",
+    type=str,
+    default=None,
+    help="Specific PNCP control number to prepare. Cannot be used with date ranges.",
+)
+@click.option(
     "--start-date",
     type=click.DateTime(formats=[DateProvider.DATE_FORMAT]),
     default=date.today().isoformat(),
@@ -139,6 +146,7 @@ def run(ctx: click.Context, analysis_id: UUID) -> None:
 @click.pass_context
 def prepare(
     ctx: click.Context,
+    pncp_control_number: str | None,
     start_date: datetime,
     end_date: datetime,
     batch_size: int,
@@ -150,6 +158,7 @@ def prepare(
 
     Args:
         ctx: The click context.
+        pncp_control_number: Specific PNCP control number to prepare.
         start_date: Start date for the pre-analysis.
         end_date: End date for the pre-analysis.
         batch_size: Number of procurements to process in each batch.
@@ -157,7 +166,13 @@ def prepare(
         max_messages: Maximum number of messages to publish.
         no_progress: Whether to disable the progress bar.
     """
-    if start_date.date() > end_date.date():
+    start_date_is_default = ctx.get_parameter_source("start_date") == ParameterSource.DEFAULT
+    end_date_is_default = ctx.get_parameter_source("end_date") == ParameterSource.DEFAULT
+
+    if pncp_control_number:
+        if not start_date_is_default or not end_date_is_default:
+            raise click.UsageError("The --pncp-control-number option cannot be used with --start-date or --end-date.")
+    elif start_date.date() > end_date.date():
         raise click.BadParameter("Start date cannot be after end date. Please provide a valid date range.")
 
     gcs_path_prefix = ctx.obj.get("gcs_path_prefix")
@@ -190,13 +205,19 @@ def prepare(
     )
 
     try:
-        event_generator = service.run_pre_analysis(
-            start_date=start_date.date(),
-            end_date=end_date.date(),
-            batch_size=batch_size,
-            sleep_seconds=sleep_seconds,
-            max_messages=max_messages,
-        )
+        if pncp_control_number:
+            click.echo(f"Preparing procurement with PNCP control number: {pncp_control_number}")
+            event_generator = service.run_pre_analysis_by_control_number(
+                pncp_control_number=pncp_control_number,
+            )
+        else:
+            event_generator = service.run_pre_analysis(
+                start_date=start_date.date(),
+                end_date=end_date.date(),
+                batch_size=batch_size,
+                sleep_seconds=sleep_seconds,
+                max_messages=max_messages,
+            )
 
         if not should_show_progress(no_progress):
             for _ in event_generator:

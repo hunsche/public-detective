@@ -243,7 +243,7 @@ def test_prepare_ai_candidates_spreadsheet_conversion(
     mock_converter: MagicMock, analysis_service: AnalysisService
 ) -> None:
     """Tests successful conversion of a spreadsheet file."""
-    mock_converter.return_value = [("sheet1", b"csv1"), ("sheet2", b"csv2")]
+    mock_converter.return_value = ([("sheet1", b"csv1"), ("sheet2", b"csv2")], [])
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="data.xlsx",
@@ -699,7 +699,7 @@ def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisServi
     p2.pncp_control_number = "P2"
     raw = {"k": "v"}
 
-    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+    def mock_generator(*_args: Any, **_kwargs: Any) -> Any:
         yield "procurements_page", (p1, raw)
         yield "procurements_page", (p2, raw)
 
@@ -774,7 +774,7 @@ def test_run_pre_analysis_generator_and_pre_analyze_called(analysis_service: Ana
     proc.pncp_control_number = "PN-1"
     raw = {"k": "v"}
 
-    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+    def mock_generator(*_args: Any, **_kwargs: Any) -> Any:
         yield "procurements_page", (proc, raw)
 
     analysis_service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
@@ -1234,3 +1234,38 @@ def test_retry_analyses_no_retry_due_to_backoff(analysis_service: AnalysisServic
     analysis_service.analysis_repo.get_analyses_to_retry.return_value = [analysis]
     count = analysis_service.retry_analyses(initial_backoff_hours=1, max_retries=3, timeout_hours=1)
     assert count == 0
+
+
+def test_run_pre_analysis_by_control_number_happy_path(
+    analysis_service: AnalysisService, mock_procurement: MagicMock
+) -> None:
+    """Tests the pre-analysis for a single procurement by control number."""
+    control_number = "PNCP123456"
+    raw_data = {"some": "data"}
+    analysis_service.procurement_repo.get_procurement_by_control_number.return_value = (mock_procurement, raw_data)
+    analysis_service._pre_analyze_procurement = MagicMock()
+
+    event_generator = analysis_service.run_pre_analysis_by_control_number(control_number)
+    events = list(event_generator)
+
+    analysis_service.procurement_repo.get_procurement_by_control_number.assert_called_once_with(control_number)
+    analysis_service._pre_analyze_procurement.assert_called_once_with(mock_procurement, raw_data)
+
+    assert any(e[0] == "day_started" for e in events)
+    assert any(e[0] == "procurements_fetched" for e in events)
+    assert any(e[0] == "procurement_processed" for e in events)
+
+
+def test_run_pre_analysis_by_control_number_not_found(
+    analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
+) -> None:
+    """Tests the case where the procurement is not found by control number."""
+    control_number = "PNCP-NOT-FOUND"
+    analysis_service.procurement_repo.get_procurement_by_control_number.return_value = (None, None)
+    analysis_service._pre_analyze_procurement = MagicMock()
+
+    event_generator = analysis_service.run_pre_analysis_by_control_number(control_number)
+    list(event_generator)
+
+    assert f"Procurement with PNCP control number {control_number} not found." in caplog.text
+    analysis_service._pre_analyze_procurement.assert_not_called()
