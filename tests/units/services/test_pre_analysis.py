@@ -1,6 +1,8 @@
 """Unit tests for the pre-analysis service functions."""
 
+from collections.abc import Generator
 from datetime import date
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -36,7 +38,11 @@ def mock_dependencies() -> dict:
 def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: Procurement) -> None:
     """Test the happy path for run_pre_analysis."""
     service = AnalysisService(**mock_dependencies)
-    service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(mock_procurement, {})]
+
+    def mock_generator(*_args: Any, **_kwargs: Any) -> Generator[Any, Any, None]:
+        yield "procurements_page", (mock_procurement, {})
+
+    service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     service.procurement_repo.get_latest_version.return_value = 0
     service.procurement_repo.get_procurement_by_hash.return_value = False
     service.analysis_repo.save_pre_analysis.return_value = "new-analysis-id"

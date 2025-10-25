@@ -882,49 +882,51 @@ class AnalysisService:
             - ("day_started", (current_date, total_days))
             - ("procurements_fetched", procurements_for_the_day)
             - ("procurement_processed", (procurement, raw_data))
+            - ("fetching_pages_started", (modality_name, total_pages))
+            - ("page_fetched", page_number)
         """
         try:
             self.logger.info(f"Starting pre-analysis job for date range: {start_date} to {end_date}")
             total_days = (end_date - start_date).days + 1
             messages_published_count = 0
             processed_in_batch = 0
-
             for day_index in range(total_days):
                 current_date = start_date + timedelta(days=day_index)
                 yield "day_started", (current_date, total_days)
-
-                procurements_for_the_day = self.procurement_repo.get_updated_procurements_with_raw_data(
-                    target_date=current_date
-                )
+                procurements_for_the_day = []
+                event_generator = self.procurement_repo.get_updated_procurements_with_raw_data(target_date=current_date)
+                for event, data in event_generator:
+                    if event == "modality_started":
+                        modality_name = data
+                    elif event == "pages_total":
+                        yield "fetching_pages_started", (modality_name, data)
+                    elif event == "procurements_page":
+                        procurements_for_the_day.append(data)
+                    elif event == "page_fetched":
+                        yield "page_fetched", data
                 yield "procurements_fetched", procurements_for_the_day
-
                 if not procurements_for_the_day:
                     continue
-
                 for procurement, raw_data in procurements_for_the_day:
                     if max_messages is not None and messages_published_count >= max_messages:
                         self.logger.info(f"Reached max_messages ({max_messages}). Stopping pre-analysis.")
                         return
-
                     try:
                         self._pre_analyze_procurement(procurement, raw_data)
                         messages_published_count += 1
                         processed_in_batch += 1
                         yield "procurement_processed", (procurement, raw_data)
-
                         is_last_item = (procurement, raw_data) == procurements_for_the_day[-1]
                         if processed_in_batch % batch_size == 0 and not is_last_item:
                             self.logger.info(
                                 f"Batch of {batch_size} processed. " f"Sleeping for {sleep_seconds} seconds."
                             )
                             time.sleep(sleep_seconds)
-
                     except Exception as e:
                         self.logger.error(
                             f"Failed to pre-analyze procurement {procurement.pncp_control_number}: {e}",
                             exc_info=True,
                         )
-
             self.logger.info("Pre-analysis job for the entire date range has been completed.")
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during pre-analysis: {e}") from e

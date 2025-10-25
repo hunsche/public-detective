@@ -123,7 +123,13 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
     )
 
     with (
-        patch.object(procurement_repo, "get_updated_procurements_with_raw_data", return_value=[(mock_procurement, {})]),
+        patch.object(
+            procurement_repo,
+            "get_updated_procurements_with_raw_data",
+            return_value=[
+                ("procurements_page", (mock_procurement, {})),
+            ],
+        ),
         patch.object(
             procurement_repo,
             "process_procurement_documents",

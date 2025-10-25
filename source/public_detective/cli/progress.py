@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from typing import Any, TypeVar
 
 import click
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 T = TypeVar("T")
 
@@ -30,6 +31,24 @@ class ProgressFactory:
             show_percent=True,
         )
 
+    @contextmanager
+    def spinner(self, label: str) -> Generator[None, None, None]:
+        """Creates a new spinner.
+
+        Args:
+            label: The label for the spinner.
+
+        Yields:
+            None.
+        """
+        with Progress(
+            SpinnerColumn(),
+            TextColumn("[progress.description]{task.description}"),
+            transient=True,
+        ) as progress:
+            progress.add_task(description=label, total=None)
+            yield
+
 
 @contextmanager
 def null_progress(iterable: Iterable[T], label: str) -> Generator[Iterable[T], None, None]:  # noqa: F841
@@ -43,3 +62,16 @@ def null_progress(iterable: Iterable[T], label: str) -> Generator[Iterable[T], N
         The original iterable.
     """
     yield iterable
+
+
+@contextmanager
+def null_spinner(label: str) -> Generator[None, None, None]:  # noqa: F841
+    """A null spinner that does nothing.
+
+    Args:
+        label: The label for the spinner.
+
+    Yields:
+        None
+    """
+    yield

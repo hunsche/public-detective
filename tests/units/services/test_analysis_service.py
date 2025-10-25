@@ -694,12 +694,16 @@ def test_upload_and_save_initial_records_with_prepared_single(analysis_service: 
 
 def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisService, monkeypatch: Any) -> None:
     """Covers batch sleep path and early stop via max_messages."""
-    # Two procurements in one day to hit the sleep branch when batch_size=1
     p1, p2 = MagicMock(), MagicMock()
     p1.pncp_control_number = "P1"
     p2.pncp_control_number = "P2"
     raw = {"k": "v"}
-    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(p1, raw), (p2, raw)]
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+        yield "procurements_page", (p1, raw)
+        yield "procurements_page", (p2, raw)
+
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     calls = {"slept": 0}
 
     def fake_sleep(_secs: int) -> None:
@@ -708,11 +712,9 @@ def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisServi
     monkeypatch.setattr("public_detective.services.analysis.time.sleep", fake_sleep)
     analysis_service._pre_analyze_procurement = MagicMock()
 
-    # First run: batch_size=1 should sleep once between items (since not last item)
     list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=1, sleep_seconds=0))
     assert calls["slept"] >= 1
 
-    # Second run: respect max_messages=1 and stop after first processed
     calls["slept"] = 0
     analysis_service._pre_analyze_procurement.reset_mock()
     list(analysis_service.run_pre_analysis(date.today(), date.today(), batch_size=10, sleep_seconds=0, max_messages=1))
@@ -771,7 +773,11 @@ def test_run_pre_analysis_generator_and_pre_analyze_called(analysis_service: Ana
     proc = MagicMock()
     proc.pncp_control_number = "PN-1"
     raw = {"k": "v"}
-    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.return_value = [(proc, raw)]
+
+    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+        yield "procurements_page", (proc, raw)
+
+    analysis_service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     analysis_service._pre_analyze_procurement = MagicMock()
     events = list(analysis_service.run_pre_analysis(start, end, batch_size=10, sleep_seconds=0))
     assert any(e[0] == "day_started" for e in events)
