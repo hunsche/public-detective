@@ -15,6 +15,7 @@ from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image
 from public_detective.constants.analysis_feedback import Warnings
 from public_detective.providers.logging import Logger, LoggingProvider
+from public_detective.providers.office_converter import OfficeConverterProvider
 from pyxlsb import open_workbook as open_xlsb
 from striprtf.striprtf import rtf_to_text
 
@@ -25,6 +26,7 @@ class ConverterService:
     def __init__(self) -> None:
         """Initializes the service."""
         self.logger: Logger = LoggingProvider().get_logger()
+        self.office_converter = OfficeConverterProvider()
 
     def gif_to_mp4(self, gif_content: bytes) -> bytes:
         """Converts a GIF file content to an MP4 file content.
@@ -83,17 +85,34 @@ class ConverterService:
             docx_file = io.BytesIO(docx_content)
             result = mammoth.convert_to_html(docx_file)
             return str(result.value)
-        except zipfile.BadZipFile:
-            self.logger.warning("Mammoth conversion failed, attempting fallback with textract.")
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as temp_file:
-                temp_file.write(docx_content)
-                temp_file_path = temp_file.name
+        except Exception:
+            self.logger.warning(
+                "Mammoth conversion failed, attempting fallback with LibreOffice.",
+                exc_info=True,
+            )
+            pdf_content = self.office_converter.to_pdf(docx_content, ".docx")
+            return self.pdf_to_text(pdf_content)
 
-            try:
-                text = textract.process(temp_file_path).decode("utf-8")
-            finally:
-                os.remove(temp_file_path)
-            return str(text)
+    def pdf_to_text(self, pdf_content: bytes) -> str:
+        """Converts a PDF file content to a plain text string.
+
+        Args:
+            pdf_content: The content of the PDF file.
+
+        Returns:
+            The content of the converted text as a string.
+        """
+        self.logger.info("Converting PDF to text.")
+        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
+            temp_file.write(pdf_content)
+            temp_file_path = temp_file.name
+
+        try:
+            text = textract.process(temp_file_path, method="pdfminer").decode("utf-8")
+        finally:
+            os.remove(temp_file_path)
+
+        return str(text)
 
     def rtf_to_text(self, rtf_content: bytes) -> str:
         """Converts an RTF file content to a plain text string.
@@ -105,7 +124,15 @@ class ConverterService:
             The content of the converted text as a string.
         """
         self.logger.info("Converting RTF to text.")
-        return str(rtf_to_text(rtf_content.decode("ascii", errors="ignore")))
+        try:
+            return str(rtf_to_text(rtf_content.decode("ascii", errors="ignore")))
+        except Exception:
+            self.logger.warning(
+                "Striprtf conversion failed, attempting fallback with LibreOffice.",
+                exc_info=True,
+            )
+            pdf_content = self.office_converter.to_pdf(rtf_content, ".rtf")
+            return self.pdf_to_text(pdf_content)
 
     def doc_to_text(self, doc_content: bytes) -> str:
         """Converts a DOC file content to a plain text string.
@@ -117,15 +144,23 @@ class ConverterService:
             The content of the converted text as a string.
         """
         self.logger.info("Converting DOC to text.")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as temp_file:
-            temp_file.write(doc_content)
-            temp_file_path = temp_file.name
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as temp_file:
+                temp_file.write(doc_content)
+                temp_file_path = temp_file.name
 
-        text = textract.process(temp_file_path).decode("utf-8")
+            text = textract.process(temp_file_path).decode("utf-8")
 
-        os.remove(temp_file_path)
+            os.remove(temp_file_path)
 
-        return str(text)
+            return str(text)
+        except Exception:
+            self.logger.warning(
+                "Textract conversion failed, attempting fallback with LibreOffice.",
+                exc_info=True,
+            )
+            pdf_content = self.office_converter.to_pdf(doc_content, ".doc")
+            return self.pdf_to_text(pdf_content)
 
     def spreadsheet_to_csvs(
         self, xls_content: bytes, original_extension: str

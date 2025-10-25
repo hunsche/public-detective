@@ -41,6 +41,11 @@ jobs:
         run: |
           curl -sSL https://install.python-poetry.org | python3 -
 
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libreoffice-headless
+
       - name: Install dependencies
         run: |
           poetry install
