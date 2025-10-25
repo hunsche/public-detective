@@ -4,13 +4,11 @@ fixture correctly applies metadata to its marker object and cleans up all
 test resources afterward in the emulated environment.
 """
 
-import pytest
 from public_detective.providers.gcs import GcsProvider
 
 from tests.integrations.conftest import GcsCleanupManager
 
 
-@pytest.mark.skip(reason="Skipping due to persistent GCS emulator connection issues in CI.")
 def test_gcs_metadata_and_cleanup_integration(
     gcs_cleanup_manager: GcsCleanupManager, gcs_provider: GcsProvider
 ) -> None:

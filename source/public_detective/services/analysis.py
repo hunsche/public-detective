@@ -50,6 +50,7 @@ class AIFileCandidate(BaseModel):
     prepared_content_gcs_uris: list[str] | None = None
     is_included: bool = False
     exclusion_reason: str | None = None
+    warnings: list[str] = Field(default_factory=list)
     file_record_id: UUID | None = None
 
     @model_validator(mode="after")
@@ -371,6 +372,11 @@ class AnalysisService:
             )
             ext = os.path.splitext(processed_file.relative_path)[1].lower()
 
+            if os.path.basename(candidate.original_path).startswith("~$"):
+                candidate.exclusion_reason = ExclusionReason.LOCK_FILE
+                candidates.append(candidate)
+                continue
+
             if ext not in self._SUPPORTED_EXTENSIONS:
                 candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
                 candidates.append(candidate)
@@ -406,7 +412,16 @@ class AnalysisService:
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext in self._SPREADSHEET_EXTENSIONS:
-                    converted_sheets = self.converter_service.spreadsheet_to_csvs(processed_file.content, ext)
+                    converted_sheets, conversion_warnings = self.converter_service.spreadsheet_to_csvs(
+                        processed_file.content, ext
+                    )
+                    candidate.warnings.extend(conversion_warnings)
+
+                    if not converted_sheets:
+                        candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+                    elif conversion_warnings:
+                        candidate.exclusion_reason = ExclusionReason.PARTIAL_CONVERSION
+
                     all_csv_content = []
                     converted_paths = []
                     for sheet_name, sheet_content in converted_sheets:

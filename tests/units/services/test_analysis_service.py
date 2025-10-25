@@ -243,7 +243,7 @@ def test_prepare_ai_candidates_spreadsheet_conversion(
     mock_converter: MagicMock, analysis_service: AnalysisService
 ) -> None:
     """Tests successful conversion of a spreadsheet file."""
-    mock_converter.return_value = [("sheet1", b"csv1"), ("sheet2", b"csv2")]
+    mock_converter.return_value = ([("sheet1", b"csv1"), ("sheet2", b"csv2")], [])
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="data.xlsx",
@@ -699,7 +699,7 @@ def test_run_pre_analysis_sleep_and_max_messages(analysis_service: AnalysisServi
     p2.pncp_control_number = "P2"
     raw = {"k": "v"}
 
-    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+    def mock_generator(*_args: Any, **_kwargs: Any) -> Any:
         yield "procurements_page", (p1, raw)
         yield "procurements_page", (p2, raw)
 
@@ -774,7 +774,7 @@ def test_run_pre_analysis_generator_and_pre_analyze_called(analysis_service: Ana
     proc.pncp_control_number = "PN-1"
     raw = {"k": "v"}
 
-    def mock_generator(*args: Any, **kwargs: Any) -> Any:
+    def mock_generator(*_args: Any, **_kwargs: Any) -> Any:
         yield "procurements_page", (proc, raw)
 
     analysis_service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator

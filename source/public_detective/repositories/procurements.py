@@ -234,18 +234,26 @@ class ProcurementsRepository:
             JSON data, or (None, None) if not found or an error occurs.
         """
         try:
-            cnpj = pncp_control_number[:8]
-            year = pncp_control_number[16:20]
-            sequence = pncp_control_number[20:26]
+            match = re.match(r"(\d{14})-(\d+)-(\d+)/(\d{4})", pncp_control_number)
+            if not match:
+                self.logger.error(f"Invalid PNCP control number format: {pncp_control_number}")
+                return None, None
+
+            cnpj, _, sequence, year = match.groups()
 
             endpoint = f"orgaos/{cnpj}/compras/{year}/{sequence}"
-            api_url = urljoin(self.config.PNCP_INTEGRATION_API_URL, endpoint)
+            api_url = urljoin(self.config.PNCP_PUBLIC_QUERY_API_URL, endpoint)
             response = self.http_provider.get(api_url)
             response.raise_for_status()
 
             raw_data = response.json()
-            procurement = Procurement.model_validate(raw_data)
-            return procurement, raw_data
+            try:
+                procurement = Procurement.model_validate(raw_data)
+                return procurement, raw_data
+            except ValidationError as e:
+                self.logger.error(f"Procurement data validation failed for {pncp_control_number}: {e}")
+                self.logger.debug(f"Raw data received: {raw_data}")
+                return None, None
         except (requests.RequestException, ValidationError) as e:
             self.logger.error(f"Failed to get/validate procurement for {pncp_control_number}: {e}")
             return None, None

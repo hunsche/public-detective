@@ -4,13 +4,16 @@ import csv
 import io
 import os
 import tempfile
+import zipfile
 
 import imageio
 import mammoth
 import openpyxl
 import textract
 import xlrd
+from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image
+from public_detective.constants.analysis_feedback import Warnings
 from public_detective.providers.logging import Logger, LoggingProvider
 from pyxlsb import open_workbook as open_xlsb
 from striprtf.striprtf import rtf_to_text
@@ -76,9 +79,21 @@ class ConverterService:
             The content of the converted HTML as a string.
         """
         self.logger.info("Converting DOCX to HTML.")
-        docx_file = io.BytesIO(docx_content)
-        result = mammoth.convert_to_html(docx_file)
-        return str(result.value)
+        try:
+            docx_file = io.BytesIO(docx_content)
+            result = mammoth.convert_to_html(docx_file)
+            return str(result.value)
+        except zipfile.BadZipFile:
+            self.logger.warning("Mammoth conversion failed, attempting fallback with textract.")
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as temp_file:
+                temp_file.write(docx_content)
+                temp_file_path = temp_file.name
+
+            try:
+                text = textract.process(temp_file_path).decode("utf-8")
+            finally:
+                os.remove(temp_file_path)
+            return str(text)
 
     def rtf_to_text(self, rtf_content: bytes) -> str:
         """Converts an RTF file content to a plain text string.
@@ -112,7 +127,9 @@ class ConverterService:
 
         return str(text)
 
-    def spreadsheet_to_csvs(self, xls_content: bytes, original_extension: str) -> list[tuple[str, bytes]]:
+    def spreadsheet_to_csvs(
+        self, xls_content: bytes, original_extension: str
+    ) -> tuple[list[tuple[str, bytes]], list[str]]:
         """Converts an XLS, XLSX, or XLSB file to one or more CSV files (one per sheet).
 
         Args:
@@ -120,10 +137,11 @@ class ConverterService:
             original_extension: The original extension of the file.
 
         Returns:
-            A list of tuples containing the sheet name and the content of the converted CSV file.
+            A tuple containing a list of tuples (sheet name, CSV content) and a list of warnings.
         """
         self.logger.info(f"Converting {original_extension} to CSV(s).")
         output_files = []
+        warnings = []
         try:
             if original_extension == ".xls":
                 workbook = xlrd.open_workbook(file_contents=xls_content)
@@ -139,6 +157,13 @@ class ConverterService:
                 workbook = openpyxl.load_workbook(io.BytesIO(xls_content))
                 for sheet_name in workbook.sheetnames:
                     sheet = workbook[sheet_name]
+                    if not isinstance(sheet, Worksheet):
+                        warnings.append(
+                            Warnings.IGNORED_NON_DATA_SHEET.format(
+                                sheet_name=sheet_name, sheet_type=type(sheet).__name__
+                            )
+                        )
+                        continue
                     output = io.StringIO()
                     writer = csv.writer(output)
                     for row in sheet.iter_rows():
@@ -155,7 +180,7 @@ class ConverterService:
                             writer.writerow([cell.v for cell in row])
                         csv_content = output.getvalue().encode("utf-8")
                         output_files.append((f"{sheet_name}.csv", csv_content))
-            return output_files
+            return output_files, warnings
         except Exception as e:
             self.logger.error(f"Spreadsheet conversion failed for {original_extension}: {e}", exc_info=True)
             raise
