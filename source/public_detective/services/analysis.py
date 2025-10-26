@@ -384,19 +384,19 @@ class AnalysisService:
 
             try:
                 if ext == ".docx":
-                    converted_content = self.converter_service.docx_to_html(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.html"
+                    converted_content = self.converter_service.docx_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".rtf":
-                    converted_content = self.converter_service.rtf_to_text(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    converted_content = self.converter_service.rtf_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".doc":
-                    converted_content = self.converter_service.doc_to_text(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    converted_content = self.converter_service.doc_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".bmp":
                     converted_content = self.converter_service.bmp_to_png(processed_file.content)

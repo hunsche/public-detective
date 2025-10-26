@@ -1,4 +1,6 @@
-import subprocess
+"""Providers for converting office documents with LibreOffice."""
+
+import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
 from threading import Lock
@@ -9,9 +11,12 @@ from public_detective.providers.logging import Logger, LoggingProvider
 class OfficeConverterProvider:
     """A provider for converting office files using LibreOffice."""
 
+    logger: Logger
+    _lock: Lock
+
     def __init__(self) -> None:
         """Initializes the provider."""
-        self.logger: Logger = LoggingProvider().get_logger()
+        self.logger = LoggingProvider().get_logger()
         self._lock = Lock()
 
     def to_pdf(self, file_content: bytes, original_extension: str) -> bytes:
@@ -39,7 +44,12 @@ class OfficeConverterProvider:
                 out_file = produced_files[0]
                 return out_file.read_bytes()
 
-    def _run_soffice(self, input_path: Path, output_dir: Path, target: str = "pdf:writer_pdf_Export"):
+    def _run_soffice(
+        self,
+        input_path: Path,
+        output_dir: Path,
+        target: str = "pdf:writer_pdf_Export",
+    ) -> None:
         """Runs the soffice command to convert a file.
 
         Args:
@@ -65,7 +75,7 @@ class OfficeConverterProvider:
             str(input_path),
         ]
         self.logger.info(f"Running command: {' '.join(cmd)}")
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
         if completed.returncode != 0:
             self.logger.error(f"LibreOffice failed: {completed.stderr[:500]}")
             raise RuntimeError(f"LibreOffice failed: {completed.stderr[:500]}")

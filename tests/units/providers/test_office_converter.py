@@ -1,4 +1,3 @@
-import subprocess
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -9,7 +8,11 @@ from public_detective.providers.office_converter import OfficeConverterProvider
 @patch("subprocess.run")
 @patch("pathlib.Path.write_bytes")
 @patch("pathlib.Path.read_bytes")
-def test_to_pdf_success(mock_read_bytes, mock_write_bytes, mock_run):
+def test_to_pdf_success(
+    mock_read_bytes: MagicMock,
+    _mock_write_bytes: MagicMock,
+    mock_run: MagicMock,
+) -> None:
     """Tests the to_pdf method for a successful conversion."""
     mock_run.return_value = MagicMock(returncode=0, stdout="OK", stderr="")
     mock_read_bytes.return_value = b"test"
@@ -20,7 +23,7 @@ def test_to_pdf_success(mock_read_bytes, mock_write_bytes, mock_run):
 
 
 @patch("subprocess.run")
-def test_to_pdf_failure(mock_run):
+def test_to_pdf_failure(mock_run: MagicMock) -> None:
     """Tests the to_pdf method for a failed conversion."""
     mock_run.return_value = MagicMock(returncode=1, stdout="", stderr="Error")
     provider = OfficeConverterProvider()

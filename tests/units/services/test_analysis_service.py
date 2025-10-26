@@ -157,10 +157,10 @@ def test_prepare_ai_candidates_unsupported_extension(analysis_service: AnalysisS
     assert "Extensão de arquivo não suportada" in candidates[0].exclusion_reason
 
 
-@patch("public_detective.services.converter.ConverterService.docx_to_html")
+@patch("public_detective.services.converter.ConverterService.docx_to_pdf")
 def test_prepare_ai_candidates_docx_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .docx file."""
-    mock_converter.return_value = "<html><body>test</body></html>"
+    mock_converter.return_value = b"pdf content"
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="document.docx",
@@ -169,15 +169,15 @@ def test_prepare_ai_candidates_docx_conversion(mock_converter: MagicMock, analys
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert candidates[0].ai_path.endswith(".html")
-    assert candidates[0].ai_content == b"<html><body>test</body></html>"
+    assert candidates[0].ai_path.endswith(".pdf")
+    assert candidates[0].ai_content == b"pdf content"
     assert candidates[0].exclusion_reason is None
 
 
-@patch("public_detective.services.converter.ConverterService.rtf_to_text")
+@patch("public_detective.services.converter.ConverterService.rtf_to_pdf")
 def test_prepare_ai_candidates_rtf_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of an .rtf file."""
-    mock_converter.return_value = "rtf text"
+    mock_converter.return_value = b"pdf content"
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="document.rtf",
@@ -186,14 +186,14 @@ def test_prepare_ai_candidates_rtf_conversion(mock_converter: MagicMock, analysi
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert candidates[0].ai_path.endswith(".txt")
-    assert candidates[0].ai_content == b"rtf text"
+    assert candidates[0].ai_path.endswith(".pdf")
+    assert candidates[0].ai_content == b"pdf content"
 
 
-@patch("public_detective.services.converter.ConverterService.doc_to_text")
+@patch("public_detective.services.converter.ConverterService.doc_to_pdf")
 def test_prepare_ai_candidates_doc_conversion(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests successful conversion of a .doc file."""
-    mock_converter.return_value = "doc text"
+    mock_converter.return_value = b"pdf content"
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="document.doc",
@@ -202,8 +202,8 @@ def test_prepare_ai_candidates_doc_conversion(mock_converter: MagicMock, analysi
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert candidates[0].ai_path.endswith(".txt")
-    assert candidates[0].ai_content == b"doc text"
+    assert candidates[0].ai_path.endswith(".pdf")
+    assert candidates[0].ai_content == b"pdf content"
 
 
 @patch("public_detective.services.converter.ConverterService.bmp_to_png")
@@ -257,7 +257,7 @@ def test_prepare_ai_candidates_spreadsheet_conversion(
     assert candidates[0].ai_content == [b"csv1", b"csv2"]
 
 
-@patch("public_detective.services.converter.ConverterService.docx_to_html", side_effect=Exception("Conversion failed"))
+@patch("public_detective.services.converter.ConverterService.docx_to_pdf", side_effect=Exception("Conversion failed"))
 def test_prepare_ai_candidates_conversion_failure(mock_converter: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests that a file is marked for exclusion if conversion fails."""
     processed_file = ProcessedFile(

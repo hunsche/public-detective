@@ -13,31 +13,6 @@ def converter_service() -> ConverterService:
     return ConverterService()
 
 
-def test_rtf_to_text() -> None:
-    """Test the rtf_to_text method."""
-    service = ConverterService()
-    result = service.rtf_to_text(b"{\\rtf1\\ansi...}")
-    assert isinstance(result, str)
-
-
-def test_doc_to_text() -> None:
-    """Test the doc_to_text method."""
-    service = ConverterService()
-    with patch("textract.process") as mock_process:
-        mock_process.return_value = b"text content"
-        result = service.doc_to_text(b"dummy doc content")
-        assert result == "text content"
-
-
-def test_docx_to_html() -> None:
-    """Test the docx_to_html method."""
-    service = ConverterService()
-    with patch("mammoth.convert") as mock_convert:
-        mock_convert.return_value.value = "<html></html>"
-        result = service.docx_to_html(b"dummy docx content")
-        assert result == "<html></html>"
-
-
 def test_gif_to_mp4() -> None:
     """Test the gif_to_mp4 method."""
     service = ConverterService()
@@ -157,3 +132,39 @@ def test_spreadsheet_to_csvs_xlsb_failure(mock_open_workbook: MagicMock, convert
     mock_open_workbook.side_effect = Exception("pyxlsb error")
     with pytest.raises(Exception, match="pyxlsb error"):
         converter_service.spreadsheet_to_csvs(b"bad xlsb content", ".xlsb")
+
+
+@patch("public_detective.services.converter.ConverterService.convert_to_pdf")
+def test_doc_to_pdf(mock_convert_to_pdf: MagicMock, converter_service: ConverterService) -> None:
+    """Tests the doc_to_pdf method."""
+    mock_convert_to_pdf.return_value = b"pdf content"
+    result = converter_service.doc_to_pdf(b"doc content")
+    assert result == b"pdf content"
+    mock_convert_to_pdf.assert_called_once_with(b"doc content", ".doc")
+
+
+@patch("public_detective.services.converter.ConverterService.convert_to_pdf")
+def test_docx_to_pdf(mock_convert_to_pdf: MagicMock, converter_service: ConverterService) -> None:
+    """Tests the docx_to_pdf method."""
+    mock_convert_to_pdf.return_value = b"pdf content"
+    result = converter_service.docx_to_pdf(b"docx content")
+    assert result == b"pdf content"
+    mock_convert_to_pdf.assert_called_once_with(b"docx content", ".docx")
+
+
+@patch("public_detective.services.converter.ConverterService.convert_to_pdf")
+def test_rtf_to_pdf(mock_convert_to_pdf: MagicMock, converter_service: ConverterService) -> None:
+    """Tests the rtf_to_pdf method."""
+    mock_convert_to_pdf.return_value = b"pdf content"
+    result = converter_service.rtf_to_pdf(b"rtf content")
+    assert result == b"pdf content"
+    mock_convert_to_pdf.assert_called_once_with(b"rtf content", ".rtf")
+
+
+@patch("public_detective.providers.office_converter.OfficeConverterProvider.to_pdf")
+def test_convert_to_pdf(mock_to_pdf: MagicMock, converter_service: ConverterService) -> None:
+    """Tests the convert_to_pdf method."""
+    mock_to_pdf.return_value = b"pdf content"
+    result = converter_service.convert_to_pdf(b"test content", ".test")
+    assert result == b"pdf content"
+    mock_to_pdf.assert_called_once_with(b"test content", ".test")

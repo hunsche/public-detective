@@ -2,14 +2,10 @@
 
 import csv
 import io
-import os
-import tempfile
-import zipfile
+from typing import cast
 
 import imageio
-import mammoth
 import openpyxl
-import textract
 import xlrd
 from openpyxl.worksheet.worksheet import Worksheet
 from PIL import Image
@@ -17,16 +13,18 @@ from public_detective.constants.analysis_feedback import Warnings
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.office_converter import OfficeConverterProvider
 from pyxlsb import open_workbook as open_xlsb
-from striprtf.striprtf import rtf_to_text
 
 
 class ConverterService:
     """A service for converting various file types for AI analysis."""
 
+    logger: Logger
+    office_converter: OfficeConverterProvider
+
     def __init__(self) -> None:
         """Initializes the service."""
         self.logger: Logger = LoggingProvider().get_logger()
-        self.office_converter = OfficeConverterProvider()
+        self.office_converter: OfficeConverterProvider = OfficeConverterProvider()
 
     def gif_to_mp4(self, gif_content: bytes) -> bytes:
         """Converts a GIF file content to an MP4 file content.
@@ -71,96 +69,51 @@ class ConverterService:
             self.logger.error(f"BMP to PNG conversion failed: {e}", exc_info=True)
             raise
 
-    def docx_to_html(self, docx_content: bytes) -> str:
-        """Converts a DOCX file content to an HTML string.
+    def convert_to_pdf(self, file_content: bytes, original_extension: str) -> bytes:
+        """Converts a file to PDF using LibreOffice.
 
         Args:
-            docx_content: The content of the DOCX file.
+            file_content: The content of the file to convert.
+            original_extension: The original extension of the file (e.g., ".docx").
 
         Returns:
-            The content of the converted HTML as a string.
+            The content of the converted PDF file.
         """
-        self.logger.info("Converting DOCX to HTML.")
-        try:
-            docx_file = io.BytesIO(docx_content)
-            result = mammoth.convert_to_html(docx_file)
-            return str(result.value)
-        except Exception:
-            self.logger.warning(
-                "Mammoth conversion failed, attempting fallback with LibreOffice.",
-                exc_info=True,
-            )
-            pdf_content = self.office_converter.to_pdf(docx_content, ".docx")
-            return self.pdf_to_text(pdf_content)
+        self.logger.info(f"Converting {original_extension} to PDF using LibreOffice.")
+        return cast(bytes, self.office_converter.to_pdf(file_content, original_extension))
 
-    def pdf_to_text(self, pdf_content: bytes) -> str:
-        """Converts a PDF file content to a plain text string.
-
-        Args:
-            pdf_content: The content of the PDF file.
-
-        Returns:
-            The content of the converted text as a string.
-        """
-        self.logger.info("Converting PDF to text.")
-        with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as temp_file:
-            temp_file.write(pdf_content)
-            temp_file_path = temp_file.name
-
-        try:
-            text = textract.process(temp_file_path, method="pdfminer").decode("utf-8")
-        finally:
-            os.remove(temp_file_path)
-
-        return str(text)
-
-    def rtf_to_text(self, rtf_content: bytes) -> str:
-        """Converts an RTF file content to a plain text string.
-
-        Args:
-            rtf_content: The content of the RTF file.
-
-        Returns:
-            The content of the converted text as a string.
-        """
-        self.logger.info("Converting RTF to text.")
-        try:
-            return str(rtf_to_text(rtf_content.decode("ascii", errors="ignore")))
-        except Exception:
-            self.logger.warning(
-                "Striprtf conversion failed, attempting fallback with LibreOffice.",
-                exc_info=True,
-            )
-            pdf_content = self.office_converter.to_pdf(rtf_content, ".rtf")
-            return self.pdf_to_text(pdf_content)
-
-    def doc_to_text(self, doc_content: bytes) -> str:
-        """Converts a DOC file content to a plain text string.
+    def doc_to_pdf(self, doc_content: bytes) -> bytes:
+        """Converts a DOC file content to a PDF file.
 
         Args:
             doc_content: The content of the DOC file.
 
         Returns:
-            The content of the converted text as a string.
+            The content of the converted PDF file.
         """
-        self.logger.info("Converting DOC to text.")
-        try:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".doc") as temp_file:
-                temp_file.write(doc_content)
-                temp_file_path = temp_file.name
+        return self.convert_to_pdf(doc_content, ".doc")
 
-            text = textract.process(temp_file_path).decode("utf-8")
+    def docx_to_pdf(self, docx_content: bytes) -> bytes:
+        """Converts a DOCX file content to a PDF file.
 
-            os.remove(temp_file_path)
+        Args:
+            docx_content: The content of the DOCX file.
 
-            return str(text)
-        except Exception:
-            self.logger.warning(
-                "Textract conversion failed, attempting fallback with LibreOffice.",
-                exc_info=True,
-            )
-            pdf_content = self.office_converter.to_pdf(doc_content, ".doc")
-            return self.pdf_to_text(pdf_content)
+        Returns:
+            The content of the converted PDF file.
+        """
+        return self.convert_to_pdf(docx_content, ".docx")
+
+    def rtf_to_pdf(self, rtf_content: bytes) -> bytes:
+        """Converts an RTF file content to a PDF file.
+
+        Args:
+            rtf_content: The content of the RTF file.
+
+        Returns:
+            The content of the converted PDF file.
+        """
+        return self.convert_to_pdf(rtf_content, ".rtf")
 
     def spreadsheet_to_csvs(
         self, xls_content: bytes, original_extension: str
