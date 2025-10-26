@@ -1,5 +1,6 @@
 """Providers for converting office documents with LibreOffice."""
 
+import json
 import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
@@ -11,6 +12,7 @@ class OfficeConverterProvider:
     """A provider for converting office files using LibreOffice."""
 
     logger: Logger
+    _SPREADSHEET_EXTENSIONS: tuple[str, ...] = (".xlsx", ".xls", ".xlsb")
 
     def __init__(self) -> None:
         """Initializes the provider."""
@@ -31,7 +33,8 @@ class OfficeConverterProvider:
             in_path = tmp_dir / f"input{original_extension}"
             in_path.write_bytes(file_content)
 
-            self._run_soffice(in_path, tmp_dir)
+            is_spreadsheet = original_extension.lower() in self._SPREADSHEET_EXTENSIONS
+            self._run_soffice(in_path, tmp_dir, is_spreadsheet=is_spreadsheet)
 
             produced_files = list(tmp_dir.glob("*.pdf"))
             if not produced_files:
@@ -44,15 +47,21 @@ class OfficeConverterProvider:
         self,
         input_path: Path,
         output_dir: Path,
-        target: str = "pdf:writer_pdf_Export",
+        is_spreadsheet: bool = False,
     ) -> None:
         """Runs the soffice command to convert a file.
 
         Args:
             input_path: The path to the input file.
             output_dir: The path to the output directory.
-            target: The target format for the conversion.
+            is_spreadsheet: Whether the file is a spreadsheet.
         """
+        if is_spreadsheet:
+            filter_options = {"AllSheets": True, "ScaleToPagesX": 1, "ScaleToPagesY": 1}
+            target = f"pdf:calc_pdf_Export:{json.dumps(filter_options)}"
+        else:
+            target = "pdf:writer_pdf_Export"
+
         user_profile = output_dir / "lo-profile"
         user_profile.mkdir(exist_ok=True, parents=True)
 
