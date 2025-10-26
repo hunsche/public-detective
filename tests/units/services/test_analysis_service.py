@@ -238,12 +238,12 @@ def test_prepare_ai_candidates_gif_conversion(mock_converter: MagicMock, analysi
     assert candidates[0].ai_content == b"mp4 content"
 
 
-@patch("public_detective.services.converter.ConverterService.spreadsheet_to_csvs")
+@patch("public_detective.services.converter.ConverterService.xlsx_to_pdf")
 def test_prepare_ai_candidates_spreadsheet_conversion(
     mock_converter: MagicMock, analysis_service: AnalysisService
 ) -> None:
-    """Tests successful conversion of a spreadsheet file."""
-    mock_converter.return_value = ([("sheet1", b"csv1"), ("sheet2", b"csv2")], [])
+    """Tests successful conversion of a spreadsheet file to PDF."""
+    mock_converter.return_value = b"pdf content"
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="data.xlsx",
@@ -252,9 +252,11 @@ def test_prepare_ai_candidates_spreadsheet_conversion(
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert "data_sheet1.csv" in candidates[0].prepared_content_gcs_uris
-    assert "data_sheet2.csv" in candidates[0].prepared_content_gcs_uris
-    assert candidates[0].ai_content == [b"csv1", b"csv2"]
+    candidate = candidates[0]
+    assert candidate.ai_path == "data.pdf"
+    assert candidate.ai_content == b"pdf content"
+    assert candidate.prepared_content_gcs_uris == ["data.pdf"]
+    assert not candidate.warnings
 
 
 @patch("public_detective.services.converter.ConverterService.docx_to_pdf", side_effect=Exception("Conversion failed"))
@@ -504,17 +506,6 @@ def test_run_specific_analysis_wrong_status_early_return(analysis_service: Analy
     analysis_service.pubsub_provider.publish.assert_not_called()
 
 
-def test_calculate_hash_mixed_content(analysis_service: AnalysisService) -> None:
-    """Ensures calculate_hash handles both bytes and list[bytes] deterministically."""
-    content_hash = analysis_service._calculate_hash(
-        [
-            ("b.txt", [b"y", b"z"]),
-            ("a.txt", b"x"),
-        ]
-    )
-    assert isinstance(content_hash, str) and len(content_hash) == 64
-
-
 def test_run_specific_analysis_wrong_status(
     analysis_service: AnalysisService, caplog: pytest.LogCaptureFixture
 ) -> None:
@@ -647,28 +638,6 @@ def test_upload_and_save_initial_records_minimal(analysis_service: AnalysisServi
     assert candidate.ai_gcs_uris and candidate.ai_gcs_uris[0].endswith("/file.txt")
     analysis_service.gcs_provider.upload_file.assert_called()
     analysis_service.file_record_repo.save_file_record.assert_called()
-
-
-def test_upload_and_save_initial_records_with_prepared_list(analysis_service: AnalysisService) -> None:
-    """Uploads multiple prepared CSV contents and updates candidate URIs accordingly."""
-    analysis_id = uuid.uuid4()
-    procurement_id = uuid.uuid4()
-    source_doc_id = uuid.uuid4()
-    candidate = AIFileCandidate(
-        synthetic_id="docX",
-        original_path="sheets.xlsx",
-        original_content=b"original",
-        raw_document_metadata={},
-    )
-    candidate.prepared_content_gcs_uris = ["sheets_sheet1.csv", "sheets_sheet2.csv"]
-    candidate.ai_content = [b"csv1", b"csv2"]
-    source_docs_map = {"docX": source_doc_id}
-
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-    # Should upload two prepared files under prepared_content and set gs:// URIs
-    assert candidate.ai_gcs_uris and len(candidate.ai_gcs_uris) == 2
-    assert all(uri.endswith(".csv") for uri in candidate.ai_gcs_uris)
-    assert candidate.prepared_content_gcs_uris == candidate.ai_gcs_uris
 
 
 def test_upload_and_save_initial_records_with_prepared_single(analysis_service: AnalysisService) -> None:

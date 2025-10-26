@@ -27,8 +27,10 @@ def test_supported_extensions_are_processed(extension: str) -> None:
     # Mock the converter service to avoid actual conversions
     service.converter_service = MagicMock()
     if extension in service._SPREADSHEET_EXTENSIONS:
-        # For spreadsheet types, simulate a SUCCESSFUL conversion with one sheet and no warnings.
-        service.converter_service.spreadsheet_to_csvs.return_value = ([("sheet1", b"content")], [])
+        # For spreadsheet types, simulate a SUCCESSFUL conversion to PDF.
+        service.converter_service.xls_to_pdf.return_value = b"pdf content"
+        service.converter_service.xlsx_to_pdf.return_value = b"pdf content"
+        service.converter_service.xlsb_to_pdf.return_value = b"pdf content"
 
     file_content = b"dummy content"
     processed_file = ProcessedFile(
