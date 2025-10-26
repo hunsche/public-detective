@@ -44,7 +44,7 @@ def pytest_generate_tests(metafunc: Any) -> None:
             metafunc.parametrize("pncp_control_number", [])
 
 
-def pytest_terminal_summary(terminalreporter: Any, _exitstatus: int, config: Any) -> None:
+def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any) -> None:  # noqa
     """Adds a custom message for tests skipped due to missing parameters."""
     reports = terminalreporter.getreports("skipped")
     for report in reports:

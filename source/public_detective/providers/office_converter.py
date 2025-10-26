@@ -12,7 +12,7 @@ class OfficeConverterProvider:
     """A provider for converting office files using LibreOffice."""
 
     logger: Logger
-    _SPREADSHEET_EXTENSIONS: tuple[str, ...] = (".xlsx", ".xls", ".xlsb")
+    _SPREADSHEET_EXTENSIONS: tuple[str, ...] = (".xlsx", ".xls", ".xlsb", ".ods")
 
     def __init__(self) -> None:
         """Initializes the provider."""

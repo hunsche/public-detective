@@ -109,6 +109,17 @@ class ConverterService:
         """
         return self.convert_to_pdf(rtf_content, ".rtf")
 
+    def odt_to_pdf(self, odt_content: bytes) -> bytes:
+        """Converts an ODT file content to a PDF file.
+
+        Args:
+            odt_content: The content of the ODT file.
+
+        Returns:
+            The content of the converted PDF file.
+        """
+        return self.convert_to_pdf(odt_content, ".odt")
+
     def xls_to_pdf(self, xls_content: bytes) -> bytes:
         """Converts an XLS file content to a PDF file.
 
@@ -141,3 +152,14 @@ class ConverterService:
             The content of the converted PDF file.
         """
         return self.convert_to_pdf(xlsb_content, ".xlsb")
+
+    def ods_to_pdf(self, ods_content: bytes) -> bytes:
+        """Converts an ODS file content to a PDF file.
+
+        Args:
+            ods_content: The content of the ODS file.
+
+        Returns:
+            The content of the converted PDF file.
+        """
+        return self.convert_to_pdf(ods_content, ".ods")

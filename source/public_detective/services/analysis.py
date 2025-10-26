@@ -88,10 +88,12 @@ class AnalysisService:
         ".pdf",
         ".docx",
         ".doc",
+        ".odt",
         ".rtf",
         ".xlsx",
         ".xls",
         ".xlsb",
+        ".ods",
         ".csv",
         ".txt",
         ".mp4",
@@ -116,7 +118,7 @@ class AnalysisService:
     _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
     _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
     _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".bmp")
-    _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".xlsb")
+    _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".xlsb", ".ods")
     _FILE_PRIORITY_ORDER = [
         "edital",
         "termo de referencia",
@@ -398,6 +400,11 @@ class AnalysisService:
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".odt":
+                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".bmp":
                     converted_content = self.converter_service.bmp_to_png(processed_file.content)
                     candidate.ai_content = converted_content
@@ -416,8 +423,10 @@ class AnalysisService:
                         converted_content = self.converter_service.xls_to_pdf(processed_file.content)
                     elif ext == ".xlsx":
                         converted_content = self.converter_service.xlsx_to_pdf(processed_file.content)
-                    else:
+                    elif ext == ".xlsb":
                         converted_content = self.converter_service.xlsb_to_pdf(processed_file.content)
+                    else:
+                        converted_content = self.converter_service.ods_to_pdf(processed_file.content)
 
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"

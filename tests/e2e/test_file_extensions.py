@@ -2,6 +2,8 @@
 
 import json
 import shutil
+import subprocess  # nosec B404
+import tempfile
 import uuid
 from collections.abc import Callable
 from datetime import datetime
@@ -10,7 +12,6 @@ from typing import Any
 
 import pytest
 from docx import Document
-from openpyxl import Workbook
 from PIL import Image
 from public_detective.models.analyses import Analysis
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -68,33 +69,132 @@ def create_docx(path: Path, content: str = "This is a test DOCX file.") -> None:
     document.save(str(path))
 
 
-def create_xls(path: Path) -> None:
-    """Creates a simple XLS file (by saving as XLSX).
+def create_odt(path: Path, content: str = "This is a test ODT file.") -> None:
+    """Creates a simple ODT file using LibreOffice conversion."""
 
-    Args:
-        path: The path to the file.
-    """
-    workbook = Workbook()
-    sheet = workbook.active
-    if sheet:
-        sheet["A1"] = "This is a test XLS file."
-    workbook.save(str(path))
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.docx"
+        create_docx(source_path, content)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile}",
+            "--convert-to",
+            "odt",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create ODT: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.odt"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected ODT file.")
+        shutil.copy(generated_path, path)
+
+
+def create_xls(path: Path) -> None:
+    """Creates a simple XLS file using LibreOffice conversion."""
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.csv"
+        create_csv(source_path)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile}",
+            "--convert-to",
+            "xls",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create XLS: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.xls"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected XLS file.")
+        shutil.copy(generated_path, path)
 
 
 def create_xlsx(path: Path) -> None:
-    """Creates a simple XLSX file.
+    """Creates a simple XLSX file using LibreOffice conversion."""
 
-    Args:
-        path: The path to the file.
-    """
-    workbook = Workbook()
-    sheet = workbook.active
-    if sheet:
-        sheet.title = "Sheet1"
-        sheet["A1"] = "This is a test XLSX file on Sheet1."
-    sheet2 = workbook.create_sheet(title="Sheet2")
-    sheet2["A1"] = "This is a test XLSX file on Sheet2."
-    workbook.save(str(path))
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.csv"
+        create_csv(source_path)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile}",
+            "--convert-to",
+            "xlsx",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create XLSX: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.xlsx"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected XLSX file.")
+        shutil.copy(generated_path, path)
+
+
+def create_ods(path: Path) -> None:
+    """Creates a simple ODS file using LibreOffice conversion."""
+
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.xlsx"
+        create_xlsx(source_path)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile}",
+            "--convert-to",
+            "ods",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create ODS: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.ods"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected ODS file.")
+        shutil.copy(generated_path, path)
 
 
 def create_jpg(path: Path) -> None:
@@ -236,9 +336,11 @@ FILE_GENERATORS: dict[str, Callable[..., None]] = {
     ".pdf": create_pdf,
     ".doc": create_doc,
     ".docx": create_docx,
+    ".odt": create_odt,
     ".xls": create_xls,
     ".xlsx": create_xlsx,
     ".xlsb": create_xlsb,
+    ".ods": create_ods,
     ".jpg": create_jpg,
     ".jpeg": create_jpg,  # Use the same generator for jpg and jpeg
     ".png": create_png,
