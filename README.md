@@ -89,7 +89,10 @@ graph LR
 - **Database & Migrations:** PostgreSQL, managed with Alembic
 - **Core Toolkit:**
   - **SQLAlchemy Core:** For writing safe, raw SQL queries.
-  - **Textract:** For extracting content from various document formats.
+  - **Pydantic:** For data validation and settings management.
+  - **Tenacity:** For robust HTTP request retries.
+  - **LibreOffice Headless:** For office document conversion.
+
 - **Infrastructure:** Docker, Google Cloud Storage, Google Cloud Pub/Sub
 
 ## 🏁 Get Started
@@ -101,7 +104,8 @@ To get a local copy up and running, follow these simple steps.
 -   Python 3.12
 -   Poetry
 -   Docker
--   **`antiword`**: Required by the `textract` library to extract text from legacy `.doc` files.
+-   LibreOffice Headless
+
 
 ### ⚙️ Installation
 

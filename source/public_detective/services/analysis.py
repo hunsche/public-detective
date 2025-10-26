@@ -384,19 +384,19 @@ class AnalysisService:
 
             try:
                 if ext == ".docx":
-                    converted_content = self.converter_service.docx_to_html(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.html"
+                    converted_content = self.converter_service.docx_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".rtf":
-                    converted_content = self.converter_service.rtf_to_text(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    converted_content = self.converter_service.rtf_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".doc":
-                    converted_content = self.converter_service.doc_to_text(processed_file.content)
-                    candidate.ai_content = converted_content.encode("utf-8")
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
+                    converted_content = self.converter_service.doc_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".bmp":
                     converted_content = self.converter_service.bmp_to_png(processed_file.content)
@@ -412,27 +412,16 @@ class AnalysisService:
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext in self._SPREADSHEET_EXTENSIONS:
-                    converted_sheets, conversion_warnings = self.converter_service.spreadsheet_to_csvs(
-                        processed_file.content, ext
-                    )
-                    candidate.warnings.extend(conversion_warnings)
+                    if ext == ".xls":
+                        converted_content = self.converter_service.xls_to_pdf(processed_file.content)
+                    elif ext == ".xlsx":
+                        converted_content = self.converter_service.xlsx_to_pdf(processed_file.content)
+                    else:
+                        converted_content = self.converter_service.xlsb_to_pdf(processed_file.content)
 
-                    if not converted_sheets:
-                        candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
-                    elif conversion_warnings:
-                        candidate.exclusion_reason = ExclusionReason.PARTIAL_CONVERSION
-
-                    all_csv_content = []
-                    converted_paths = []
-                    for sheet_name, sheet_content in converted_sheets:
-                        base_name = os.path.splitext(os.path.basename(processed_file.relative_path))[0]
-                        csv_filename = f"{base_name}_{sheet_name}.csv"
-                        converted_paths.append(csv_filename)
-                        all_csv_content.append(sheet_content)
-
-                    candidate.ai_content = all_csv_content
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.csv"
-                    candidate.prepared_content_gcs_uris = converted_paths
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
 
             except Exception as e:
                 self.logger.error(f"Failed to process file {processed_file.relative_path}: {e}", exc_info=True)
@@ -566,25 +555,14 @@ class AnalysisService:
 
             final_converted_uris = []
             if candidate.prepared_content_gcs_uris:
-                if isinstance(candidate.ai_content, list):
-                    for i, prepared_path in enumerate(candidate.prepared_content_gcs_uris):
-                        prepared_gcs_path = f"{base_gcs_path}/prepared_content/{prepared_path}"
-                        self.gcs_provider.upload_file(
-                            bucket_name=bucket_name,
-                            destination_blob_name=prepared_gcs_path,
-                            content=candidate.ai_content[i],
-                            content_type="text/csv",
-                        )
-                        final_converted_uris.append(f"gs://{bucket_name}/{prepared_gcs_path}")
-                else:
-                    prepared_gcs_path = f"{base_gcs_path}/prepared_content/{os.path.basename(candidate.ai_path)}"
-                    self.gcs_provider.upload_file(
-                        bucket_name=bucket_name,
-                        destination_blob_name=prepared_gcs_path,
-                        content=candidate.ai_content,
-                        content_type="application/octet-stream",
-                    )
-                    final_converted_uris.append(f"gs://{bucket_name}/{prepared_gcs_path}")
+                prepared_gcs_path = f"{base_gcs_path}/prepared_content/{os.path.basename(candidate.ai_path)}"
+                self.gcs_provider.upload_file(
+                    bucket_name=bucket_name,
+                    destination_blob_name=prepared_gcs_path,
+                    content=candidate.ai_content,
+                    content_type="application/octet-stream",
+                )
+                final_converted_uris = [f"gs://{bucket_name}/{prepared_gcs_path}"]
 
                 candidate.ai_gcs_uris = final_converted_uris
                 candidate.prepared_content_gcs_uris = final_converted_uris

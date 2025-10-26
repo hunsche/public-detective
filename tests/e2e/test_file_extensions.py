@@ -1,7 +1,6 @@
 "This module contains E2E tests for file extension handling."
 
 import json
-import os
 import shutil
 import uuid
 from collections.abc import Callable
@@ -272,6 +271,7 @@ def test_file_extension_processing(
     extension: str,
     mock_pncp_server: MockPNCP,
     gcs_cleanup_manager: GcsCleanupManager,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """
     Tests the full E2E processing for various file extensions by running the
@@ -322,7 +322,7 @@ def test_file_extension_processing(
             "tipoDocumentoDescricao": "Edital de Convocação",
         }
     ]
-    os.environ["PNCP_INTEGRATION_API_URL"] = mock_pncp_server.url
+    monkeypatch.setenv("PNCP_INTEGRATION_API_URL", mock_pncp_server.url)
 
     # 3. Setup database records
     version_number = 1
