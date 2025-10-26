@@ -3,7 +3,6 @@
 import subprocess  # nosec B404
 import tempfile
 from pathlib import Path
-from threading import Lock
 
 from public_detective.providers.logging import Logger, LoggingProvider
 
@@ -12,12 +11,10 @@ class OfficeConverterProvider:
     """A provider for converting office files using LibreOffice."""
 
     logger: Logger
-    _lock: Lock
 
     def __init__(self) -> None:
         """Initializes the provider."""
         self.logger = LoggingProvider().get_logger()
-        self._lock = Lock()
 
     def to_pdf(self, file_content: bytes, original_extension: str) -> bytes:
         """Converts an office file to PDF.
@@ -29,20 +26,19 @@ class OfficeConverterProvider:
         Returns:
             The content of the converted PDF file.
         """
-        with self._lock:
-            with tempfile.TemporaryDirectory() as td:
-                tmp_dir = Path(td)
-                in_path = tmp_dir / f"input{original_extension}"
-                in_path.write_bytes(file_content)
+        with tempfile.TemporaryDirectory() as td:
+            tmp_dir = Path(td)
+            in_path = tmp_dir / f"input{original_extension}"
+            in_path.write_bytes(file_content)
 
-                self._run_soffice(in_path, tmp_dir)
+            self._run_soffice(in_path, tmp_dir)
 
-                produced_files = list(tmp_dir.glob("*.pdf"))
-                if not produced_files:
-                    raise RuntimeError("LibreOffice conversion failed to produce a PDF file.")
+            produced_files = list(tmp_dir.glob("*.pdf"))
+            if not produced_files:
+                raise RuntimeError("LibreOffice conversion failed to produce a PDF file.")
 
-                out_file = produced_files[0]
-                return out_file.read_bytes()
+            out_file = produced_files[0]
+            return out_file.read_bytes()
 
     def _run_soffice(
         self,
