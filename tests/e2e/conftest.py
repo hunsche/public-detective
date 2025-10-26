@@ -44,6 +44,20 @@ def pytest_generate_tests(metafunc: Any) -> None:
             metafunc.parametrize("pncp_control_number", [])
 
 
+def pytest_terminal_summary(terminalreporter: Any, _exitstatus: int, config: Any) -> None:
+    """Adds a custom message for tests skipped due to missing parameters."""
+    reports = terminalreporter.getreports("skipped")
+    for report in reports:
+        if (
+            report.when == "setup"
+            and report.location[0] == "tests/e2e/test_debug_conversion.py"
+            and "got empty parameter set" in str(report.longrepr)
+        ):
+            terminalreporter.write_line(
+                "\nCustom Skip Reason: Test was skipped because " "--pncp-control-number parameter was not provided."
+            )
+
+
 @pytest.fixture(scope="function")
 def gcs_provider() -> GcsProvider:
     """Provides a GCS provider for E2E tests."""
