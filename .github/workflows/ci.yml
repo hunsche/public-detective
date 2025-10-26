@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths-ignore:
-      - '.github/badges/**'
+      - ".github/badges/**"
   pull_request:
     branches:
       - main
@@ -35,7 +35,7 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v4
         with:
-          python-version: '3.12'
+          python-version: "3.12"
 
       - name: Install Poetry
         run: |
@@ -44,7 +44,7 @@ jobs:
       - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y libreoffice-headless
+          sudo apt-get install -y libreoffice-writer-nogui
 
       - name: Install dependencies
         run: |
