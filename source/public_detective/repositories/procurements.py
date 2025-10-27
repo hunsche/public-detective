@@ -7,13 +7,16 @@ also handles the complexities of downloading, extracting, and processing
 various types of archived files.
 """
 
+import bz2
+import gzip
 import io
+import lzma
 import os
 import re
 import tarfile
 import tempfile
 import zipfile
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import date
 from http import HTTPStatus
 from typing import Any, cast
@@ -56,6 +59,7 @@ class ProcessedFile(BaseModel):
     relative_path: str
     content: bytes
     raw_document_metadata: dict
+    extraction_failed: bool = False
 
 
 class ProcurementsRepository:
@@ -71,6 +75,14 @@ class ProcurementsRepository:
         pubsub_provider: A provider for publishing messages to Pub/Sub.
         engine: An SQLAlchemy Engine for database connections.
     """
+
+    _SINGLE_FILE_COMPRESSION_HANDLERS: dict[str, Callable[[bytes], bytes]] = {
+        ".gz": gzip.decompress,
+        ".bz2": bz2.decompress,
+        ".bz": bz2.decompress,
+        ".xz": lzma.decompress,
+    }
+    _TAR_LIKE_SUFFIXES = (".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tbz2", ".tar.xz")
 
     logger: Logger
     config: Config
@@ -353,24 +365,66 @@ class ProcurementsRepository:
                         raw_document_metadata=raw_document_metadata,
                     )
             except Exception as e:
-                self.logger.warning(f"Could not process archive '{current_path}': {e}. Treating " "as a single file.")
+                self.logger.warning(
+                    "Could not process archive '%s': %s. " "Treating as a single file with extraction flag.",
+                    current_path,
+                    e,
+                )
                 file_collection.append(
                     ProcessedFile(
                         source_document_id=source_document_id,
                         relative_path=current_path,
                         content=content,
                         raw_document_metadata=raw_document_metadata,
+                        extraction_failed=True,
                     )
                 )
-        else:
-            file_collection.append(
-                ProcessedFile(
+            return
+
+        for suffix, decompressor in self._SINGLE_FILE_COMPRESSION_HANDLERS.items():
+            if lower_path.endswith(suffix) and not any(
+                lower_path.endswith(tar_suffix) for tar_suffix in self._TAR_LIKE_SUFFIXES
+            ):
+                try:
+                    decompressed_content = decompressor(content)
+                except Exception as e:
+                    self.logger.warning(
+                        "Could not decompress single-file archive '%s': %s. "
+                        "Treating as a single file with extraction flag.",
+                        current_path,
+                        e,
+                    )
+                    file_collection.append(
+                        ProcessedFile(
+                            source_document_id=source_document_id,
+                            relative_path=current_path,
+                            content=content,
+                            raw_document_metadata=raw_document_metadata,
+                            extraction_failed=True,
+                        )
+                    )
+                    return
+
+                stripped_path = current_path[: -len(suffix)] or f"{current_path}_decompressed"
+                self._recursive_file_processing(
                     source_document_id=source_document_id,
-                    relative_path=current_path,
-                    content=content,
+                    content=decompressed_content,
+                    current_path=stripped_path,
+                    nesting_level=nesting_level + 1,
+                    file_collection=file_collection,
                     raw_document_metadata=raw_document_metadata,
                 )
+                return
+
+        file_collection.append(
+            ProcessedFile(
+                source_document_id=source_document_id,
+                relative_path=current_path,
+                content=content,
+                raw_document_metadata=raw_document_metadata,
+                extraction_failed=False,
             )
+        )
 
     def create_zip_from_files(self, files: list[tuple[str, bytes]], control_number: str) -> bytes | None:
         """Creates a single, flat ZIP archive in memory from a list of files.
@@ -412,10 +466,17 @@ class ProcurementsRepository:
         """
         extracted = []
         with io.BytesIO(content) as stream:
-            with zipfile.ZipFile(stream) as archive:
+            with zipfile.ZipFile(stream, strict_timestamps=False) as archive:
                 for member_info in archive.infolist():
-                    if not member_info.is_dir():
-                        extracted.append((member_info.filename, archive.read(member_info.filename)))
+                    if member_info.is_dir():
+                        continue
+                    try:
+                        extracted.append((member_info.filename, archive.read(member_info)))
+                    except ValueError as error:
+                        self.logger.warning(
+                            "Failed to extract member '%s' from ZIP archive: %s", member_info.filename, error
+                        )
+                        raise
         return extracted
 
     def _extract_from_rar(self, content: bytes) -> list[tuple[str, bytes]]:
@@ -433,11 +494,26 @@ class ProcurementsRepository:
             with io.BytesIO(content) as stream:
                 with rarfile.RarFile(stream) as archive:
                     for member_info in archive.infolist():
-                        if not member_info.isdir():
+                        if member_info.isdir():
+                            continue
+                        try:
                             extracted.append((member_info.filename, archive.read(member_info.filename)))
-        except rarfile.BadRarFile:
-            self.logger.warning("Failed to extract from a corrupted or invalid RAR file.")
-            return []
+                        except rarfile.Error as error:
+                            self.logger.warning(
+                                "Failed to read member '%s' from RAR archive: %s", member_info.filename, error
+                            )
+                            raise RuntimeError(
+                                f"Failed to read member '{member_info.filename}' from RAR archive"
+                            ) from error
+        except rarfile.BadRarFile as error:
+            self.logger.warning("Failed to extract from a corrupted or invalid RAR file: %s", error)
+            raise RuntimeError("Failed to extract from RAR archive") from error
+        except rarfile.NeedPassword as error:
+            self.logger.warning("Cannot extract password-protected RAR archive: %s", error)
+            raise RuntimeError("Password-protected RAR archives are not supported") from error
+        except rarfile.Error as error:
+            self.logger.warning("Unexpected RAR extraction error: %s", error)
+            raise RuntimeError("Unexpected RAR extraction error") from error
         return extracted
 
     def _extract_from_7z(self, content: bytes) -> list[tuple[str, bytes]]:
@@ -462,8 +538,13 @@ class ProcurementsRepository:
             for root, _, files in os.walk(tmpdir):
                 for filename in files:
                     filepath = os.path.join(root, filename)
-                    with open(filepath, "rb") as file:
-                        file_content = file.read()
+                    try:
+                        with open(filepath, "rb") as file:
+                            file_content = file.read()
+                    except PermissionError:
+                        os.chmod(filepath, 0o644)
+                        with open(filepath, "rb") as file:
+                            file_content = file.read()
                     relative_path = os.path.relpath(filepath, tmpdir)
                     extracted.append((relative_path, file_content))
         return extracted

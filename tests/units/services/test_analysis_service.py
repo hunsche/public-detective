@@ -7,7 +7,7 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.constants.analysis_feedback import Warnings
+from public_detective.constants.analysis_feedback import ExclusionReason, Warnings
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis, AnalysisResult
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -155,6 +155,21 @@ def test_prepare_ai_candidates_unsupported_extension(analysis_service: AnalysisS
     assert len(candidates) == 1
     assert candidates[0].exclusion_reason is not None
     assert "Extensão de arquivo não suportada" in candidates[0].exclusion_reason
+
+
+def test_prepare_ai_candidates_extraction_failed(analysis_service: AnalysisService) -> None:
+    """Tests that files flagged with extraction failure are excluded."""
+    processed_file = ProcessedFile(
+        source_document_id="doc1",
+        relative_path="archive.zip",
+        content=b"zip content",
+        raw_document_metadata={},
+        extraction_failed=True,
+    )
+    candidates = analysis_service._prepare_ai_candidates([processed_file])
+    assert len(candidates) == 1
+    assert candidates[0].exclusion_reason == ExclusionReason.EXTRACTION_FAILED
+    assert candidates[0].is_included is False
 
 
 @patch("public_detective.services.converter.ConverterService.docx_to_pdf")

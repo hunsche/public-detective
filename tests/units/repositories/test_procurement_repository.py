@@ -1,9 +1,13 @@
+import bz2
+import gzip
 import io
+import lzma
 import tarfile
 import zipfile
+from collections.abc import Callable
 from datetime import date
 from http import HTTPStatus
-from typing import Any
+from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
 import py7zr
@@ -13,6 +17,55 @@ import requests
 from google.api_core import exceptions
 from public_detective.models.procurements import Procurement, ProcurementDocument
 from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
+
+SAMPLE_CONTENT = b"sample-content"
+
+
+def create_zip_payload(files: list[tuple[str, bytes]]) -> bytes:
+    """Creates a ZIP payload from a list of files."""
+    zip_buffer = io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w") as zf:
+        for filename, content in files:
+            zf.writestr(filename, content)
+    return zip_buffer.getvalue()
+
+
+def create_tar_payload(
+    files: list[tuple[str, bytes]],
+    mode: Literal["w", "w:gz", "w:bz2", "w:xz"] = "w",
+) -> bytes:
+    """Creates a TAR payload from a list of files."""
+    tar_buffer = io.BytesIO()
+    with tarfile.open(fileobj=tar_buffer, mode=mode) as tar:
+        for filename, content in files:
+            info = tarfile.TarInfo(name=filename)
+            info.size = len(content)
+            tar.addfile(info, io.BytesIO(content))
+    return tar_buffer.getvalue()
+
+
+def create_7z_payload(files: list[tuple[str, bytes]]) -> bytes:
+    """Creates a 7z payload from a list of files."""
+    s_buffer = io.BytesIO()
+    with py7zr.SevenZipFile(s_buffer, "w") as archive:
+        for filename, content in files:
+            archive.writestr(content, filename)
+    return s_buffer.getvalue()
+
+
+def create_gzip_payload(content: bytes) -> bytes:
+    """Compresses content using gzip."""
+    return gzip.compress(content)
+
+
+def create_bzip2_payload(content: bytes) -> bytes:
+    """Compresses content using bzip2."""
+    return bz2.compress(content)
+
+
+def create_xz_payload(content: bytes) -> bytes:
+    """Compresses content using lzma/xz."""
+    return lzma.compress(content)
 
 
 def _get_mock_procurement_data(control_number: str) -> dict:
@@ -282,6 +335,92 @@ def test_recursive_file_processing_corrupted_archive(repo: ProcurementsRepositor
         )
         assert len(file_collection) == 1
         assert file_collection[0].content == corrupted_content
+        assert file_collection[0].extraction_failed is True
+
+
+@pytest.mark.parametrize(
+    ("current_path", "payload_factory", "expected_paths"),
+    [
+        ("archive.zip", lambda: create_zip_payload([("inner.txt", SAMPLE_CONTENT)]), ["archive.zip/inner.txt"]),
+        ("archive.tar", lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)]), ["archive.tar/inner.txt"]),
+        (
+            "archive.tgz",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:gz"),
+            ["archive.tgz/inner.txt"],
+        ),
+        (
+            "archive.tar.gz",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:gz"),
+            ["archive.tar.gz/inner.txt"],
+        ),
+        (
+            "archive.tbz",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:bz2"),
+            ["archive.tbz/inner.txt"],
+        ),
+        (
+            "archive.tbz2",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:bz2"),
+            ["archive.tbz2/inner.txt"],
+        ),
+        (
+            "archive.tar.bz2",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:bz2"),
+            ["archive.tar.bz2/inner.txt"],
+        ),
+        (
+            "archive.tar.xz",
+            lambda: create_tar_payload([("inner.txt", SAMPLE_CONTENT)], mode="w:xz"),
+            ["archive.tar.xz/inner.txt"],
+        ),
+        (
+            "document.txt.gz",
+            lambda: create_gzip_payload(SAMPLE_CONTENT),
+            ["document.txt"],
+        ),
+        (
+            "document.txt.bz",
+            lambda: create_bzip2_payload(SAMPLE_CONTENT),
+            ["document.txt"],
+        ),
+        (
+            "document.txt.bz2",
+            lambda: create_bzip2_payload(SAMPLE_CONTENT),
+            ["document.txt"],
+        ),
+        (
+            "document.txt.xz",
+            lambda: create_xz_payload(SAMPLE_CONTENT),
+            ["document.txt"],
+        ),
+        (
+            "archive.7z",
+            lambda: create_7z_payload([("inner.txt", SAMPLE_CONTENT)]),
+            ["archive.7z/inner.txt"],
+        ),
+    ],
+)
+def test_recursive_file_processing_supported_archives(
+    repo: ProcurementsRepository,
+    current_path: str,
+    payload_factory: Callable[[], bytes],
+    expected_paths: list[str],
+) -> None:
+    """Ensures that all supported archive formats are processed correctly."""
+    file_collection: list[ProcessedFile] = []
+    repo._recursive_file_processing(
+        source_document_id="src-doc-1",
+        content=payload_factory(),
+        current_path=current_path,
+        nesting_level=0,
+        file_collection=file_collection,
+        raw_document_metadata={"meta": True},
+    )
+
+    assert [record.relative_path for record in file_collection] == expected_paths
+    for record in file_collection:
+        assert record.content == SAMPLE_CONTENT
+        assert record.extraction_failed is False
 
 
 def test_recursive_file_processing_7z(repo: ProcurementsRepository) -> None:
@@ -311,6 +450,25 @@ def test_recursive_file_processing_tar(repo: ProcurementsRepository) -> None:
                 raw_document_metadata={},
             )
             mock_extract.assert_called_once()
+
+    def test_recursive_file_processing_rar_success(repo: ProcurementsRepository) -> None:
+        """Tests that RAR archives are expanded into individual files."""
+        file_collection: list[ProcessedFile] = []
+        with patch.object(repo, "_extract_from_rar", return_value=[("inner.txt", SAMPLE_CONTENT)]):
+            repo._recursive_file_processing(
+                source_document_id="src-doc-1",
+                content=b"rar-bytes",
+                current_path="archive.rar",
+                nesting_level=0,
+                file_collection=file_collection,
+                raw_document_metadata={"rar": True},
+            )
+
+        assert len(file_collection) == 1
+        record = file_collection[0]
+        assert record.relative_path == "archive.rar/inner.txt"
+        assert record.content == SAMPLE_CONTENT
+        assert record.extraction_failed is False
 
 
 @pytest.fixture
@@ -360,11 +518,28 @@ def test_extract_from_rar_with_directory(repo: ProcurementsRepository) -> None:
 
 
 def test_extract_from_rar_with_bad_file(repo: ProcurementsRepository, caplog: Any) -> None:
-    """Tests that a BadRarFile error is handled gracefully."""
-    with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile):
-        result = repo._extract_from_rar(b"bad content")
-        assert result == []
-        assert "Failed to extract from a corrupted or invalid RAR file" in caplog.text
+    """Tests that a BadRarFile error triggers a runtime error with logging."""
+    with patch("rarfile.RarFile", side_effect=rarfile.BadRarFile("bad")):
+        with pytest.raises(RuntimeError, match="Failed to extract from RAR archive"):
+            repo._extract_from_rar(b"bad content")
+    assert "Failed to extract from a corrupted or invalid RAR file" in caplog.text
+
+
+def test_recursive_file_processing_rar_extraction_failure(repo: ProcurementsRepository) -> None:
+    """Tests that RAR extraction failures mark the archive as extraction_failed."""
+    file_collection: list[ProcessedFile] = []
+    with patch.object(repo, "_extract_from_rar", side_effect=RuntimeError("boom")):
+        repo._recursive_file_processing(
+            source_document_id="src-doc-1",
+            content=b"content",
+            current_path="archive.rar",
+            nesting_level=0,
+            file_collection=file_collection,
+            raw_document_metadata={"meta": True},
+        )
+    assert len(file_collection) == 1
+    assert file_collection[0].relative_path == "archive.rar"
+    assert file_collection[0].extraction_failed is True
 
 
 def test_create_zip_from_files_empty(repo: ProcurementsRepository) -> None:

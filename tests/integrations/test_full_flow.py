@@ -1,7 +1,7 @@
 import json
 from datetime import date
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import pytest
@@ -134,12 +134,12 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
             procurement_repo,
             "process_procurement_documents",
             return_value=[
-                MagicMock(
-                    spec=ProcessedFile,
-                    content=b"test",
-                    relative_path="test.txt",
+                ProcessedFile(
                     source_document_id="doc1",
+                    relative_path="test.txt",
+                    content=b"test",
                     raw_document_metadata={},
+                    extraction_failed=False,
                 )
             ],
         ),

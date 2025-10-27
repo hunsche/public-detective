@@ -52,6 +52,7 @@ class AIFileCandidate(BaseModel):
     exclusion_reason: str | None = None
     warnings: list[str] = Field(default_factory=list)
     file_record_id: UUID | None = None
+    extraction_failed: bool = False
 
     @model_validator(mode="after")
     def set_ai_defaults(self) -> "AIFileCandidate":
@@ -371,11 +372,17 @@ class AnalysisService:
                 raw_document_metadata=processed_file.raw_document_metadata,
                 original_path=processed_file.relative_path,
                 original_content=processed_file.content,
+                extraction_failed=processed_file.extraction_failed,
             )
             ext = os.path.splitext(processed_file.relative_path)[1].lower()
 
             if os.path.basename(candidate.original_path).startswith("~$"):
                 candidate.exclusion_reason = ExclusionReason.LOCK_FILE
+                candidates.append(candidate)
+                continue
+
+            if processed_file.extraction_failed:
+                candidate.exclusion_reason = ExclusionReason.EXTRACTION_FAILED
                 candidates.append(candidate)
                 continue
 
