@@ -71,7 +71,7 @@ def upgrade() -> None:
             total_estimated_value DECIMAL(32, 18),
             version_number INTEGER NOT NULL,
             raw_data JSONB NOT NULL,
-            content_hash VARCHAR(64),
+            content_hash TEXT,
             votes_count INTEGER NOT NULL DEFAULT 0,
             UNIQUE (pncp_control_number, version_number)
         );
@@ -92,7 +92,7 @@ def upgrade() -> None:
             red_flags JSONB,
             seo_keywords TEXT[],
             warnings TEXT[],
-            document_hash VARCHAR(64),
+            document_hash TEXT,
             original_documents_gcs_path TEXT,
             processed_documents_gcs_path TEXT,
             input_tokens_used INTEGER,
@@ -134,7 +134,7 @@ def upgrade() -> None:
             prioritization_logic TEXT NOT NULL,
             prepared_content_gcs_uris TEXT[],
             raw_document_metadata JSONB,
-            inferred_extension VARCHAR(10),
+            inferred_extension TEXT,
             used_fallback_conversion BOOLEAN DEFAULT FALSE
         );
         CREATE TABLE {history_table} (
@@ -178,6 +178,12 @@ def upgrade() -> None:
             ON {procurements_table} (content_hash);
         CREATE INDEX idx_procurements_publication_date
             ON {procurements_table} (pncp_publication_date);
+        CREATE INDEX idx_procurements_year
+            ON {procurements_table} (procurement_year);
+        CREATE INDEX idx_procurements_modality_id
+            ON {procurements_table} (modality_id);
+        CREATE INDEX idx_procurements_status_id
+            ON {procurements_table} (procurement_status_id);
         -- Indexes for procurement_analyses table
         CREATE INDEX idx_procurement_analyses_procurement_control_number_version
             ON {procurement_analyses_table} (procurement_control_number, version_number);
@@ -189,15 +195,27 @@ def upgrade() -> None:
             ON {procurement_analyses_table} (votes_count DESC, input_tokens_used ASC);
         CREATE INDEX idx_procurement_analyses_document_hash
             ON {procurement_analyses_table} (document_hash);
+        CREATE INDEX idx_procurement_analyses_risk_score
+            ON {procurement_analyses_table} (risk_score);
         -- Indexes for procurement_source_documents table
         CREATE INDEX idx_source_documents_analysis_id
             ON {source_documents_table} (analysis_id);
         -- Indexes for file_records table
         CREATE INDEX idx_file_records_source_document_id
             ON {file_records_table} (source_document_id);
+        CREATE INDEX idx_file_records_exclusion_reason
+            ON {file_records_table} (exclusion_reason);
+        CREATE INDEX idx_file_records_extension
+            ON {file_records_table} (extension);
+        CREATE INDEX idx_file_records_used_fallback
+            ON {file_records_table} (used_fallback_conversion);
+        CREATE INDEX idx_file_records_included_in_analysis
+            ON {file_records_table} (included_in_analysis);
         -- Indexes for procurement_analysis_status_history table
         CREATE INDEX idx_procurement_analysis_status_history_analysis_id
             ON {history_table} (analysis_id);
+        CREATE INDEX idx_procurement_analysis_status_history_status
+            ON {history_table} (status);
         -- Indexes for votes table
         CREATE INDEX idx_votes_procurement
             ON {votes_table} (procurement_control_number, version_number);
