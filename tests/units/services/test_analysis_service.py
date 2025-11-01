@@ -145,6 +145,8 @@ def analysis_service(
 
 def test_prepare_ai_candidates_unsupported_extension(analysis_service: AnalysisService, caplog: Any) -> None:
     """Tests that a file with an unsupported extension is marked for exclusion."""
+    analysis_service.file_type_provider = MagicMock()
+    analysis_service.file_type_provider.infer_extension.return_value = ".unsupported"
     processed_file = ProcessedFile(
         source_document_id="doc1",
         relative_path="document.unsupported",

@@ -66,6 +66,8 @@ def test_unsupported_extension_is_excluded() -> None:
         "pubsub_provider": MagicMock(),
     }
     service = AnalysisService(**mock_dependencies)
+    service.file_type_provider = MagicMock()
+    service.file_type_provider.infer_extension.return_value = ".xyz"  # An unsupported type
     unsupported_extension = ".unsupported"
     processed_file = ProcessedFile(
         source_document_id="456",

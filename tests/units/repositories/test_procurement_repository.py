@@ -1,12 +1,14 @@
 import bz2
 import gzip
 import io
+import logging
 import lzma
 import tarfile
 import zipfile
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from datetime import date
 from http import HTTPStatus
+from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import MagicMock, patch
 
@@ -15,10 +17,19 @@ import pytest
 import rarfile
 import requests
 from google.api_core import exceptions
-from public_detective.models.procurements import Procurement, ProcurementDocument
+from public_detective.models.procurements import Procurement, ProcurementDocument, ProcurementListResponse
 from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
+from pydantic import ValidationError
 
 SAMPLE_CONTENT = b"sample-content"
+
+
+if not hasattr(rarfile, "NeedPassword"):
+
+    class NeedPasswordFallback(rarfile.Error):
+        """Compatibility shim for rarfile versions without NeedPassword."""
+
+    rarfile.NeedPassword = NeedPasswordFallback
 
 
 def create_zip_payload(files: list[tuple[str, bytes]]) -> bytes:
@@ -142,6 +153,23 @@ def test_extract_from_zip(repo: ProcurementsRepository) -> None:
     assert ("file2.txt", b"content2") in extracted_files
 
 
+def test_extract_from_zip_member_read_error(repo: ProcurementsRepository) -> None:
+    """Propagates ValueError when a ZIP member cannot be read."""
+    mock_member = MagicMock()
+    mock_member.is_dir.return_value = False
+    mock_member.filename = "broken.txt"
+
+    mock_archive = MagicMock()
+    mock_archive.infolist.return_value = [mock_member]
+    mock_archive.read.side_effect = ValueError("broken member")
+
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_archive
+    with patch("zipfile.ZipFile", return_value=mock_context):
+        with pytest.raises(ValueError, match="broken member"):
+            repo._extract_from_zip(b"dummy content")
+
+
 def test_extract_from_7z(repo: ProcurementsRepository) -> None:
     """Tests extracting files from a 7z archive."""
     s_buffer = io.BytesIO()
@@ -153,6 +181,38 @@ def test_extract_from_7z(repo: ProcurementsRepository) -> None:
     assert len(extracted_files) == 2
     assert ("file1.txt", b"content1") in extracted_files
     assert ("file2.txt", b"content2") in extracted_files
+
+
+@patch("os.chmod")
+@patch("os.walk")
+@patch("py7zr.SevenZipFile")
+def test_extract_from_7z_permission_error(
+    mock_seven_zip: MagicMock,
+    mock_os_walk: MagicMock,
+    mock_chmod: MagicMock,
+    repo: ProcurementsRepository,
+    caplog: Any,
+) -> None:
+    """Retries reading files when a PermissionError occurs."""
+    caplog.set_level(logging.WARNING)
+
+    mock_archive = MagicMock()
+    mock_seven_zip.return_value.__enter__.return_value = mock_archive
+
+    def fake_walk(tmpdir: str) -> Iterable[tuple[str, list[str], list[str]]]:
+        yield tmpdir, [], ["restricted.txt"]
+
+    mock_os_walk.side_effect = fake_walk
+
+    file_handle = MagicMock()
+    file_handle.__enter__.return_value.read.return_value = b"permitted"
+    file_handle.__exit__.return_value = None
+
+    with patch("builtins.open", side_effect=[PermissionError("denied"), file_handle]):
+        extracted = repo._extract_from_7z(b"content")
+
+    assert extracted == [("restricted.txt", b"permitted")]
+    assert mock_chmod.called
 
 
 def test_extract_from_tar(repo: ProcurementsRepository) -> None:
@@ -291,6 +351,15 @@ def test_download_file_content_success(repo: ProcurementsRepository) -> None:
     assert content == b"file content"
 
 
+def test_download_file_content_empty_body(repo: ProcurementsRepository) -> None:
+    """Returns None when the response body is empty."""
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.content = b""
+    repo.http_provider.get.return_value = mock_response
+    assert repo._download_file_content("http://test.url/file.pdf") is None
+
+
 def test_recursive_file_processing_non_archive(repo: ProcurementsRepository) -> None:
     """Tests that non-archive files are added directly to the collection."""
     file_collection: list[ProcessedFile] = []
@@ -320,6 +389,13 @@ def test_process_procurement_documents_download_fails(repo: ProcurementsReposito
             assert result == []
 
 
+def test_process_procurement_documents_no_metadata(repo: ProcurementsRepository) -> None:
+    """Returns an empty list when there are no documents to process."""
+    procurement = MagicMock(spec=Procurement)
+    with patch.object(repo, "_get_all_documents_metadata", return_value=[]):
+        assert repo.process_procurement_documents(procurement) == []
+
+
 def test_recursive_file_processing_corrupted_archive(repo: ProcurementsRepository) -> None:
     """Tests that a corrupted archive is treated as a single file."""
     file_collection: list[ProcessedFile] = []
@@ -336,6 +412,30 @@ def test_recursive_file_processing_corrupted_archive(repo: ProcurementsRepositor
         assert len(file_collection) == 1
         assert file_collection[0].content == corrupted_content
         assert file_collection[0].extraction_failed is True
+
+
+def test_recursive_file_processing_single_file_decompress_error(repo: ProcurementsRepository) -> None:
+    """Marks single-file archives as failed when decompression raises errors."""
+    file_collection: list[ProcessedFile] = []
+    failing_decompressor = MagicMock(side_effect=ValueError("boom"))
+    with patch.dict(
+        ProcurementsRepository._SINGLE_FILE_COMPRESSION_HANDLERS,
+        {".gz": failing_decompressor},
+        clear=False,
+    ):
+        repo._recursive_file_processing(
+            source_document_id="src-doc-2",
+            content=b"compressed",
+            current_path="document.txt.gz",
+            nesting_level=0,
+            file_collection=file_collection,
+            raw_document_metadata={"origin": "test"},
+        )
+
+    assert len(file_collection) == 1
+    processed = file_collection[0]
+    assert processed.relative_path == "document.txt.gz"
+    assert processed.extraction_failed is True
 
 
 @pytest.mark.parametrize(
@@ -523,6 +623,37 @@ def test_extract_from_rar_with_bad_file(repo: ProcurementsRepository, caplog: An
         with pytest.raises(RuntimeError, match="Failed to extract from RAR archive"):
             repo._extract_from_rar(b"bad content")
     assert "Failed to extract from a corrupted or invalid RAR file" in caplog.text
+
+
+def test_extract_from_rar_member_read_error(repo: ProcurementsRepository) -> None:
+    """Raises a runtime error when a RAR member cannot be read."""
+    mock_member = MagicMock()
+    mock_member.isdir.return_value = False
+    mock_member.filename = "doc.txt"
+    mock_archive = MagicMock()
+    mock_archive.infolist.return_value = [mock_member]
+    mock_archive.read.side_effect = rarfile.Error("read error")
+
+    mock_context = MagicMock()
+    mock_context.__enter__.return_value = mock_archive
+
+    with patch("rarfile.RarFile", return_value=mock_context):
+        with pytest.raises(RuntimeError, match="Failed to read member 'doc.txt'"):
+            repo._extract_from_rar(b"content")
+
+
+def test_extract_from_rar_need_password(repo: ProcurementsRepository) -> None:
+    """Transforms NeedPassword into a runtime error."""
+    with patch("rarfile.RarFile", side_effect=rarfile.NeedPassword("pw")):
+        with pytest.raises(RuntimeError, match="Password-protected RAR archives are not supported"):
+            repo._extract_from_rar(b"content")
+
+
+def test_extract_from_rar_unexpected_error(repo: ProcurementsRepository) -> None:
+    """Transforms other rarfile errors into runtime exceptions."""
+    with patch("rarfile.RarFile", side_effect=rarfile.Error("unexpected")):
+        with pytest.raises(RuntimeError, match="Unexpected RAR extraction error"):
+            repo._extract_from_rar(b"content")
 
 
 def test_recursive_file_processing_rar_extraction_failure(repo: ProcurementsRepository) -> None:
@@ -806,6 +937,30 @@ def test_get_updated_procurements_with_raw_data_no_content(repo: ProcurementsRep
     assert procurements == []
 
 
+def test_get_updated_procurements_with_raw_data_empty_page(repo: ProcurementsRepository, caplog: Any) -> None:
+    """Logs a warning and yields no procurements when pages are empty."""
+    caplog.set_level(logging.INFO)
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = []
+
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.json.return_value = {"data": []}
+    repo.http_provider.get.return_value = mock_response
+
+    with patch.object(
+        ProcurementListResponse,
+        "model_validate",
+        side_effect=lambda _raw: SimpleNamespace(data=[], total_pages=1),
+    ):
+        events = list(repo.get_updated_procurements_with_raw_data(date(2023, 1, 1)))
+
+    assert any(event == "modality_started" for event, _ in events)
+    assert any(event == "pages_total" for event, _ in events)
+    assert all(event != "procurements_page" for event, _ in events)
+    assert "The search will be nationwide" in caplog.text
+
+
 def test_get_updated_procurements_with_raw_data_happy_path(repo: ProcurementsRepository) -> None:
     """Tests the happy path for get_updated_procurements_with_raw_data."""
     raw_procurement_data = _get_mock_procurement_data("PNCP-456")
@@ -961,6 +1116,25 @@ def test_save_procurement_version(repo: ProcurementsRepository, mock_procurement
     repo.save_procurement_version(mock_procurement, '{"key":"value"}', 1, "hash123")
     assert repo.engine.connect.return_value.__enter__.return_value.execute.call_count == 1
     assert repo.engine.connect.return_value.__enter__.return_value.commit.call_count == 1
+
+
+def test_get_updated_procurements_empty_page(repo: ProcurementsRepository) -> None:
+    """Stops pagination when a page contains no procurements."""
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://dummy.url"
+    repo.config.TARGET_IBGE_CODES = [None]
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.json.return_value = {"data": []}
+    repo.http_provider.get.return_value = mock_response
+
+    with patch.object(
+        ProcurementListResponse,
+        "model_validate",
+        side_effect=lambda _raw: SimpleNamespace(data=[], total_pages=1),
+    ):
+        result = repo.get_updated_procurements(date(2023, 1, 1))
+
+    assert result == []
 
 
 def test_get_updated_procurements_happy_path(repo: ProcurementsRepository) -> None:
@@ -1156,3 +1330,29 @@ def test_get_procurement_by_control_number_not_found(repo: ProcurementsRepositor
     assert procurement is None
     assert raw_data is None
     assert f"Failed to get/validate procurement for {control_number}" in caplog.text
+
+
+def test_get_procurement_by_control_number_invalid_format(repo: ProcurementsRepository) -> None:
+    """Returns None for control numbers that do not match the expected pattern."""
+    result = repo.get_procurement_by_control_number("invalid-control")
+
+    assert result == (None, None)
+    repo.http_provider.get.assert_not_called()
+
+
+def test_get_procurement_by_control_number_validation_error(repo: ProcurementsRepository) -> None:
+    """Handles validation errors when parsing the procurement payload."""
+    control_number = "12345678000199-1-123456/2024"
+    raw_data = _get_mock_procurement_data(control_number)
+    mock_response = MagicMock()
+    mock_response.status_code = HTTPStatus.OK
+    mock_response.json.return_value = raw_data
+    repo.http_provider.get.return_value = mock_response
+    repo.config.PNCP_PUBLIC_QUERY_API_URL = "http://test.api/"
+
+    validation_error = ValidationError.from_exception_data("Procurement", [])
+    with patch.object(Procurement, "model_validate", side_effect=validation_error):
+        procurement, returned_raw = repo.get_procurement_by_control_number(control_number)
+
+    assert procurement is None
+    assert returned_raw is None

@@ -47,11 +47,13 @@ class FileRecordsRepository:
             INSERT INTO file_records (
                 source_document_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
-                prioritization_logic, prepared_content_gcs_uris
+                prioritization_logic, prepared_content_gcs_uris,
+                inferred_extension, used_fallback_conversion
             ) VALUES (
                 :source_document_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
-                :prioritization_logic, :prepared_content_gcs_uris
+                :prioritization_logic, :prepared_content_gcs_uris,
+                :inferred_extension, :used_fallback_conversion
             ) RETURNING id;
         """
         )

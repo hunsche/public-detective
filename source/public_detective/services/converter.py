@@ -15,6 +15,22 @@ class ConverterService:
     logger: Logger
     office_converter: OfficeConverterProvider
 
+    _CONVERTIBLE_TO_PDF = {
+        ".docx",
+        ".doc",
+        ".odt",
+        ".rtf",
+        ".xlsx",
+        ".xls",
+        ".xlsb",
+        ".ods",
+        ".csv",
+        ".html",
+        ".xml",
+        ".txt",
+        ".md",
+    }
+
     def __init__(self) -> None:
         """Initializes the service."""
         self.logger: Logger = LoggingProvider().get_logger()
@@ -62,6 +78,17 @@ class ConverterService:
         except Exception as e:
             self.logger.error(f"BMP to PNG conversion failed: {e}", exc_info=True)
             raise
+
+    def is_supported_for_conversion(self, extension: str) -> bool:
+        """Checks if a file extension is supported for conversion to PDF.
+
+        Args:
+            extension: The file extension (e.g., ".docx").
+
+        Returns:
+            True if the extension is supported, False otherwise.
+        """
+        return extension in self._CONVERTIBLE_TO_PDF
 
     def convert_to_pdf(self, file_content: bytes, original_extension: str) -> bytes:
         """Converts a file to PDF using LibreOffice.

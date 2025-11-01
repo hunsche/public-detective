@@ -78,7 +78,9 @@ def test_debug_failed_conversion(db_session: Engine, pncp_control_number: str) -
                    fr.file_name,
                    fr.extension,
                    fr.included_in_analysis,
-                   fr.exclusion_reason
+                   fr.exclusion_reason,
+                   fr.inferred_extension,
+                   fr.used_fallback_conversion
             FROM procurement_source_documents psd
             LEFT JOIN file_records fr ON fr.source_document_id = psd.id
             WHERE psd.analysis_id = :analysis_id
@@ -89,18 +91,30 @@ def test_debug_failed_conversion(db_session: Engine, pncp_control_number: str) -
 
         print("--- Files and their inclusion status ---")
         if all_files_results:
-            for source_document_id, file_name, extension, included, exclusion_reason in all_files_results:
+            for (
+                source_document_id,
+                file_name,
+                extension,
+                included,
+                exclusion_reason,
+                inferred_extension,
+                used_fallback,
+            ) in all_files_results:
                 reason = exclusion_reason or "(no exclusion reason recorded)"
                 name_display = file_name or "(no file record)"
                 extension_display = extension or "(unknown)"
+                inferred_display = inferred_extension or "(not inferred)"
                 print(
-                    "SourceDocumentId: {source_document_id}, File: {name_display}, Extension: {extension_display}, "
-                    "Included: {included}, Reason: {reason}".format(
+                    "SourceDocumentId: {source_document_id}, File: {name_display}, "
+                    "Extension: {extension_display}, Included: {included}, Reason: {reason}, "
+                    "Inferred: {inferred_display}, FallbackUsed: {used_fallback}".format(
                         source_document_id=source_document_id,
                         name_display=name_display,
                         extension_display=extension_display,
                         included=included,
                         reason=reason,
+                        inferred_display=inferred_display,
+                        used_fallback=used_fallback,
                     )
                 )
         else:

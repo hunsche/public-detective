@@ -51,6 +51,8 @@ class FileRecord(BaseModel):
     exclusion_reason: str | None
     prioritization_logic: str | None
     converted_gcs_paths: list[str] | None = None
+    inferred_extension: str | None = None
+    used_fallback_conversion: bool | None = None
 
 
 class NewFileRecord(BaseModel):
@@ -71,3 +73,5 @@ class NewFileRecord(BaseModel):
     exclusion_reason: str | None
     prioritization_logic: str
     prepared_content_gcs_uris: list[str] | None
+    inferred_extension: str | None = None
+    used_fallback_conversion: bool = False
