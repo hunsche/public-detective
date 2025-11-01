@@ -24,6 +24,9 @@ def upgrade() -> None:
     file_records_table = get_qualified_name("file_records")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
+    exclusion_reason_type = get_qualified_name("exclusion_reason")
+    prioritization_logic_type = get_qualified_name("prioritization_logic")
+    warnings_type = get_qualified_name("warnings")
     votes_table = get_qualified_name("votes")
     vote_type = get_qualified_name("vote_type")
     donations_table = get_qualified_name("donations")
@@ -49,6 +52,26 @@ def upgrade() -> None:
             'ANALYSIS_IN_PROGRESS',
             'ANALYSIS_SUCCESSFUL',
             'ANALYSIS_FAILED'
+        );
+        CREATE TYPE {exclusion_reason_type} AS ENUM (
+            'UNSUPPORTED_EXTENSION',
+            'EXTRACTION_FAILED',
+            'TOKEN_LIMIT_EXCEEDED',
+            'CONVERSION_FAILED',
+            'LOCK_FILE',
+            'PARTIAL_CONVERSION',
+            'TOTAL_SIZE_LIMIT_EXCEEDED'
+        );
+        CREATE TYPE {prioritization_logic_type} AS ENUM (
+            'BY_METADATA',
+            'BY_KEYWORD',
+            'NO_PRIORITY'
+        );
+        CREATE TYPE {warnings_type} AS ENUM (
+            'IGNORED_NON_DATA_SHEET',
+            'TOKEN_LIMIT_EXCEEDED',
+            'TOTAL_SIZE_LIMIT_EXCEEDED',
+            'IGNORED_FILES_BY_REASON'
         );
         CREATE TYPE {vote_type} AS ENUM ('UP', 'DOWN');
         CREATE TYPE {transaction_type} AS ENUM ('DONATION', 'EXPENSE');
@@ -130,8 +153,11 @@ def upgrade() -> None:
             size_bytes INTEGER NOT NULL,
             nesting_level INTEGER NOT NULL,
             included_in_analysis BOOLEAN NOT NULL,
-            exclusion_reason TEXT,
-            prioritization_logic TEXT NOT NULL,
+            exclusion_reason {exclusion_reason_type},
+            prioritization_logic {prioritization_logic_type} NOT NULL,
+            prioritization_keyword TEXT,
+            token_limit INTEGER,
+            warnings {warnings_type}[],
             prepared_content_gcs_uris TEXT[],
             raw_document_metadata JSONB,
             inferred_extension TEXT,
@@ -246,6 +272,9 @@ def downgrade() -> None:
     history_table_dropped = get_qualified_name("procurement_analysis_status_history_dropped")
     history_table = get_qualified_name("procurement_analysis_status_history")
     procurement_analysis_status_type = get_qualified_name("procurement_analysis_status")
+    exclusion_reason_type = get_qualified_name("exclusion_reason")
+    prioritization_logic_type = get_qualified_name("prioritization_logic")
+    warnings_type = get_qualified_name("warnings")
     votes_table_dropped = get_qualified_name("votes_dropped")
     votes_table = get_qualified_name("votes")
     vote_type = get_qualified_name("vote_type")
@@ -267,4 +296,7 @@ def downgrade() -> None:
     op.execute(f"DROP TYPE IF EXISTS {transaction_type} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {vote_type} CASCADE;")
     op.execute(f"DROP TYPE IF EXISTS {procurement_analysis_status_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {exclusion_reason_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {prioritization_logic_type} CASCADE;")
+    op.execute(f"DROP TYPE IF EXISTS {warnings_type} CASCADE;")
     op.execute('DROP EXTENSION IF EXISTS "uuid-ossp";')

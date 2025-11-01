@@ -10,6 +10,12 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from public_detective.models.enums import (
+    ExclusionReason,
+    PrioritizationLogic,
+    Warnings,
+)
+
 
 class FileRecord(BaseModel):
     """Represents a detailed record of a single file from a procurement analysis.
@@ -48,8 +54,11 @@ class FileRecord(BaseModel):
     size_bytes: int
     nesting_level: int
     included_in_analysis: bool
-    exclusion_reason: str | None
-    prioritization_logic: str | None
+    exclusion_reason: ExclusionReason | None
+    prioritization_logic: PrioritizationLogic
+    prioritization_keyword: str | None
+    token_limit: int | None
+    warnings: list[Warnings] | None
     converted_gcs_paths: list[str] | None = None
     inferred_extension: str | None = None
     used_fallback_conversion: bool | None = None
@@ -70,8 +79,11 @@ class NewFileRecord(BaseModel):
     size_bytes: int
     nesting_level: int
     included_in_analysis: bool
-    exclusion_reason: str | None
-    prioritization_logic: str
+    exclusion_reason: ExclusionReason | None
+    prioritization_logic: PrioritizationLogic
+    prioritization_keyword: str | None
+    token_limit: int | None
+    warnings: list[Warnings] | None
     prepared_content_gcs_uris: list[str] | None
     inferred_extension: str | None = None
     used_fallback_conversion: bool = False

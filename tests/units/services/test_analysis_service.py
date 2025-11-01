@@ -155,8 +155,7 @@ def test_prepare_ai_candidates_unsupported_extension(analysis_service: AnalysisS
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert candidates[0].exclusion_reason is not None
-    assert "Extensão de arquivo não suportada" in candidates[0].exclusion_reason
+    assert candidates[0].exclusion_reason == ExclusionReason.UNSUPPORTED_EXTENSION
 
 
 def test_prepare_ai_candidates_extraction_failed(analysis_service: AnalysisService) -> None:
@@ -287,7 +286,7 @@ def test_prepare_ai_candidates_conversion_failure(mock_converter: MagicMock, ana
     )
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     assert len(candidates) == 1
-    assert "Falha ao converter o arquivo" in candidates[0].exclusion_reason
+    assert candidates[0].exclusion_reason == ExclusionReason.CONVERSION_FAILED
 
 
 def test_get_priority(analysis_service: AnalysisService) -> None:
@@ -333,7 +332,7 @@ def test_calculate_procurement_hash(analysis_service: AnalysisService, mock_proc
     assert hash1 == hash4
 
 
-def test_get_priority_as_string(analysis_service: AnalysisService) -> None:
+def test_get_prioritization_logic(analysis_service: AnalysisService) -> None:
     """Tests the priority string generation."""
     candidate_edital_metadata = AIFileCandidate(
         original_path="any.pdf",
@@ -345,9 +344,13 @@ def test_get_priority_as_string(analysis_service: AnalysisService) -> None:
         original_path="outro.txt", raw_document_metadata={}, synthetic_id="1", original_content=b""
     )
 
-    assert "edital" in analysis_service._get_priority_as_string(candidate_edital_metadata)
-    assert "metadados" in analysis_service._get_priority_as_string(candidate_edital_metadata)
-    assert "Sem priorização." in analysis_service._get_priority_as_string(candidate_other)
+    logic, keyword = analysis_service._get_prioritization_logic(candidate_edital_metadata)
+    assert logic.name == "BY_METADATA"
+    assert keyword == "edital"
+
+    logic, keyword = analysis_service._get_prioritization_logic(candidate_other)
+    assert logic.name == "NO_PRIORITY"
+    assert keyword is None
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
@@ -385,8 +388,9 @@ def test_select_files_by_token_limit_some_excluded(
 
     assert selected[0].is_included
     assert not selected[1].is_included
-    assert "limite de 150 tokens foi excedido" in selected[1].exclusion_reason
-    assert "Arquivos ignorados" in warnings[0]
+    assert selected[1].exclusion_reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED
+    assert selected[1].token_limit == 150
+    assert "O limite de 150 tokens foi excedido" in warnings[0]
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
@@ -407,7 +411,7 @@ def test_select_files_by_token_limit_prioritization(
 
     assert selected[0].is_included
     assert not selected[1].is_included
-    assert "limite de 150 tokens foi excedido" in selected[1].exclusion_reason
+    assert selected[1].exclusion_reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED
 
 
 def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, caplog: Any) -> None:
