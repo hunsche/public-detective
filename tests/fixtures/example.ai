@@ -1,0 +1,15 @@
+%!PS-Adobe-3.0 EPSF-3.0
+%%BoundingBox: 0 0 100 100
+/inch {72 mul} def
+/p {
+  newpath
+  20 20 moveto
+  80 20 lineto
+  80 80 lineto
+  20 80 lineto
+  closepath
+  2 setlinewidth
+  stroke
+} def
+p
+showpage

@@ -3,6 +3,8 @@
 import magic
 from public_detective.providers.logging import Logger, LoggingProvider
 
+SPECIALIZED_IMAGE = "SPECIALIZED_IMAGE"
+
 
 class FileTypeProvider:
     """A provider for inferring file types from their content."""
@@ -30,6 +32,22 @@ class FileTypeProvider:
         except Exception as e:
             self.logger.error(f"Failed to infer file type: {e}", exc_info=True)
             return None
+
+    def get_file_type(self, extension: str) -> str | None:
+        """
+        Returns the file type for the given extension.
+        """
+        if self._get_extension_from_filename(extension):
+            return SPECIALIZED_IMAGE
+        return None
+
+    def _get_extension_from_filename(self, extension: str) -> str | None:
+        """
+        Returns the file type for the given extension.
+        """
+        if extension in [".ai", ".psd", ".eps", ".cdr"]:
+            return SPECIALIZED_IMAGE
+        return None
 
     def _get_extension_from_mime(self, mime_type: str) -> str | None:  # noqa: C901
         """Maps a MIME type to a file extension.

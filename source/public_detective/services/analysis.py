@@ -21,8 +21,9 @@ from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
-from public_detective.providers.file_type import FileTypeProvider
+from public_detective.providers.file_type import FileTypeProvider, SPECIALIZED_IMAGE
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.image_converter import ImageConverterProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
@@ -115,6 +116,10 @@ class AnalysisService:
         ".bmp",
         ".html",
         ".xml",
+        ".ai",
+        ".psd",
+        ".eps",
+        ".cdr",
         ".json",
         ".txt",
         ".md",
@@ -122,6 +127,7 @@ class AnalysisService:
     _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
     _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
     _IMAGE_EXTENSIONS = (".jpg", ".jpeg", ".png", ".gif", ".bmp")
+    _SPECIALIZED_IMAGE_EXTENSIONS = (".ai", ".psd", ".eps", ".cdr")
     _SPREADSHEET_EXTENSIONS = (".xlsx", ".xls", ".xlsb", ".ods")
     _FILE_PRIORITY_ORDER = [
         "edital",
@@ -171,6 +177,7 @@ class AnalysisService:
         self.gcs_provider = gcs_provider
         self.converter_service = ConverterService()
         self.file_type_provider = FileTypeProvider()
+        self.image_converter_provider = ImageConverterProvider()
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -444,6 +451,13 @@ class AnalysisService:
                     converted_content = self.converter_service.gif_to_mp4(processed_file.content)
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.mp4"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif self.file_type_provider.get_file_type(ext) == SPECIALIZED_IMAGE:
+                    converted_content = self.image_converter_provider.to_png(
+                        processed_file.content, ext
+                    )
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.png"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext in (".xml", ".json"):
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"

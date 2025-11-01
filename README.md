@@ -105,6 +105,7 @@ To get a local copy up and running, follow these simple steps.
 -   Poetry
 -   Docker
 -   LibreOffice Headless
+-   ImageMagick
 
 
 ### ⚙️ Installation

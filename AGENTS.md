@@ -86,6 +86,8 @@ The project is standardized on **Python 3.12**.
 - Python 3.12
 - Poetry
 - Docker
+- LibreOffice Headless
+- ImageMagick
 
 ### B. Installation Steps
 
