@@ -131,9 +131,11 @@ def upgrade() -> None:
             nesting_level INTEGER NOT NULL,
             included_in_analysis BOOLEAN NOT NULL,
             exclusion_reason TEXT,
-        prioritization_logic TEXT NOT NULL,
-        prepared_content_gcs_uris TEXT[],
-            raw_document_metadata JSONB
+            prioritization_logic TEXT NOT NULL,
+            prepared_content_gcs_uris TEXT[],
+            raw_document_metadata JSONB,
+            inferred_extension VARCHAR(10),
+            used_fallback_conversion BOOLEAN DEFAULT FALSE
         );
         CREATE TABLE {history_table} (
             id UUID PRIMARY KEY DEFAULT public.uuid_generate_v4(),

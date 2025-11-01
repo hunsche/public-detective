@@ -1,13 +1,14 @@
 """This module contains integration tests for the AnalysisService."""
 
-import pytest
-from public_detective.services.analysis import AnalysisService
-from public_detective.repositories.procurements import ProcessedFile
 from unittest.mock import MagicMock
+
+import pytest
+from public_detective.repositories.procurements import ProcessedFile
+from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture
-def analysis_service():
+def analysis_service() -> AnalysisService:
     """Returns an AnalysisService instance for testing."""
     procurement_repo = MagicMock()
     analysis_repo = MagicMock()
@@ -32,7 +33,9 @@ def analysis_service():
     )
 
 
-def test_prepare_ai_candidates_unsupported_extension_with_fallback(analysis_service):
+def test_prepare_ai_candidates_unsupported_extension_with_fallback(
+    analysis_service: AnalysisService,
+) -> None:
     analysis_service.converter_service = MagicMock()
     analysis_service.converter_service.is_supported_for_conversion.return_value = True
     analysis_service.converter_service.convert_to_pdf.return_value = b"pdf content"

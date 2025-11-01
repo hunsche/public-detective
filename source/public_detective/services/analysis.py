@@ -396,9 +396,7 @@ class AnalysisService:
 
                 if inferred_ext and self.converter_service.is_supported_for_conversion(inferred_ext):
                     try:
-                        converted_content = self.converter_service.convert_to_pdf(
-                            processed_file.content, inferred_ext
-                        )
+                        converted_content = self.converter_service.convert_to_pdf(processed_file.content, inferred_ext)
                         candidate.ai_content = converted_content
                         candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                         candidate.prepared_content_gcs_uris = [candidate.ai_path]
