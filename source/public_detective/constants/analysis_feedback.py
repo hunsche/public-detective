@@ -5,7 +5,9 @@ class ExclusionReason:
     """Provides standardized messages for why a file was excluded from analysis."""
 
     UNSUPPORTED_EXTENSION: str = "Extensão de arquivo não suportada."
-    EXTRACTION_FAILED: str = "Falha ao extrair o arquivo compactado."
+    EXTRACTION_FAILED: str = (
+        "Falha ao extrair o arquivo compactado. O arquivo pode estar corrompido ou protegido por senha."
+    )
     TOKEN_LIMIT_EXCEEDED: str = "Arquivo excluído porque o limite de {max_tokens} tokens foi excedido."
     CONVERSION_FAILED: str = "Falha ao converter o arquivo."
     LOCK_FILE: str = "Arquivo de bloqueio temporário, ignorado pois não contém o documento real."
