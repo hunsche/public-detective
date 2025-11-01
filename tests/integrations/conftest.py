@@ -162,6 +162,7 @@ def db_session() -> Generator[Engine, Any, None]:
 
         lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
         with FileLock(str(lock_path)):
+            command.downgrade(alembic_cfg, "base")
             command.upgrade(alembic_cfg, "head")
 
         with engine.connect() as connection:

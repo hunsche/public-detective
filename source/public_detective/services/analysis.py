@@ -21,6 +21,7 @@ from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
+from public_detective.providers.file_type import FileTypeProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
@@ -53,6 +54,8 @@ class AIFileCandidate(BaseModel):
     warnings: list[str] = Field(default_factory=list)
     file_record_id: UUID | None = None
     extraction_failed: bool = False
+    inferred_extension: str | None = None
+    used_fallback_conversion: bool = False
 
     @model_validator(mode="after")
     def set_ai_defaults(self) -> "AIFileCandidate":
@@ -167,6 +170,7 @@ class AnalysisService:
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
         self.converter_service = ConverterService()
+        self.file_type_provider = FileTypeProvider()
         self.pubsub_provider = pubsub_provider
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
@@ -387,7 +391,28 @@ class AnalysisService:
                 continue
 
             if ext not in self._SUPPORTED_EXTENSIONS:
-                candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
+                inferred_ext = self.file_type_provider.infer_extension(processed_file.content)
+                candidate.inferred_extension = inferred_ext
+
+                if inferred_ext and self.converter_service.is_supported_for_conversion(inferred_ext):
+                    try:
+                        converted_content = self.converter_service.convert_to_pdf(
+                            processed_file.content, inferred_ext
+                        )
+                        candidate.ai_content = converted_content
+                        candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                        candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                        candidate.used_fallback_conversion = True
+                    except Exception as e:
+                        self.logger.error(
+                            f"Fallback conversion failed for {processed_file.relative_path} "
+                            f"(inferred type: {inferred_ext}): {e}",
+                            exc_info=True,
+                        )
+                        candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+                else:
+                    candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
+
                 candidates.append(candidate)
                 continue
 
@@ -596,6 +621,8 @@ class AnalysisService:
                 exclusion_reason=candidate.exclusion_reason,
                 prioritization_logic=self._get_priority_as_string(candidate),
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
+                inferred_extension=candidate.inferred_extension,
+                used_fallback_conversion=candidate.used_fallback_conversion,
             )
             candidate.file_record_id = self.file_record_repo.save_file_record(file_record)
 
