@@ -21,7 +21,7 @@ from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
 from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
-from public_detective.providers.file_type import FileTypeProvider, SPECIALIZED_IMAGE
+from public_detective.providers.file_type import SPECIALIZED_IMAGE, FileTypeProvider
 from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.image_converter import ImageConverterProvider
 from public_detective.providers.logging import Logger, LoggingProvider
@@ -116,13 +116,16 @@ class AnalysisService:
         ".bmp",
         ".html",
         ".xml",
-        ".ai",
-        ".psd",
-        ".eps",
-        ".cdr",
         ".json",
-        ".txt",
         ".md",
+        ".pptx",
+        ".xlsm",
+        ".docm",
+        ".log",
+        ".htm",
+        ".jfif",
+        ".odg",
+        ".tif",
     )
     _VIDEO_EXTENSIONS = (".mp4", ".mov", ".avi", ".mkv")
     _AUDIO_EXTENSIONS = (".mp3", ".wav", ".flac", ".ogg")
@@ -397,29 +400,64 @@ class AnalysisService:
                 candidates.append(candidate)
                 continue
 
+            if self.file_type_provider.get_file_type(ext) == SPECIALIZED_IMAGE:
+                try:
+                    converted_content = self.image_converter_provider.to_png(processed_file.content, ext)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.png"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                except Exception as e:
+                    self.logger.error(
+                        f"Failed to process specialized image {processed_file.relative_path}: {e}", exc_info=True
+                    )
+                    candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+                candidates.append(candidate)
+                continue
+
             if ext not in self._SUPPORTED_EXTENSIONS:
                 inferred_ext = self.file_type_provider.infer_extension(processed_file.content)
                 candidate.inferred_extension = inferred_ext
 
                 if inferred_ext and self.converter_service.is_supported_for_conversion(inferred_ext):
                     try:
+                        self.logger.info(
+                            f"Attempting fallback conversion to PDF for {processed_file.relative_path} "
+                            f"(inferred type: {inferred_ext})"
+                        )
                         converted_content = self.converter_service.convert_to_pdf(processed_file.content, inferred_ext)
                         candidate.ai_content = converted_content
                         candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                         candidate.prepared_content_gcs_uris = [candidate.ai_path]
                         candidate.used_fallback_conversion = True
                     except Exception as e:
-                        self.logger.error(
-                            f"Fallback conversion failed for {processed_file.relative_path} "
-                            f"(inferred type: {inferred_ext}): {e}",
-                            exc_info=True,
+                        self.logger.warning(
+                            f"Fallback conversion to PDF failed for {processed_file.relative_path}. "
+                            f"Attempting secondary fallback to PNG with ImageMagick. Error: {e}",
                         )
-                        candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+                        try:
+                            converted_content = self.image_converter_provider.to_png(
+                                processed_file.content, inferred_ext
+                            )
+                            candidate.ai_content = converted_content
+                            candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.png"
+                            candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                            candidate.used_fallback_conversion = True
+                        except Exception as e2:
+                            self.logger.warning(
+                                f"Secondary fallback conversion to PNG also failed for "
+                                f"{processed_file.relative_path}. Error: {e2}",
+                                exc_info=True,
+                            )
+                            candidate.exclusion_reason = ExclusionReason.CONVERSION_FAILED
+                    candidates.append(candidate)
+                    continue
+                elif inferred_ext in self._SUPPORTED_EXTENSIONS:
+                    ext = inferred_ext
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}{inferred_ext}"
                 else:
                     candidate.exclusion_reason = ExclusionReason.UNSUPPORTED_EXTENSION
-
-                candidates.append(candidate)
-                continue
+                    candidates.append(candidate)
+                    continue
 
             try:
                 if ext == ".docx":
@@ -442,6 +480,26 @@ class AnalysisService:
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".odg":
+                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".pptx":
+                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".xlsm":
+                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                elif ext == ".docm":
+                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                    candidate.ai_content = converted_content
+                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
+                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext == ".bmp":
                     converted_content = self.converter_service.bmp_to_png(processed_file.content)
                     candidate.ai_content = converted_content
@@ -453,13 +511,11 @@ class AnalysisService:
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.mp4"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif self.file_type_provider.get_file_type(ext) == SPECIALIZED_IMAGE:
-                    converted_content = self.image_converter_provider.to_png(
-                        processed_file.content, ext
-                    )
+                    converted_content = self.image_converter_provider.to_png(processed_file.content, ext)
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.png"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
-                elif ext in (".xml", ".json"):
+                elif ext in (".xml", ".json", ".log", ".htm", ".html"):
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.txt"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
                 elif ext in self._SPREADSHEET_EXTENSIONS:
@@ -475,6 +531,9 @@ class AnalysisService:
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
+                else:
+                    if not candidate.prepared_content_gcs_uris:
+                        candidate.prepared_content_gcs_uris = [candidate.ai_path]
 
             except Exception as e:
                 self.logger.error(f"Failed to process file {processed_file.relative_path}: {e}", exc_info=True)

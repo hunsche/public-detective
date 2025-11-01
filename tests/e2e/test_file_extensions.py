@@ -11,7 +11,6 @@ from pathlib import Path
 from typing import Any
 
 import pytest
-from docx import Document
 from PIL import Image
 from public_detective.models.analyses import Analysis
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -58,15 +57,34 @@ def create_doc(path: Path) -> None:
 
 
 def create_docx(path: Path, content: str = "This is a test DOCX file.") -> None:
-    """Creates a simple DOCX file.
-
-    Args:
-        path: The path to the file.
-        content: The content of the file.
-    """
-    document = Document()
-    document.add_paragraph(content)
-    document.save(str(path))
+    """Creates a simple DOCX file using LibreOffice conversion."""
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.rtf"
+        create_rtf(source_path, content)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile.resolve()}",
+            "--convert-to",
+            "docx:MS Word 2007 XML",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create DOCX: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.docx"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected DOCX file.")
+        shutil.copy(generated_path, path)
 
 
 def create_odt(path: Path, content: str = "This is a test ODT file.") -> None:
@@ -331,6 +349,77 @@ def create_media_from_fixture(path: Path, source_filename: str) -> None:
     shutil.copy(fixture_path, path)
 
 
+def create_pptx(path: Path) -> None:
+    """Copies a valid PPTX file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.pptx"
+    shutil.copy(fixture_path, path)
+
+
+def create_xlsm(path: Path) -> None:
+    """Creates a simple XLSM file using LibreOffice conversion."""
+    with tempfile.TemporaryDirectory() as td:
+        tmp_dir = Path(td)
+        source_path = tmp_dir / "input.csv"
+        create_csv(source_path)
+        user_profile = tmp_dir / "lo-profile"
+        user_profile.mkdir(parents=True, exist_ok=True)
+        cmd = [
+            "soffice",
+            "--headless",
+            "--norestore",
+            "--nodefault",
+            "--nolockcheck",
+            "--invisible",
+            f"-env:UserInstallation=file://{user_profile.resolve()}",
+            "--convert-to",
+            "xlsx:Calc MS Excel 2007 XML",
+            "--outdir",
+            str(tmp_dir),
+            str(source_path),
+        ]
+        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
+        if completed.returncode != 0:
+            raise RuntimeError(f"LibreOffice failed to create XLSX for XLSM: {completed.stderr[:500]}")
+        generated_path = tmp_dir / "input.xlsx"
+        if not generated_path.exists():
+            raise RuntimeError("LibreOffice did not generate the expected XLSX file.")
+        shutil.move(generated_path, path)
+
+
+def create_docm(path: Path) -> None:
+    """Copies a valid DOCM file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.docm"
+    shutil.copy(fixture_path, path)
+
+
+def create_odg(path: Path) -> None:
+    """Copies a valid ODG file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.odg"
+    shutil.copy(fixture_path, path)
+
+
+def create_jfif(path: Path) -> None:
+    """Creates a simple JFIF (JPEG) image."""
+    img = Image.new("RGB", (10, 10), color="purple")
+    img.save(path, "jpeg")
+
+
+def create_log(path: Path, content: str = "This is a test log file.") -> None:
+    """Creates a simple log file."""
+    path.write_text(content)
+
+
+def create_htm(path: Path, content: str = "<h1>This is a test HTM file.</h1>") -> None:
+    """Creates a simple HTM file."""
+    path.write_text(content)
+
+
+def create_tif(path: Path) -> None:
+    """Creates a simple TIF image."""
+    img = Image.new("RGB", (10, 10), color="cyan")
+    img.save(path, "tiff")
+
+
 FILE_GENERATORS: dict[str, Callable[..., None]] = {
     ".txt": create_txt,
     ".pdf": create_pdf,
@@ -360,6 +449,14 @@ FILE_GENERATORS: dict[str, Callable[..., None]] = {
     ".flac": lambda p: create_media_from_fixture(p, "valid_test.flac"),
     ".ogg": lambda p: create_media_from_fixture(p, "valid_test.ogg"),
     ".xml": create_xml,
+    ".pptx": create_pptx,
+    ".xlsm": create_xlsm,
+    ".docm": create_docm,
+    ".log": create_log,
+    ".htm": create_htm,
+    ".jfif": create_jfif,
+    ".odg": create_odg,
+    ".tif": create_tif,
 }
 
 SUPPORTED_EXTENSIONS_PARAMS = sorted(set(AnalysisService._SUPPORTED_EXTENSIONS))

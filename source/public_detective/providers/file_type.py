@@ -34,18 +34,28 @@ class FileTypeProvider:
             return None
 
     def get_file_type(self, extension: str) -> str | None:
-        """
-        Returns the file type for the given extension.
+        """Identify the semantic file type for a given extension.
+
+        Args:
+            extension: File extension string including the leading dot.
+
+        Returns:
+            The semantic file type identifier or None when not recognized.
         """
         if self._get_extension_from_filename(extension):
             return SPECIALIZED_IMAGE
         return None
 
     def _get_extension_from_filename(self, extension: str) -> str | None:
+        """Map a filename extension to a semantic file type.
+
+        Args:
+            extension: File extension string including the leading dot.
+
+        Returns:
+            The semantic file type identifier or None when not recognized.
         """
-        Returns the file type for the given extension.
-        """
-        if extension in [".ai", ".psd", ".eps", ".cdr"]:
+        if extension in [".ai", ".psd", ".eps", ".cdr", ".tif"]:
             return SPECIALIZED_IMAGE
         return None
 
