@@ -12,10 +12,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from public_detective.models.enums import ExclusionReason, PrioritizationLogic, Warnings
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import AnalysisResult
-from public_detective.models.file_records import NewFileRecord
+from public_detective.models.file_records import ExclusionReason, NewFileRecord, PrioritizationLogic, Warnings
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
@@ -512,7 +511,9 @@ class AnalysisService:
         for reason, files in excluded_by_reason.items():
             files_str = ", ".join(files)
             if reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED:
-                warnings.append(Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=files_str))
+                warnings.append(
+                    Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=max_tokens, ignored_files=files_str)
+                )
             else:
                 warnings.append(f"Arquivos ignorados por '{reason}': {files_str}")
 

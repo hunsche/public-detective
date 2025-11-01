@@ -98,9 +98,18 @@ def gcs_cleanup_manager(
 
 
 @pytest.fixture(scope="function")
-def gcs_provider() -> GcsProvider:
+def gcs_provider(db_session: Engine) -> GcsProvider:
     """Provides a GCS provider for integration tests."""
-    return GcsProvider()
+    provider = GcsProvider()
+    config = ConfigProvider.get_config()
+    bucket_name = config.GCP_GCS_BUCKET_PROCUREMENTS
+    client = provider.get_client()
+    try:
+        if not client.lookup_bucket(bucket_name):
+            client.create_bucket(bucket_name)
+    except exceptions.NotFound:
+        client.create_bucket(bucket_name)
+    return provider
 
 
 @pytest.fixture(scope="function")

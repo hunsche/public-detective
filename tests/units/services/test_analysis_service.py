@@ -7,9 +7,9 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.constants.analysis_feedback import ExclusionReason, Warnings
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis, AnalysisResult
+from public_detective.models.file_records import ExclusionReason, Warnings
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.repositories.procurements import ProcessedFile
@@ -907,7 +907,7 @@ def test_upload_and_save_initial_records_no_conversion(analysis_service: Analysi
 
 def test_build_analysis_prompt_with_warnings(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
     """Tests that warnings are correctly included in the AI prompt."""
-    warnings = [Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=100, ignored_files="f1.pdf")]
+    warnings = [Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=100, ignored_files="f1.pdf")]
 
     prompt = analysis_service._build_analysis_prompt(mock_procurement, [], warnings)
     assert "--- ATENÇÃO ---" in prompt
