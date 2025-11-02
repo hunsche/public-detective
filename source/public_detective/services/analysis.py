@@ -622,6 +622,7 @@ class AnalysisService:
 
     def _upload_and_save_initial_records(
         self,
+        procurement: Procurement,
         procurement_id: UUID,
         analysis_id: UUID,
         candidates: list[AIFileCandidate],
@@ -634,6 +635,7 @@ class AnalysisService:
         record to the database with `included_in_analysis` set to False.
 
         Args:
+            procurement: The procurement object.
             procurement_id: The database UUID of the procurement.
             analysis_id: The ID of the current analysis.
             candidates: A list of AIFileCandidate objects to upload and save.
@@ -642,7 +644,8 @@ class AnalysisService:
         bucket_name = self.config.GCP_GCS_BUCKET_PROCUREMENTS
         for candidate in candidates:
             source_document_db_id = source_docs_map[candidate.synthetic_id]
-            standard_path = f"{procurement_id}/{analysis_id}/{source_document_db_id}"
+            ibge_code = procurement.entity_unit.ibge_code
+            standard_path = f"{ibge_code}/{procurement_id}/{analysis_id}/{source_document_db_id}"
             base_gcs_path = f"{self.gcs_path_prefix}/{standard_path}" if self.gcs_path_prefix else standard_path
             original_gcs_path = f"{base_gcs_path}/{os.path.basename(candidate.original_path)}"
 
@@ -1132,7 +1135,9 @@ class AnalysisService:
             )
 
             source_docs_map = self._process_and_save_source_documents(analysis_id, all_candidates)
-            self._upload_and_save_initial_records(procurement_id, analysis_id, all_candidates, source_docs_map)
+            self._upload_and_save_initial_records(
+                procurement, procurement_id, analysis_id, all_candidates, source_docs_map
+            )
             self._update_selected_file_records(final_candidates)
 
     def run_ranked_analysis(
