@@ -719,7 +719,13 @@ class AnalysisService:
             doc_type_description = meta.get("tipoDocumentoDescricao", "N/A")
             pub_date = meta.get("dataPublicacaoPncp", "N/A")
 
-            file_list = "\n".join([f"- `{os.path.basename(f.ai_path)}`" for f in files])
+            file_lines = []
+            for f in files:
+                original_filename_note = ""
+                if f.ai_path != f.original_path:
+                    original_filename_note = f" (originalmente `{os.path.basename(f.original_path)}`)"
+                file_lines.append(f"- `{f.ai_path}`{original_filename_note}")
+            file_list = "\n".join(file_lines)
 
             context_part = (
                 f"**Fonte do Documento:** {title} (Tipo: {doc_type} - "
