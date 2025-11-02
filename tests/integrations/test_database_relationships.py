@@ -1,6 +1,6 @@
 """Integration tests for the database schema relationships."""
 
-from public_detective.models.file_records import NewFileRecord
+from public_detective.models.file_records import NewFileRecord, PrioritizationLogic
 from public_detective.models.source_documents import NewSourceDocument
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
@@ -63,7 +63,10 @@ def test_database_relationships(db_session: Engine) -> None:
         nesting_level=0,
         included_in_analysis=True,
         exclusion_reason=None,
-        prioritization_logic="Test logic",
+        prioritization_logic=PrioritizationLogic.NO_PRIORITY,
+        prioritization_keyword=None,
+        token_limit=None,
+        warnings=None,
         prepared_content_gcs_uris=None,
     )
     file_repo.save_file_record(file_record)
