@@ -480,23 +480,8 @@ class AnalysisService:
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]
-                elif ext == ".odg":
-                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
-                    candidate.ai_content = converted_content
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
-                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
-                elif ext == ".pptx":
-                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
-                    candidate.ai_content = converted_content
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
-                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
-                elif ext == ".xlsm":
-                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
-                    candidate.ai_content = converted_content
-                    candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
-                    candidate.prepared_content_gcs_uris = [candidate.ai_path]
-                elif ext == ".docm":
-                    converted_content = self.converter_service.odt_to_pdf(processed_file.content)
+                elif ext in (".odg", ".pptx", ".xlsm", ".docm"):
+                    converted_content = self.converter_service.convert_to_pdf(processed_file.content, ext)
                     candidate.ai_content = converted_content
                     candidate.ai_path = f"{os.path.splitext(processed_file.relative_path)[0]}.pdf"
                     candidate.prepared_content_gcs_uris = [candidate.ai_path]

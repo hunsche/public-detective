@@ -20,7 +20,7 @@ from tests.e2e.test_file_extensions import (
 
 
 @pytest.fixture
-def analysis_service(db_session: Any) -> AnalysisService:
+def analysis_service(db_session: Any) -> AnalysisService:  # noqa: F841
     """Returns a fully initialized AnalysisService."""
     procurement_repo = Mock()
     analysis_repo = Mock()
@@ -151,7 +151,7 @@ def test_prepare_ai_candidates_office_conversion(
     )
 
     # Mock the actual conversion to avoid dependency on LibreOffice in integration tests
-    analysis_service.converter_service.odt_to_pdf = Mock(return_value=b"fake pdf content")
+    analysis_service.converter_service.convert_to_pdf = Mock(return_value=b"fake pdf content")
 
     candidates = analysis_service._prepare_ai_candidates([processed_file])
     candidate = candidates[0]
