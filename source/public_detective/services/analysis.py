@@ -14,7 +14,7 @@ from uuid import UUID
 
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import AnalysisResult
-from public_detective.models.file_records import ExclusionReason, NewFileRecord, PrioritizationLogic, Warnings
+from public_detective.models.file_records import ExclusionReason, NewFileRecord, PrioritizationLogic
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
@@ -51,8 +51,8 @@ class AIFileCandidate(BaseModel):
     prepared_content_gcs_uris: list[str] | None = None
     is_included: bool = False
     exclusion_reason: ExclusionReason | None = None
+    exclusion_reason_args: dict[str, Any] = Field(default_factory=dict)
     applied_token_limit: int | None = None
-    warnings: list[Warnings] = Field(default_factory=list)
     file_record_id: UUID | None = None
     extraction_failed: bool = False
     inferred_extension: str | None = None
@@ -321,7 +321,6 @@ class AnalysisService:
             exts = [rec.get("extension") for rec in included_records]
             modality = self._get_modality_from_exts(exts)
             prompt = analysis_record.analysis_prompt
-            warnings = analysis_record.warnings or []
 
             try:
                 ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
@@ -337,7 +336,6 @@ class AnalysisService:
                     procurement_control_number=control_number,
                     version_number=version_number,
                     ai_analysis=ai_analysis,
-                    warnings=warnings,
                     document_hash=document_hash,
                     original_documents_gcs_path=gcs_base_path,
                     processed_documents_gcs_path=None,
@@ -531,7 +529,7 @@ class AnalysisService:
         self,
         candidates: list[AIFileCandidate],
         procurement: Procurement,
-    ) -> tuple[list[AIFileCandidate], list[str]]:
+    ) -> list[AIFileCandidate]:
         """Selects which files to include based on the AI model's token limit.
 
         Args:
@@ -539,13 +537,12 @@ class AnalysisService:
             procurement: The procurement being analyzed.
 
         Returns:
-            A tuple containing the list of selected candidates and a list of warnings.
+            The list of candidates with updated inclusion status and warnings.
         """
         candidates.sort(key=self._get_priority)
         max_tokens = self.config.GCP_GEMINI_MAX_INPUT_TOKENS
-        warnings = []
 
-        base_prompt_text = self._build_analysis_prompt(procurement, candidates, [])
+        base_prompt_text = self._build_analysis_prompt(procurement, candidates)
         files_for_ai_uris: list[str] = []
         for candidate in candidates:
             if candidate.exclusion_reason:
@@ -560,22 +557,9 @@ class AnalysisService:
             else:
                 candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED
                 candidate.applied_token_limit = max_tokens
+                candidate.exclusion_reason_args = {"max_tokens": max_tokens}
 
-        excluded_by_reason = defaultdict(list)
-        for candidate in candidates:
-            if not candidate.is_included and candidate.exclusion_reason:
-                excluded_by_reason[candidate.exclusion_reason].append(os.path.basename(candidate.original_path))
-
-        for reason, files in excluded_by_reason.items():
-            files_str = ", ".join(files)
-            if reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED:
-                warnings.append(
-                    Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=max_tokens, ignored_files=files_str)
-                )
-            else:
-                warnings.append(f"Arquivos ignorados por '{reason}': {files_str}")
-
-        return candidates, warnings
+        return candidates
 
     def _process_and_save_source_documents(
         self,
@@ -682,7 +666,6 @@ class AnalysisService:
                 prioritization_logic=prioritization_logic,
                 prioritization_keyword=prioritization_keyword,
                 applied_token_limit=candidate.applied_token_limit,
-                warnings=candidate.warnings if candidate.warnings else None,
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
                 inferred_extension=candidate.inferred_extension,
                 used_fallback_conversion=candidate.used_fallback_conversion,
@@ -733,14 +716,12 @@ class AnalysisService:
         self,
         procurement: Procurement,
         candidates: list[AIFileCandidate],
-        warnings: list[str],
     ) -> str:
         """Constructs the prompt for the AI, including contextual warnings.
 
         Args:
             procurement: The procurement to build the prompt for.
             candidates: The list of file candidates for the analysis.
-            warnings: A list of warnings to include in the prompt.
 
         Returns:
             The prompt for the AI.
@@ -770,8 +751,7 @@ class AnalysisService:
 
         source_doc_files = defaultdict(list)
         for candidate in candidates:
-            if candidate.is_included:
-                source_doc_files[candidate.synthetic_id].append(candidate)
+            source_doc_files[candidate.synthetic_id].append(candidate)
 
         document_context_parts = []
         for _source_id, files in source_doc_files.items():
@@ -781,7 +761,25 @@ class AnalysisService:
             doc_type_description = meta.get("tipoDocumentoDescricao", "N/A")
             pub_date = meta.get("dataPublicacaoPncp", "N/A")
 
-            file_list = "\n".join([f"- `{os.path.basename(f.ai_path)}`" for f in files])
+            file_lines = []
+            for file_candidate in files:
+                notes = []
+                if file_candidate.ai_path != file_candidate.original_path:
+                    notes.append(f"originalmente `{file_candidate.original_path}`")
+
+                if file_candidate.exclusion_reason:
+                    warning_message = file_candidate.exclusion_reason.format_message(
+                        **file_candidate.exclusion_reason_args
+                    )
+                    notes.append(f"AVISO: {warning_message}")
+
+                note_str = ""
+                if notes:
+                    note_str = f" ({', '.join(notes)})"
+
+                disposition = "INCLUÍDO" if file_candidate.is_included else "IGNORADO"
+                file_lines.append(f"- `{os.path.basename(file_candidate.ai_path)}` [{disposition}]{note_str}")
+            file_list = "\n".join(file_lines)
 
             context_part = (
                 f"**Fonte do Documento:** {title} (Tipo: {doc_type} - "
@@ -792,22 +790,11 @@ class AnalysisService:
 
         document_context_section = "\n\n---\n\n".join(document_context_parts)
 
-        warnings_section = ""
-        if warnings:
-            warnings_text = "\n- ".join(warnings)
-            warnings_section = f"""
-            --- ATENÇÃO ---
-            Os seguintes problemas foram detectados ao preparar os arquivos.
-            Considere estas limitações em sua análise:
-            - {warnings_text}
-            --- FIM DOS AVISOS ---
-            """
-
         return f"""
         Você é um auditor sênior especializado em licitações públicas no Brasil.
         Sua tarefa é analisar os documentos em anexo para identificar
         possíveis irregularidades no processo de licitação.
-        {warnings_section}
+
         Primeiro, revise os metadados da licitação em formato JSON para obter o
         contexto geral. Em seguida, use a lista de documentos e arquivos para
         entender a origem de cada anexo.
@@ -830,7 +817,6 @@ class AnalysisService:
         3.  Potencial de Sobrepreço (SOBREPRECO)
 
         Após a análise, atribua uma nota de risco de 0 a 10 e forneça uma
-        justificativa detalhada para essa nota (em pt-br).
 
         **Critérios para a Nota de Risco:**
         - **0-2 (Risco Baixo):** Nenhuma irregularidade significativa
@@ -1072,7 +1058,7 @@ class AnalysisService:
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
         all_candidates = self._prepare_ai_candidates(all_original_files)
-        final_candidates, warnings = self._select_files_by_token_limit(all_candidates, procurement)
+        final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
         files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
 
         procurement_content_hash = self._calculate_procurement_hash(procurement, all_original_files)
@@ -1099,7 +1085,7 @@ class AnalysisService:
         if not procurement_id:
             raise AnalysisError(f"Could not find procurement UUID for {procurement.pncp_control_number} v{new_version}")
 
-        prompt = self._build_analysis_prompt(procurement, final_candidates, warnings)
+        prompt = self._build_analysis_prompt(procurement, final_candidates)
         uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
         input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
 
@@ -1122,7 +1108,6 @@ class AnalysisService:
             thinking_cost=thinking_cost,
             total_cost=total_cost,
             analysis_prompt=prompt,
-            warnings=warnings,
         )
 
         correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"

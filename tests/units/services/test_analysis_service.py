@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis, AnalysisResult
-from public_detective.models.file_records import ExclusionReason, PrioritizationLogic, Warnings
+from public_detective.models.file_records import ExclusionReason, PrioritizationLogic
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.repositories.procurements import ProcessedFile
@@ -272,7 +272,6 @@ def test_prepare_ai_candidates_spreadsheet_conversion(
     assert candidate.ai_path == "data.pdf"
     assert candidate.ai_content == b"pdf content"
     assert candidate.prepared_content_gcs_uris == ["data.pdf"]
-    assert not candidate.warnings
 
 
 @patch("public_detective.services.converter.ConverterService.docx_to_pdf", side_effect=Exception("Conversion failed"))
@@ -364,10 +363,9 @@ def test_select_files_by_token_limit_all_fit(mock_build_prompt: MagicMock, analy
         MagicMock(exclusion_reason=None, ai_gcs_uris=["uri2"]),
     ]
 
-    selected, warnings = analysis_service._select_files_by_token_limit(candidates, MagicMock())
+    selected = analysis_service._select_files_by_token_limit(candidates, MagicMock())
 
     assert all(c.is_included for c in selected)
-    assert not warnings
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
@@ -384,12 +382,11 @@ def test_select_files_by_token_limit_some_excluded(
     ]
     analysis_service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 150
 
-    selected, warnings = analysis_service._select_files_by_token_limit(candidates, mock_procurement)
+    selected = analysis_service._select_files_by_token_limit(candidates, mock_procurement)
 
     assert selected[0].is_included
     assert not selected[1].is_included
     assert selected[1].exclusion_reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED
-    assert warnings[0] == Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=150, ignored_files="file2.pdf")
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
@@ -406,7 +403,7 @@ def test_select_files_by_token_limit_prioritization(
     ]
     analysis_service.config.GCP_GEMINI_MAX_INPUT_TOKENS = 150
 
-    selected, warnings = analysis_service._select_files_by_token_limit(candidates, mock_procurement)
+    selected = analysis_service._select_files_by_token_limit(candidates, mock_procurement)
 
     assert selected[0].is_included
     assert not selected[1].is_included
@@ -461,7 +458,6 @@ def test_analyze_procurement_happy_path(analysis_service: AnalysisService, mock_
         spec=AnalysisResult,
         document_hash="testhash",
         analysis_prompt="prompt",
-        warnings=[],
     )
     analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis_record
 
@@ -904,13 +900,96 @@ def test_upload_and_save_initial_records_no_conversion(analysis_service: Analysi
     assert "prepared_content" not in candidate.ai_gcs_uris[0]
 
 
-def test_build_analysis_prompt_with_warnings(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
-    """Tests that warnings are correctly included in the AI prompt."""
-    warnings = [Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=100, ignored_files="f1.pdf")]
+def test_build_analysis_prompt_complex_scenario(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
+    """Tests the prompt generation with a complex scenario including all warning types and nested files."""
+    candidates = [
+        # Included files
+        AIFileCandidate(
+            synthetic_id="doc1",
+            raw_document_metadata={"titulo": "Edital Principal"},
+            original_path="edital.pdf",
+            original_content=b"pdf content",
+            is_included=True,
+            ai_path="edital.pdf",
+        ),
+        AIFileCandidate(
+            synthetic_id="doc1",
+            raw_document_metadata={"titulo": "Edital Principal"},
+            original_path="anexos.zip/planilha.xlsx",
+            original_content=b"xlsx content",
+            is_included=True,
+            ai_path="anexos.zip/planilha.pdf",
+        ),
+        # Ignored files
+        AIFileCandidate(
+            synthetic_id="doc2",
+            raw_document_metadata={"titulo": "Documentos Adicionais"},
+            original_path="documento.unsupported",
+            original_content=b"unsupported content",
+            is_included=False,
+            ai_path="documento.unsupported",
+            exclusion_reason=ExclusionReason.UNSUPPORTED_EXTENSION,
+        ),
+        AIFileCandidate(
+            synthetic_id="doc2",
+            raw_document_metadata={"titulo": "Documentos Adicionais"},
+            original_path="arquivo_corrompido.zip",
+            original_content=b"zip content",
+            is_included=False,
+            ai_path="arquivo_corrompido.zip",
+            exclusion_reason=ExclusionReason.EXTRACTION_FAILED,
+        ),
+        AIFileCandidate(
+            synthetic_id="doc2",
+            raw_document_metadata={"titulo": "Documentos Adicionais"},
+            original_path="documento_muito_grande.pdf",
+            original_content=b"large content",
+            is_included=False,
+            ai_path="documento_muito_grande.pdf",
+            exclusion_reason=ExclusionReason.TOKEN_LIMIT_EXCEEDED,
+            applied_token_limit=8192,
+            exclusion_reason_args={"max_tokens": 8192},
+        ),
+        AIFileCandidate(
+            synthetic_id="doc3",
+            raw_document_metadata={"titulo": "Outros Documentos"},
+            original_path="documento_corrompido.docx",
+            original_content=b"docx content",
+            is_included=False,
+            ai_path="documento_corrompido.docx",
+            exclusion_reason=ExclusionReason.CONVERSION_FAILED,
+        ),
+        AIFileCandidate(
+            synthetic_id="doc3",
+            raw_document_metadata={"titulo": "Outros Documentos"},
+            original_path="~$documento_temporario.docx",
+            original_content=b"lock file content",
+            is_included=False,
+            ai_path="~$documento_temporario.docx",
+            exclusion_reason=ExclusionReason.LOCK_FILE,
+        ),
+        AIFileCandidate(
+            synthetic_id="doc4",
+            raw_document_metadata={"titulo": "Imagens"},
+            original_path="imagem.bmp",
+            original_content=b"bmp content",
+            is_included=True,
+            ai_path="imagem.png",
+        ),
+    ]
 
-    prompt = analysis_service._build_analysis_prompt(mock_procurement, [], warnings)
-    assert "--- ATENÇÃO ---" in prompt
-    assert "limite de 100 tokens foi excedido" in prompt
+    prompt = analysis_service._build_analysis_prompt(mock_procurement, candidates)
+
+    # Assertions to make sure the prompt is correctly formatted
+    assert "originalmente `anexos.zip/planilha.xlsx`" in prompt
+    assert "[IGNORADO] (AVISO: Extensão de arquivo não suportada.)" in prompt
+    assert (
+        "[IGNORADO] (AVISO: Falha ao extrair o arquivo compactado. O arquivo pode estar "
+        "corrompido ou protegido por senha.)" in prompt
+    )
+    assert "[IGNORADO] (AVISO: Arquivo excluído porque o limite de 8192 tokens foi excedido.)" in prompt
+    assert "[IGNORADO] (AVISO: Falha ao converter o arquivo.)" in prompt
+    assert "[IGNORADO] (AVISO: Arquivo de bloqueio temporário, ignorado pois não contém o documento real.)" in prompt
 
 
 def test_build_analysis_prompt_with_included_candidates(analysis_service: AnalysisService) -> None:
@@ -938,7 +1017,7 @@ def test_build_analysis_prompt_with_included_candidates(analysis_service: Analys
     )
     cand.is_included = True
     cand.ai_path = "a.txt"
-    prompt = analysis_service._build_analysis_prompt(mock_procurement, [cand], [])
+    prompt = analysis_service._build_analysis_prompt(mock_procurement, [cand])
     assert "Fonte do Documento" in prompt
     assert "Arquivos extraídos desta fonte" in prompt
 

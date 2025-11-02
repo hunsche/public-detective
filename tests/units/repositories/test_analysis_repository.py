@@ -479,39 +479,6 @@ def test_get_analyses_to_retry_not_found(analysis_repository: AnalysisRepository
     mock_conn.execute.assert_called_once()
 
 
-def test_parse_row_to_model_with_warnings(analysis_repository: AnalysisRepository) -> None:
-    """
-    Should correctly parse a row that includes warnings.
-
-    Args:
-        analysis_repository: The AnalysisRepository instance.
-    """
-    # Arrange
-    columns = [
-        "procurement_control_number",
-        "risk_score",
-        "risk_score_rationale",
-        "red_flags",
-        "warnings",
-        "analysis_prompt",
-    ]
-    row_tuple = (
-        "12345",
-        8,
-        "High risk",
-        "[]",
-        ["Warning 1", "Warning 2"],
-        "Test prompt",
-    )
-
-    # Act
-    result = analysis_repository._parse_row_to_model(row_tuple, columns)
-
-    # Assert
-    assert result is not None
-    assert result.warnings == ["Warning 1", "Warning 2"]
-
-
 @patch("public_detective.repositories.analyses.LoggingProvider")
 def test_update_analysis_status(mock_logging_provider: MagicMock, analysis_repository: AnalysisRepository) -> None:
     """Should execute an UPDATE statement with the correct parameters."""

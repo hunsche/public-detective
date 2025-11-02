@@ -90,7 +90,7 @@ def test_pre_analyze_procurement_existing_hash(mock_dependencies: dict, mock_pro
 
     with (
         patch.object(service, "_prepare_ai_candidates", return_value=[]),
-        patch.object(service, "_select_files_by_token_limit", return_value=([], [])),
+        patch.object(service, "_select_files_by_token_limit", return_value=[]),
         patch.object(service, "logger") as mock_logger,
     ):
         service._pre_analyze_procurement(mock_procurement, {})

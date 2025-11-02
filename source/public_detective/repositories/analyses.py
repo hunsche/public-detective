@@ -66,12 +66,6 @@ class AnalysisRepository:
         else:
             red_flags = red_flags_data
 
-        warnings_data = row_dict.get("warnings")
-        if warnings_data is None:
-            warnings = []
-        else:
-            warnings = warnings_data
-
         try:
             ai_analysis_data = {
                 "risk_score": row_dict.get("risk_score") or 0,
@@ -82,7 +76,6 @@ class AnalysisRepository:
                 "seo_keywords": row_dict.get("seo_keywords") or [],
             }
             row_dict["ai_analysis"] = Analysis.model_validate(ai_analysis_data)
-            row_dict["warnings"] = warnings
             row_dict["retry_count"] = row_dict.get("retry_count", 0)
             row_dict["updated_at"] = row_dict.get("updated_at")
             row_dict["votes_count"] = row_dict.get("votes_count", 0)
@@ -136,7 +129,6 @@ class AnalysisRepository:
                 analysis_summary = :analysis_summary,
                 red_flags = :red_flags,
                 seo_keywords = :seo_keywords,
-                warnings = :warnings,
                 original_documents_gcs_path = :original_documents_gcs_path,
                 processed_documents_gcs_path = :processed_documents_gcs_path,
                 status = :status,
@@ -163,7 +155,6 @@ class AnalysisRepository:
                 else "[]"
             ),
             "seo_keywords": result.ai_analysis.seo_keywords if result.ai_analysis else [],
-            "warnings": result.warnings,
             "document_hash": result.document_hash,
             "original_documents_gcs_path": result.original_documents_gcs_path,
             "processed_documents_gcs_path": result.processed_documents_gcs_path,
@@ -212,7 +203,6 @@ class AnalysisRepository:
                 analysis_summary,
                 red_flags,
                 seo_keywords,
-                warnings,
                 document_hash,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
@@ -262,7 +252,6 @@ class AnalysisRepository:
         thinking_cost: Decimal,
         total_cost: Decimal,
         analysis_prompt: str = "",
-        warnings: list[str] | None = None,
     ) -> UUID:
         """Saves a new, pending analysis record to the database.
 
@@ -284,7 +273,6 @@ class AnalysisRepository:
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
             analysis_prompt: The prompt used for the analysis.
-            warnings: A list of warnings generated during pre-analysis.
 
         Returns:
             The newly created `analysis_id` for the record.
@@ -296,12 +284,12 @@ class AnalysisRepository:
                 procurement_control_number, version_number, status, document_hash,
                 input_tokens_used, output_tokens_used, thinking_tokens_used,
                 cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
-                analysis_prompt, warnings
+                analysis_prompt
             ) VALUES (
                 :procurement_control_number, :version_number, :status, :document_hash,
                 :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
                 :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
-                :analysis_prompt, :warnings
+                :analysis_prompt
             )
             RETURNING analysis_id;
             """
@@ -319,7 +307,6 @@ class AnalysisRepository:
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
             "analysis_prompt": analysis_prompt,
-            "warnings": warnings or [],
         }
         with self.engine.connect() as conn:
             result_proxy = conn.execute(sql, params)
@@ -350,7 +337,6 @@ class AnalysisRepository:
                 analysis_summary,
                 red_flags,
                 seo_keywords,
-                warnings,
                 document_hash,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
@@ -435,7 +421,6 @@ class AnalysisRepository:
                 analysis_summary,
                 red_flags,
                 seo_keywords,
-                warnings,
                 document_hash,
                 original_documents_gcs_path,
                 processed_documents_gcs_path,
@@ -584,7 +569,6 @@ class AnalysisRepository:
                 procurement_analyses.analysis_summary,
                 procurement_analyses.red_flags,
                 procurement_analyses.seo_keywords,
-                procurement_analyses.warnings,
                 procurement_analyses.document_hash,
                 procurement_analyses.original_documents_gcs_path,
                 procurement_analyses.processed_documents_gcs_path,
