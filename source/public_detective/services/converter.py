@@ -24,11 +24,10 @@ class ConverterService:
         ".xls",
         ".xlsb",
         ".ods",
-        ".csv",
-        ".html",
-        ".xml",
-        ".txt",
-        ".md",
+        ".pptx",
+        ".xlsm",
+        ".docm",
+        ".odg",
     }
 
     def __init__(self) -> None:
