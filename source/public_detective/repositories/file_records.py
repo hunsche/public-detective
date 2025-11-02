@@ -47,13 +47,13 @@ class FileRecordsRepository:
             INSERT INTO file_records (
                 source_document_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
-                prioritization_logic, prioritization_keyword, token_limit,
+                prioritization_logic, prioritization_keyword, applied_token_limit,
                 warnings, prepared_content_gcs_uris, inferred_extension,
                 used_fallback_conversion
             ) VALUES (
                 :source_document_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
-                :prioritization_logic, :prioritization_keyword, :token_limit,
+                :prioritization_logic, :prioritization_keyword, :applied_token_limit,
                 :warnings, :prepared_content_gcs_uris, :inferred_extension,
                 :used_fallback_conversion
             ) RETURNING id;
@@ -121,7 +121,7 @@ class FileRecordsRepository:
                 fr.exclusion_reason,
                 fr.prioritization_logic,
                 fr.prioritization_keyword,
-                fr.token_limit,
+                fr.applied_token_limit,
                 fr.warnings,
                 fr.prepared_content_gcs_uris,
                 fr.raw_document_metadata

@@ -148,7 +148,7 @@ class FileRecord(BaseModel):
     exclusion_reason: ExclusionReason | None
     prioritization_logic: PrioritizationLogic
     prioritization_keyword: str | None
-    token_limit: int | None
+    applied_token_limit: int | None
     warnings: list[Warnings] | None
     converted_gcs_paths: list[str] | None = None
     inferred_extension: str | None = None
@@ -173,7 +173,7 @@ class NewFileRecord(BaseModel):
     exclusion_reason: ExclusionReason | None
     prioritization_logic: PrioritizationLogic
     prioritization_keyword: str | None
-    token_limit: int | None
+    applied_token_limit: int | None
     warnings: list[Warnings] | None
     prepared_content_gcs_uris: list[str] | None
     inferred_extension: str | None = None

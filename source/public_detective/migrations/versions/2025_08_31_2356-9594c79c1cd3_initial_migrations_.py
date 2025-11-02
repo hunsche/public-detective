@@ -156,7 +156,7 @@ def upgrade() -> None:
             exclusion_reason {exclusion_reason_type},
             prioritization_logic {prioritization_logic_type} NOT NULL,
             prioritization_keyword TEXT,
-            token_limit INTEGER,
+            applied_token_limit INTEGER,
             warnings {warnings_type}[],
             prepared_content_gcs_uris TEXT[],
             raw_document_metadata JSONB,

@@ -51,7 +51,7 @@ class AIFileCandidate(BaseModel):
     prepared_content_gcs_uris: list[str] | None = None
     is_included: bool = False
     exclusion_reason: ExclusionReason | None = None
-    token_limit: int | None = None
+    applied_token_limit: int | None = None
     warnings: list[Warnings] = Field(default_factory=list)
     file_record_id: UUID | None = None
     extraction_failed: bool = False
@@ -559,7 +559,7 @@ class AnalysisService:
                 candidate.is_included = True
             else:
                 candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED
-                candidate.token_limit = max_tokens
+                candidate.applied_token_limit = max_tokens
 
         excluded_by_reason = defaultdict(list)
         for candidate in candidates:
@@ -681,7 +681,7 @@ class AnalysisService:
                 exclusion_reason=candidate.exclusion_reason,
                 prioritization_logic=prioritization_logic,
                 prioritization_keyword=prioritization_keyword,
-                token_limit=candidate.token_limit,
+                applied_token_limit=candidate.applied_token_limit,
                 warnings=candidate.warnings if candidate.warnings else None,
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
                 inferred_extension=candidate.inferred_extension,

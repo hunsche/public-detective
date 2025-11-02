@@ -41,7 +41,7 @@ def test_save_file_record(repository: FileRecordsRepository) -> None:
         exclusion_reason=None,
         prioritization_logic=PrioritizationLogic.NO_PRIORITY,
         prioritization_keyword=None,
-        token_limit=None,
+        applied_token_limit=None,
         warnings=None,
         prepared_content_gcs_uris=None,
     )

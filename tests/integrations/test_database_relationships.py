@@ -65,7 +65,7 @@ def test_database_relationships(db_session: Engine) -> None:
         exclusion_reason=None,
         prioritization_logic=PrioritizationLogic.NO_PRIORITY,
         prioritization_keyword=None,
-        token_limit=None,
+        applied_token_limit=None,
         warnings=None,
         prepared_content_gcs_uris=None,
     )
