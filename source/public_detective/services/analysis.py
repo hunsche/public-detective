@@ -12,10 +12,9 @@ from decimal import Decimal
 from typing import Any
 from uuid import UUID
 
-from public_detective.constants.analysis_feedback import ExclusionReason, PrioritizationLogic, Warnings
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import AnalysisResult
-from public_detective.models.file_records import NewFileRecord
+from public_detective.models.file_records import ExclusionReason, NewFileRecord, PrioritizationLogic, Warnings
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
 from public_detective.models.procurements import Procurement
 from public_detective.models.source_documents import NewSourceDocument
@@ -51,8 +50,9 @@ class AIFileCandidate(BaseModel):
     ai_gcs_uris: list[str] = Field(default_factory=list)
     prepared_content_gcs_uris: list[str] | None = None
     is_included: bool = False
-    exclusion_reason: str | None = None
-    warnings: list[str] = Field(default_factory=list)
+    exclusion_reason: ExclusionReason | None = None
+    applied_token_limit: int | None = None
+    warnings: list[Warnings] = Field(default_factory=list)
     file_record_id: UUID | None = None
     extraction_failed: bool = False
     inferred_extension: str | None = None
@@ -558,7 +558,8 @@ class AnalysisService:
                 files_for_ai_uris.extend(candidate.ai_gcs_uris)
                 candidate.is_included = True
             else:
-                candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens)
+                candidate.exclusion_reason = ExclusionReason.TOKEN_LIMIT_EXCEEDED
+                candidate.applied_token_limit = max_tokens
 
         excluded_by_reason = defaultdict(list)
         for candidate in candidates:
@@ -568,7 +569,9 @@ class AnalysisService:
         for reason, files in excluded_by_reason.items():
             files_str = ", ".join(files)
             if reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED:
-                warnings.append(Warnings.TOKEN_LIMIT_EXCEEDED.format(max_tokens=max_tokens, ignored_files=files_str))
+                warnings.append(
+                    Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=max_tokens, ignored_files=files_str)
+                )
             else:
                 warnings.append(f"Arquivos ignorados por '{reason}': {files_str}")
 
@@ -666,6 +669,7 @@ class AnalysisService:
             else:
                 candidate.ai_gcs_uris = [f"gs://{bucket_name}/{original_gcs_path}"]
 
+            prioritization_logic, prioritization_keyword = self._get_prioritization_logic(candidate)
             file_record = NewFileRecord(
                 source_document_id=source_document_db_id,
                 file_name=os.path.basename(candidate.original_path),
@@ -675,7 +679,10 @@ class AnalysisService:
                 nesting_level=candidate.original_path.count(os.sep),
                 included_in_analysis=False,
                 exclusion_reason=candidate.exclusion_reason,
-                prioritization_logic=self._get_priority_as_string(candidate),
+                prioritization_logic=prioritization_logic,
+                prioritization_keyword=prioritization_keyword,
+                applied_token_limit=candidate.applied_token_limit,
+                warnings=candidate.warnings if candidate.warnings else None,
                 prepared_content_gcs_uris=candidate.prepared_content_gcs_uris,
                 inferred_extension=candidate.inferred_extension,
                 used_fallback_conversion=candidate.used_fallback_conversion,
@@ -703,27 +710,24 @@ class AnalysisService:
 
         return len(self._FILE_PRIORITY_ORDER)
 
-    def _get_priority_as_string(self, candidate: AIFileCandidate) -> str:
+    def _get_prioritization_logic(self, candidate: AIFileCandidate) -> tuple[PrioritizationLogic, str | None]:
         """Returns the priority keyword found in the file's metadata or path.
 
         Args:
             candidate: The AIFileCandidate to get the priority string for.
 
         Returns:
-            The priority keyword found in the file's metadata or path.
+            A tuple containing the prioritization logic and the keyword found.
         """
         document_type_name = candidate.raw_document_metadata.get("tipoDocumentoNome", "").lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in document_type_name:
-                message: str = PrioritizationLogic.BY_METADATA.format(keyword=keyword)
-                return message
+                return PrioritizationLogic.BY_METADATA, keyword
         path_lower = candidate.original_path.lower()
         for keyword in self._FILE_PRIORITY_ORDER:
             if keyword in path_lower:
-                keyword_message: str = PrioritizationLogic.BY_KEYWORD.format(keyword=keyword)
-                return keyword_message
-        no_priority_message: str = PrioritizationLogic.NO_PRIORITY
-        return no_priority_message
+                return PrioritizationLogic.BY_KEYWORD, keyword
+        return PrioritizationLogic.NO_PRIORITY, None
 
     def _build_analysis_prompt(
         self,

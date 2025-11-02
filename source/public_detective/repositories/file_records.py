@@ -47,18 +47,29 @@ class FileRecordsRepository:
             INSERT INTO file_records (
                 source_document_id, file_name, gcs_path, extension, size_bytes,
                 nesting_level, included_in_analysis, exclusion_reason,
-                prioritization_logic, prepared_content_gcs_uris,
-                inferred_extension, used_fallback_conversion
+                prioritization_logic, prioritization_keyword, applied_token_limit,
+                warnings, prepared_content_gcs_uris, inferred_extension,
+                used_fallback_conversion
             ) VALUES (
                 :source_document_id, :file_name, :gcs_path, :extension, :size_bytes,
                 :nesting_level, :included_in_analysis, :exclusion_reason,
-                :prioritization_logic, :prepared_content_gcs_uris,
-                :inferred_extension, :used_fallback_conversion
+                :prioritization_logic, :prioritization_keyword, :applied_token_limit,
+                :warnings, :prepared_content_gcs_uris, :inferred_extension,
+                :used_fallback_conversion
             ) RETURNING id;
         """
         )
+
+        params = file_record.model_dump()
+        if file_record.exclusion_reason:
+            params["exclusion_reason"] = file_record.exclusion_reason.name
+        if file_record.prioritization_logic:
+            params["prioritization_logic"] = file_record.prioritization_logic.name
+        if file_record.warnings:
+            params["warnings"] = [w.name for w in file_record.warnings]
+
         with self.engine.connect() as conn:
-            record_id: UUID = conn.execute(sql, parameters=file_record.model_dump()).scalar_one()
+            record_id: UUID = conn.execute(sql, parameters=params).scalar_one()
             conn.commit()
             return record_id
 
@@ -109,6 +120,9 @@ class FileRecordsRepository:
                 fr.included_in_analysis,
                 fr.exclusion_reason,
                 fr.prioritization_logic,
+                fr.prioritization_keyword,
+                fr.applied_token_limit,
+                fr.warnings,
                 fr.prepared_content_gcs_uris,
                 fr.raw_document_metadata
             FROM
