@@ -649,10 +649,18 @@ def test_upload_and_save_initial_records_minimal(analysis_service: AnalysisServi
     )
     analysis_service.file_record_repo.save_file_record.return_value = uuid.uuid4()
     source_docs_map = {"s1": uuid.uuid4()}
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.ibge_code = "12345"
 
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-    assert candidate.ai_gcs_uris and candidate.ai_gcs_uris[0].endswith("/file.txt")
+    analysis_service._upload_and_save_initial_records(
+        mock_procurement, procurement_id, analysis_id, [candidate], source_docs_map
+    )
     analysis_service.gcs_provider.upload_file.assert_called()
+    # assertIn is used to check if the ibge_code is in the destination_blob_name
+    # Can't check the full path because of the UUIDs
+    destination_blob_name = analysis_service.gcs_provider.upload_file.call_args[1]["destination_blob_name"]
+    assert "12345/" in destination_blob_name
     analysis_service.file_record_repo.save_file_record.assert_called()
 
 
@@ -671,9 +679,24 @@ def test_upload_and_save_initial_records_with_prepared_single(analysis_service: 
     candidate.prepared_content_gcs_uris = ["document.html"]
     candidate.ai_content = b"<html>ok</html>"
     source_docs_map = {"docY": source_doc_id}
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.ibge_code = "12345"
 
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-    assert candidate.ai_gcs_uris and candidate.ai_gcs_uris[0].endswith("/prepared_content/document.html")
+    analysis_service._upload_and_save_initial_records(
+        mock_procurement, procurement_id, analysis_id, [candidate], source_docs_map
+    )
+
+    # First call is for the original document
+    original_blob_name = analysis_service.gcs_provider.upload_file.call_args_list[0].kwargs["destination_blob_name"]
+    assert "12345/" in original_blob_name
+    assert "document.docx" in original_blob_name
+
+    # Second call is for the prepared document
+    prepared_blob_name = analysis_service.gcs_provider.upload_file.call_args_list[1].kwargs["destination_blob_name"]
+    assert "12345/" in prepared_blob_name
+    assert "prepared_content/document.html" in prepared_blob_name
+
     assert candidate.prepared_content_gcs_uris == candidate.ai_gcs_uris
 
 
@@ -892,12 +915,17 @@ def test_upload_and_save_initial_records_no_conversion(analysis_service: Analysi
         raw_document_metadata={},
     )
     source_docs_map = {"doc1": source_doc_id}
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.ibge_code = "12345"
 
-    analysis_service._upload_and_save_initial_records(procurement_id, analysis_id, [candidate], source_docs_map)
-
-    assert candidate.ai_gcs_uris is not None
-    assert "document.txt" in candidate.ai_gcs_uris[0]
-    assert "prepared_content" not in candidate.ai_gcs_uris[0]
+    analysis_service._upload_and_save_initial_records(
+        mock_procurement, procurement_id, analysis_id, [candidate], source_docs_map
+    )
+    destination_blob_name = analysis_service.gcs_provider.upload_file.call_args[1]["destination_blob_name"]
+    assert "12345/" in destination_blob_name
+    assert "document.txt" in destination_blob_name
+    assert "prepared_content" not in destination_blob_name
 
 
 def test_build_analysis_prompt_complex_scenario(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
