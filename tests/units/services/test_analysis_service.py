@@ -389,9 +389,7 @@ def test_select_files_by_token_limit_some_excluded(
     assert selected[0].is_included
     assert not selected[1].is_included
     assert selected[1].exclusion_reason == ExclusionReason.TOKEN_LIMIT_EXCEEDED
-    assert warnings[0] == Warnings.TOKEN_LIMIT_EXCEEDED.format_message(
-        max_tokens=150, ignored_files="file2.pdf"
-    )
+    assert warnings[0] == Warnings.TOKEN_LIMIT_EXCEEDED.format_message(max_tokens=150, ignored_files="file2.pdf")
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
