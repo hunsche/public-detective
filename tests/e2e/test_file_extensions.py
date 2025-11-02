@@ -356,34 +356,9 @@ def create_pptx(path: Path) -> None:
 
 
 def create_xlsm(path: Path) -> None:
-    """Creates a simple XLSM file using LibreOffice conversion."""
-    with tempfile.TemporaryDirectory() as td:
-        tmp_dir = Path(td)
-        source_path = tmp_dir / "input.csv"
-        create_csv(source_path)
-        user_profile = tmp_dir / "lo-profile"
-        user_profile.mkdir(parents=True, exist_ok=True)
-        cmd = [
-            "soffice",
-            "--headless",
-            "--norestore",
-            "--nodefault",
-            "--nolockcheck",
-            "--invisible",
-            f"-env:UserInstallation=file://{user_profile.resolve()}",
-            "--convert-to",
-            "xlsx:Calc MS Excel 2007 XML",
-            "--outdir",
-            str(tmp_dir),
-            str(source_path),
-        ]
-        completed = subprocess.run(cmd, capture_output=True, text=True, timeout=120)  # nosec B603
-        if completed.returncode != 0:
-            raise RuntimeError(f"LibreOffice failed to create XLSX for XLSM: {completed.stderr[:500]}")
-        generated_path = tmp_dir / "input.xlsx"
-        if not generated_path.exists():
-            raise RuntimeError("LibreOffice did not generate the expected XLSX file.")
-        shutil.move(generated_path, path)
+    """Copies a valid XLSM file from the fixtures directory."""
+    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.xlsm"
+    shutil.copy(fixture_path, path)
 
 
 def create_docm(path: Path) -> None:
