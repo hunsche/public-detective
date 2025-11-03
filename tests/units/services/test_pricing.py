@@ -6,13 +6,13 @@ from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from public_detective.services.pricing_service import Modality, PricingService
+from public_detective.services.pricing import Modality, PricingService
 
 
 @pytest.fixture
 def pricing_service() -> Generator[PricingService, Any, None]:
     """Provides a PricingService instance with a mocked config."""
-    with patch("public_detective.services.pricing_service.ConfigProvider") as mock_provider:
+    with patch("public_detective.services.pricing.ConfigProvider") as mock_provider:
         mock_config = MagicMock()
         # Standard context costs
         mock_config.GCP_GEMINI_TEXT_INPUT_COST = Decimal("0.0035")

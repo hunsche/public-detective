@@ -21,11 +21,11 @@ from public_detective.providers.gcs import GcsProvider
 from public_detective.providers.http import HttpProvider
 from public_detective.providers.pubsub import PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
-from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.budget_ledgers import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcessedFile, ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
-from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.repositories.status_histories import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
