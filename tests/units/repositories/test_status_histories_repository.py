@@ -2,7 +2,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
-from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.repositories.status_histories import StatusHistoryRepository
 
 
 @pytest.fixture

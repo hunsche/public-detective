@@ -27,11 +27,11 @@ from public_detective.providers.http import HttpProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import Message, PubSubProvider
 from public_detective.repositories.analyses import AnalysisRepository
-from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.budget_ledgers import BudgetLedgerRepository
 from public_detective.repositories.file_records import FileRecordsRepository
 from public_detective.repositories.procurements import ProcurementsRepository
 from public_detective.repositories.source_documents import SourceDocumentsRepository
-from public_detective.repositories.status_history import StatusHistoryRepository
+from public_detective.repositories.status_histories import StatusHistoryRepository
 from public_detective.services.analysis import AnalysisService
 from pydantic import ValidationError
 

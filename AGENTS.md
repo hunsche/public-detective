@@ -211,6 +211,11 @@ Integration and E2E tests run on a separate, temporary database schema to ensure
 - **Logging:** Do not use `print()` for logging or debugging in the application code. Always use the `LoggingProvider` to get a logger instance. This ensures that all output is structured, contextual, and can be controlled centrally. `print()` is only acceptable in scripts meant for direct command-line interaction, such as `source/worker/test_analysis_from_db.py`.
 - **Exception Handling:** Service layer methods (`source/services/`) must catch generic exceptions and re-raise them as specific, custom exceptions from the `source/exceptions/` package (e.g., `AnalysisError`). The presentation layers (`cli`, `worker`) are responsible for catching these specific exceptions and handling user-facing feedback (e.g., logging, raising `click.Abort()`).
 
+- **File Naming Conventions:**
+    - **Models (`source/models/`):** Filenames must be **plural** (e.g., `analyses.py`, `procurements.py`), as they define data structures that are often handled as collections.
+    - **Repositories (`source/repositories/`):** Filenames must be **plural** (e.g., `analyses.py`, `procurements.py`), as they manage collections of data entities.
+    - **Services (`source/services/`):** Filenames must be **singular** (e.g., `analysis.py`, `converter.py`), as they provide specific business capabilities. The `_service` suffix in filenames is not allowed.
+
 ### C. Google Gemini API Imports
 **This is a critical project-specific rule. Violation of this rule will lead to incorrect behavior and pipeline failures.**
 

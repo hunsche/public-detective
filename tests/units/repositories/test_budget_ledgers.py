@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 from uuid import uuid4
 
 import pytest
-from public_detective.repositories.budget_ledger import BudgetLedgerRepository
+from public_detective.repositories.budget_ledgers import BudgetLedgerRepository
 
 
 @pytest.fixture
