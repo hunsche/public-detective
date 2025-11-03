@@ -33,6 +33,7 @@ from public_detective.repositories.source_documents import SourceDocumentsReposi
 from public_detective.repositories.status_histories import StatusHistoryRepository
 from public_detective.services.converter import ConverterService
 from public_detective.services.pricing import Modality, PricingService
+from public_detective.services.ranking import RankingService
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
@@ -185,6 +186,9 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
+        self.ranking_service = RankingService(
+            analysis_repo=self.analysis_repo, pricing_service=self.pricing_service
+        )
         self.gcs_path_prefix = gcs_path_prefix
 
     def _get_modality_from_exts(self, extensions: list[str | None]) -> Modality:
@@ -1077,6 +1081,10 @@ class AnalysisService:
         latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
         new_version = latest_version + 1
 
+        procurement = self.ranking_service.calculate_priority(
+            procurement, all_candidates, None
+        )
+
         self.procurement_repo.save_procurement_version(
             procurement=procurement,
             raw_data=raw_data_str,
@@ -1166,7 +1174,26 @@ class AnalysisService:
         self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
         triggered_analyses: list[Any] = []
 
+        # Create a list of tuples with (analysis, procurement) for sorting
+        analyses_with_procurements = []
         for analysis in pending_analyses:
+            procurement = self.procurement_repo.get_procurement_by_id_and_version(
+                analysis.procurement_control_number, analysis.version_number
+            )
+            if procurement and procurement.is_stable:
+                analyses_with_procurements.append((analysis, procurement))
+            elif procurement:
+                self.logger.info(
+                    f"Skipping analysis {analysis.analysis_id} for procurement "
+                    f"{procurement.pncp_control_number} because it is not stable."
+                )
+
+        # Sort by priority_score in descending order
+        analyses_with_procurements.sort(
+            key=lambda x: x[1].priority_score, reverse=True
+        )
+
+        for analysis, procurement in analyses_with_procurements:
             if remaining_budget <= 0:
                 self.logger.info("Budget exhausted. Stopping job.")
                 break
@@ -1194,7 +1221,9 @@ class AnalysisService:
                 continue
 
             self.logger.info(
-                f"Processing analysis {analysis.analysis_id} with " f"estimated cost of {estimated_cost:.2f} BRL."
+                f"Processing analysis {analysis.analysis_id} with "
+                f"priority score {procurement.priority_score} and "
+                f"estimated cost of {estimated_cost:.2f} BRL."
             )
             try:
                 self.run_specific_analysis(analysis.analysis_id)

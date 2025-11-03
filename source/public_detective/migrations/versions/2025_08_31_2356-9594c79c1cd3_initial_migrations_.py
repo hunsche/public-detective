@@ -87,6 +87,12 @@ def upgrade() -> None:
             raw_data JSONB NOT NULL,
             content_hash TEXT,
             votes_count INTEGER NOT NULL DEFAULT 0,
+            quality_score INTEGER,
+            estimated_cost DECIMAL(32, 18),
+            potential_impact_score INTEGER,
+            priority_score INTEGER,
+            is_stable BOOLEAN,
+            last_changed_at TIMESTAMPTZ,
             UNIQUE (pncp_control_number, version_number)
         );
         CREATE TABLE {procurement_analyses_table} (
@@ -199,6 +205,16 @@ def upgrade() -> None:
             ON {procurements_table} (modality_id);
         CREATE INDEX idx_procurements_status_id
             ON {procurements_table} (procurement_status_id);
+        CREATE INDEX idx_procurements_quality_score
+            ON {procurements_table} (quality_score);
+        CREATE INDEX idx_procurements_potential_impact_score
+            ON {procurements_table} (potential_impact_score);
+        CREATE INDEX idx_procurements_priority_score
+            ON {procurements_table} (priority_score);
+        CREATE INDEX idx_procurements_is_stable
+            ON {procurements_table} (is_stable);
+        CREATE INDEX idx_procurements_last_changed_at
+            ON {procurements_table} (last_changed_at);
         -- Indexes for procurement_analyses table
         CREATE INDEX idx_procurement_analyses_procurement_control_number_version
             ON {procurement_analyses_table} (procurement_control_number, version_number);

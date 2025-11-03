@@ -807,6 +807,14 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     proc.procurement_status = "Published"
     proc.total_awarded_value = Decimal("90.00")
     proc.dispute_method = "Online"
+    proc.votes_count = 0
+    proc.last_changed_at = None
+    proc.quality_score = None
+    proc.estimated_cost = None
+    proc.potential_impact_score = None
+    proc.priority_score = None
+    proc.is_stable = None
+    proc.last_update_date = datetime.now(timezone.utc)
 
     mock_legal = MagicMock()
     mock_legal.model_dump.return_value = {}
@@ -826,6 +834,14 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     analysis_service.procurement_repo.get_procurement_by_hash.return_value = None
     analysis_service.procurement_repo.get_latest_version.return_value = 0
     analysis_service.procurement_repo.get_procurement_uuid.return_value = None
+
+    # Mock the analysis look up inside the ranking service to prevent TypeError
+    mock_analysis = MagicMock()
+    mock_analysis.input_tokens_used = 100
+    mock_analysis.output_tokens_used = 0
+    mock_analysis.thinking_tokens_used = 0
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = mock_analysis
+
     with pytest.raises(AnalysisError):
         analysis_service._pre_analyze_procurement(proc, {"x": 1})
 
@@ -1147,9 +1163,34 @@ def test_run_ranked_analysis_zero_vote_budget_exceeded(
 @patch("public_detective.services.analysis.AnalysisService.run_specific_analysis")
 def test_run_ranked_analysis_max_messages(mock_run_specific: MagicMock, analysis_service: AnalysisService) -> None:
     """Tests that the job stops when max_messages is reached."""
-    mock_analysis1 = MagicMock(analysis_id=uuid.uuid4(), total_cost=Decimal("1"), votes_count=1)
-    mock_analysis2 = MagicMock(analysis_id=uuid.uuid4(), total_cost=Decimal("1"), votes_count=1)
+    mock_analysis1 = MagicMock(
+        analysis_id=uuid.uuid4(),
+        total_cost=Decimal("1"),
+        votes_count=1,
+        procurement_control_number="PCN1",
+        version_number=1,
+    )
+    mock_analysis2 = MagicMock(
+        analysis_id=uuid.uuid4(),
+        total_cost=Decimal("1"),
+        votes_count=1,
+        procurement_control_number="PCN2",
+        version_number=1,
+    )
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis1, mock_analysis2]
+
+    # Mock procurements with priority scores to allow sorting
+    mock_proc1 = MagicMock(spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1")
+    mock_proc2 = MagicMock(spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2")
+
+    def get_procurement_side_effect(control_number: str, version: int) -> MagicMock | None:
+        if control_number == "PCN1":
+            return mock_proc1
+        if control_number == "PCN2":
+            return mock_proc2
+        return None
+
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10, max_messages=1

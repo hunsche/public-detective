@@ -250,6 +250,13 @@ class Procurement(BaseModel):
     electronic_process_link: HttpUrl | str | None = Field(None, alias="linkProcessoEletronico")
     in_person_justification: str | None = Field(None, alias="justificativaPresencial")
     budgetary_sources: list = Field([], alias="fontesOrcamentarias")
+    quality_score: int | None = None
+    estimated_cost: Decimal | None = None
+    potential_impact_score: int | None = None
+    priority_score: int | None = None
+    is_stable: bool | None = None
+    last_changed_at: datetime | None = None
+    votes_count: int | None = None
 
 
 class ProcurementListResponse(BaseModel):

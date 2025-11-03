@@ -158,13 +158,17 @@ class ProcurementsRepository:
                 object_description, total_awarded_value, is_srp, procurement_year,
                 procurement_sequence, pncp_publication_date, last_update_date,
                 modality_id, procurement_status_id, total_estimated_value,
-                version_number, raw_data, content_hash
+                version_number, raw_data, content_hash, quality_score,
+                estimated_cost, potential_impact_score, priority_score, is_stable,
+                last_changed_at
             ) VALUES (
                 :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
                 :object_description, :total_awarded_value, :is_srp, :procurement_year,
                 :procurement_sequence, :pncp_publication_date, :last_update_date,
                 :modality_id, :procurement_status_id, :total_estimated_value,
-                :version_number, :raw_data, :content_hash
+                :version_number, :raw_data, :content_hash, :quality_score,
+                :estimated_cost, :potential_impact_score, :priority_score, :is_stable,
+                :last_changed_at
             );
         """
         )
@@ -185,6 +189,12 @@ class ProcurementsRepository:
             "version_number": version_number,
             "raw_data": raw_data,
             "content_hash": content_hash,
+            "quality_score": procurement.quality_score,
+            "estimated_cost": procurement.estimated_cost,
+            "potential_impact_score": procurement.potential_impact_score,
+            "priority_score": procurement.priority_score,
+            "is_stable": procurement.is_stable,
+            "last_changed_at": procurement.last_changed_at,
         }
         with self.engine.connect() as conn:
             conn.execute(sql, params)
