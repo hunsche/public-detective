@@ -1183,7 +1183,7 @@ def test_run_ranked_analysis_max_messages(mock_run_specific: MagicMock, analysis
     mock_proc1 = MagicMock(spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1")
     mock_proc2 = MagicMock(spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2")
 
-    def get_procurement_side_effect(control_number: str, version: int) -> MagicMock | None:
+    def get_procurement_side_effect(control_number: str, _: int) -> MagicMock | None:
         if control_number == "PCN1":
             return mock_proc1
         if control_number == "PCN2":

@@ -1,4 +1,5 @@
 """Unit tests for the RankingService."""
+
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -8,6 +9,7 @@ from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
+
 from source.public_detective.models.procurements import Procurement
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import PricingService
@@ -30,13 +32,9 @@ def mock_pricing_service() -> MagicMock:
 
 
 @pytest.fixture
-def ranking_service(
-    mock_analysis_repo: AnalysisRepository, mock_pricing_service: PricingService
-) -> RankingService:
+def ranking_service(mock_analysis_repo: AnalysisRepository, mock_pricing_service: PricingService) -> RankingService:
     """Provides a RankingService instance with mocked dependencies."""
-    return RankingService(
-        analysis_repo=mock_analysis_repo, pricing_service=mock_pricing_service
-    )
+    return RankingService(analysis_repo=mock_analysis_repo, pricing_service=mock_pricing_service)
 
 
 def test_calculate_priority(ranking_service: RankingService) -> None:
@@ -50,11 +48,10 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     candidates: list[AIFileCandidate] = []
     analysis_id = uuid4()
 
-    with patch.object(
-        ranking_service.analysis_repo, "get_analysis_by_id"
-    ) as mock_get_analysis, patch.object(
-        ranking_service.pricing_service, "calculate"
-    ) as mock_calculate:
+    with (
+        patch.object(ranking_service.analysis_repo, "get_analysis_by_id") as mock_get_analysis,
+        patch.object(ranking_service.pricing_service, "calculate") as mock_calculate,
+    ):
         mock_get_analysis.return_value = MagicMock(input_tokens_used=1000)
         mock_calculate.return_value = (
             Decimal("0.01"),

@@ -59,7 +59,7 @@ services:
       - GCP_PUBSUB_TOPIC_PROCUREMENTS=${GCP_PUBSUB_TOPIC_PROCUREMENTS:-procurements}
       - GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS=${GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS:-procurements-dlq}
       - GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS=${GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS:-procurements-subscription}
-      - GCP_GCS_BUCKET_PROCUREMENTS=${GCP_GCS_BUCKET_PROCUREMENTS:-procurements}
+      - GCP_GCS_BUCKET_PROCUREMENTS=procurements
     command: >
       sh -c "
         echo 'Configuring gcloud CLI...';

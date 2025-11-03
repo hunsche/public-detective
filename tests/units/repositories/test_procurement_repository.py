@@ -591,6 +591,13 @@ def mock_procurement() -> MagicMock:
     procurement.modality = 5
     procurement.procurement_status = 1
     procurement.total_estimated_value = 1200.0
+    procurement.quality_score = 80
+    procurement.estimated_cost = 15.50
+    procurement.potential_impact_score = 60
+    procurement.priority_score = 120
+    procurement.is_stable = True
+    procurement.last_changed_at = date(2023, 1, 1)
+    procurement.votes_count = 5
     return procurement
 
 
