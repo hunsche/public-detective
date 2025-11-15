@@ -129,9 +129,9 @@ tox.ini
 tfplan
 *.tfstate
 *.tfstate.backup
+*.terraform.lock.hcl
 
 # Temporary and CI/CD generated files
-5.30
 tests/.tmp
 .tmp/
-.tmp/
+5.30
