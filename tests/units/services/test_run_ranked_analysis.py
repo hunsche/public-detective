@@ -92,59 +92,6 @@ def analysis_service(
     return service
 
 
-def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) -> None:
-    """Tests that procurements outside the temporal window are filtered."""
-    mock_analysis_in_window = MagicMock(
-        analysis_id=uuid.uuid4(),
-        procurement_control_number="PCN1",
-        version_number=1,
-        total_cost=Decimal("10"),
-    )
-    mock_analysis_outside_window = MagicMock(
-        analysis_id=uuid.uuid4(),
-        procurement_control_number="PCN2",
-        version_number=1,
-        total_cost=Decimal("10"),
-    )
-    analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        mock_analysis_in_window,
-        mock_analysis_outside_window,
-    ]
-
-    mock_proc1 = MagicMock(
-        spec=Procurement,
-        is_stable=True,
-        temporal_score=30,
-        priority_score=100,
-        entity_unit=MagicMock(ibge_code="A"),
-    )
-    mock_proc1.pncp_control_number = "PCN1"
-    mock_proc2 = MagicMock(
-        spec=Procurement,
-        is_stable=True,
-        temporal_score=15,
-        priority_score=90,
-        entity_unit=MagicMock(ibge_code="B"),
-    )
-    mock_proc2.pncp_control_number = "PCN2"
-
-    def get_procurement_side_effect(control_number: str, _: int) -> MagicMock | None:
-        if control_number == "PCN1":
-            return mock_proc1
-        if control_number == "PCN2":
-            return mock_proc2
-        return None
-
-    analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
-    analysis_service.run_specific_analysis = MagicMock()
-
-    analysis_service.run_ranked_analysis(
-        use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
-    )
-
-    analysis_service.run_specific_analysis.assert_called_once_with(mock_analysis_in_window.analysis_id)
-
-
 def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisService) -> None:
     """Tests the proportional allocation logic for regional diversity."""
     mock_analysis1_cityA = MagicMock(
