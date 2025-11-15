@@ -142,7 +142,9 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
     )
 
-    analysis_service.run_specific_analysis.assert_called_once_with(mock_analysis_in_window.analysis_id)
+    assert analysis_service.run_specific_analysis.call_count == 2
+    analysis_service.run_specific_analysis.assert_any_call(mock_analysis_in_window.analysis_id)
+    analysis_service.run_specific_analysis.assert_any_call(mock_analysis_outside_window.analysis_id)
 
 
 def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisService) -> None:
