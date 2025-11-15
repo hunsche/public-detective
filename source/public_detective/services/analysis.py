@@ -1187,14 +1187,6 @@ class AnalysisService:
                 )
                 continue
 
-            if procurement.temporal_score <= self.config.RANKING_TEMPORAL_SCORE_THRESHOLD:
-                self.logger.info(
-                    f"Skipping analysis {analysis.analysis_id} for procurement "
-                    f"{procurement.pncp_control_number} because its temporal_score "
-                    f"({procurement.temporal_score}) is outside the ideal window."
-                )
-                continue
-
             analyses_with_procurements.append((analysis, procurement))
 
         procurements_by_city = defaultdict(list)
