@@ -131,6 +131,7 @@ tfplan
 *.tfstate.backup
 
 # Temporary and CI/CD generated files
+5.30
 tests/.tmp
 .tmp/
 .tmp/
