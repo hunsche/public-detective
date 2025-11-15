@@ -32,7 +32,11 @@ services:
     volumes:
       - pubsub_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "gcloud beta emulators pubsub env-init | grep -q PUBSUB_EMULATOR_HOST"]
+      test:
+        [
+          "CMD-SHELL",
+          "gcloud beta emulators pubsub env-init | grep -q PUBSUB_EMULATOR_HOST",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -46,7 +50,11 @@ services:
     volumes:
       - gcs_data:/data
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider --tries=1 http://localhost:8086/storage/v1/b"]
+      test:
+        [
+          "CMD-SHELL",
+          "wget -q --spider --tries=1 http://localhost:8086/storage/v1/b",
+        ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -59,7 +67,7 @@ services:
       - GCP_PUBSUB_TOPIC_PROCUREMENTS=${GCP_PUBSUB_TOPIC_PROCUREMENTS:-procurements}
       - GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS=${GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS:-procurements-dlq}
       - GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS=${GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS:-procurements-subscription}
-      - GCP_GCS_BUCKET_PROCUREMENTS=procurements
+      - GCP_GCS_BUCKET_PROCUREMENTS=${GCP_GCS_BUCKET_PROCUREMENTS:-procurements}
     command: >
       sh -c "
         echo 'Configuring gcloud CLI...';
@@ -93,7 +101,6 @@ services:
         condition: service_healthy
       gcs:
         condition: service_healthy
-
 
 volumes:
   postgres_data:
