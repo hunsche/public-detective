@@ -186,11 +186,7 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
-        self.ranking_service = RankingService(
-            analysis_repo=self.analysis_repo,
-            pricing_service=self.pricing_service,
-            config=self.config.ranking,
-        )
+        self.ranking_service = RankingService(analysis_repo=self.analysis_repo, pricing_service=self.pricing_service)
         self.gcs_path_prefix = gcs_path_prefix
 
     def _get_modality_from_exts(self, extensions: list[str | None]) -> Modality:
@@ -1179,7 +1175,7 @@ class AnalysisService:
             procurement = self.procurement_repo.get_procurement_by_id_and_version(
                 analysis.procurement_control_number, analysis.version_number
             )
-            if procurement and procurement.is_stable:
+            if procurement and procurement.is_stable and procurement.temporal_score > 10:
                 analyses_with_procurements.append((analysis, procurement))
             elif procurement:
                 self.logger.info(

@@ -257,7 +257,7 @@ class Procurement(BaseModel):
     is_stable: bool | None = None
     last_changed_at: datetime | None = None
     votes_count: int | None = None
-    geographic_scope: str | None = None
+    temporal_score: int | None = None
 
 
 class ProcurementListResponse(BaseModel):
