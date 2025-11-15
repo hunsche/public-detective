@@ -186,7 +186,9 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
-        self.ranking_service = RankingService(analysis_repo=self.analysis_repo, pricing_service=self.pricing_service)
+        self.ranking_service = RankingService(
+            analysis_repo=self.analysis_repo, pricing_service=self.pricing_service, config=self.config
+        )
         self.gcs_path_prefix = gcs_path_prefix
 
     def _get_modality_from_exts(self, extensions: list[str | None]) -> Modality:
