@@ -74,6 +74,21 @@ class Config(BaseSettings):
 
     WORKER_MAX_CONCURRENCY: int = 4
 
+    RANKING_W_IMPACTO: float = 1.5
+    RANKING_W_QUALIDADE: float = 1.0
+    RANKING_W_CUSTO: float = 0.1
+    RANKING_W_VOTOS: float = 0.2
+    RANKING_STABILITY_PERIOD_HOURS: int = 48
+    RANKING_HIGH_IMPACT_KEYWORDS: list[str] = [
+        "saúde",
+        "hospitalar",
+        "educação",
+        "saneamento",
+        "infraestrutura",
+    ]
+    RANKING_TEMPORAL_WINDOW_MIN_DAYS: int = 5
+    RANKING_TEMPORAL_WINDOW_MAX_DAYS: int = 15
+
     @model_validator(mode="after")
     def set_derived_pubsub_names(self) -> "Config":
         """Dynamically sets the DLQ topic and subscription names.

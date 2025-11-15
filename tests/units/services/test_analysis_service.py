@@ -800,8 +800,8 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     proc.object_description = "Test Description"
     proc.modality = "Pregão"
     proc.total_estimated_value = Decimal("100.00")
-    proc.proposal_opening_date = datetime.now()
-    proc.proposal_closing_date = datetime.now()
+    proc.proposal_opening_date = datetime.now(timezone.utc)
+    proc.proposal_closing_date = datetime.now(timezone.utc)
     proc.process_number = "123/2024"
     proc.is_srp = False
     proc.procurement_status = "Published"
@@ -815,6 +815,7 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     proc.priority_score = None
     proc.is_stable = None
     proc.last_update_date = datetime.now(timezone.utc)
+    proc.temporal_score = 100
 
     mock_legal = MagicMock()
     mock_legal.model_dump.return_value = {}
@@ -859,6 +860,9 @@ def test_run_ranked_analysis_and_skips(analysis_service: AnalysisService) -> Non
     analysis.version_number = 1
     analysis.analysis_id = uuid.uuid4()
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis]
+    # Mock the procurement object to include temporal_score
+    mock_procurement = MagicMock(spec=Procurement, temporal_score=100, is_stable=True, priority_score=100)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
     res = analysis_service.run_ranked_analysis(False, None, 50, budget=Decimal("10"))
     assert res == []
 
@@ -1114,7 +1118,13 @@ def test_run_ranked_analysis_manual_budget(mock_run_specific: MagicMock, analysi
     mock_analysis.analysis_id = uuid.uuid4()
     mock_analysis.total_cost = Decimal("10")
     mock_analysis.votes_count = 1
+    mock_analysis.procurement_control_number = "PCN-1"
+    mock_analysis.version_number = 1
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+
+    # Mock the procurement object to include temporal_score
+    mock_procurement = MagicMock(spec=Procurement, temporal_score=100, is_stable=True, priority_score=100)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("15"), budget_period=None, zero_vote_budget_percent=10
@@ -1131,7 +1141,13 @@ def test_run_ranked_analysis_budget_exceeded(
     mock_analysis = MagicMock()
     mock_analysis.analysis_id = uuid.uuid4()
     mock_analysis.total_cost = Decimal("20")
+    mock_analysis.procurement_control_number = "PCN-1"
+    mock_analysis.version_number = 1
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+
+    # Mock the procurement object to include temporal_score
+    mock_procurement = MagicMock(spec=Procurement, temporal_score=100, is_stable=True, priority_score=100)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("15"), budget_period=None, zero_vote_budget_percent=10
@@ -1150,7 +1166,13 @@ def test_run_ranked_analysis_zero_vote_budget_exceeded(
     mock_analysis.analysis_id = uuid.uuid4()
     mock_analysis.total_cost = Decimal("10")
     mock_analysis.votes_count = 0
+    mock_analysis.procurement_control_number = "PCN-1"
+    mock_analysis.version_number = 1
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+
+    # Mock the procurement object to include temporal_score
+    mock_procurement = MagicMock(spec=Procurement, temporal_score=100, is_stable=True, priority_score=100)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=5
@@ -1180,8 +1202,12 @@ def test_run_ranked_analysis_max_messages(mock_run_specific: MagicMock, analysis
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis1, mock_analysis2]
 
     # Mock procurements with priority scores to allow sorting
-    mock_proc1 = MagicMock(spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1")
-    mock_proc2 = MagicMock(spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2")
+    mock_proc1 = MagicMock(
+        spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1", temporal_score=100
+    )
+    mock_proc2 = MagicMock(
+        spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2", temporal_score=100
+    )
 
     def get_procurement_side_effect(control_number: str, _: int) -> MagicMock | None:
         if control_number == "PCN1":
@@ -1349,7 +1375,13 @@ def test_run_ranked_analysis_zero_vote_happy(mock_run_specific: MagicMock, analy
     mock_analysis.analysis_id = uuid.uuid4()
     mock_analysis.total_cost = Decimal("5")
     mock_analysis.votes_count = 0
+    mock_analysis.procurement_control_number = "PCN-1"
+    mock_analysis.version_number = 1
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+
+    # Mock the procurement object to include temporal_score
+    mock_procurement = MagicMock(spec=Procurement, temporal_score=100, is_stable=True, priority_score=100)
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = mock_procurement
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10

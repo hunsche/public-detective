@@ -44,6 +44,7 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     procurement.object_description = "serviços de saúde"
     procurement.votes_count = 10
     procurement.last_update_date = datetime.now(timezone.utc) - timedelta(days=3)
+    procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=10)
 
     candidates: list[AIFileCandidate] = []
     analysis_id = uuid4()
@@ -68,3 +69,4 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     assert result.priority_score is not None
     assert result.is_stable is not None
     assert result.last_changed_at is not None
+    assert result.temporal_score is not None

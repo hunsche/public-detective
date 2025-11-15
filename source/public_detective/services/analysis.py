@@ -1175,7 +1175,7 @@ class AnalysisService:
             procurement = self.procurement_repo.get_procurement_by_id_and_version(
                 analysis.procurement_control_number, analysis.version_number
             )
-            if procurement and procurement.is_stable:
+            if procurement and procurement.is_stable and procurement.temporal_score > 10:
                 analyses_with_procurements.append((analysis, procurement))
             elif procurement:
                 self.logger.info(
