@@ -5,15 +5,16 @@ It is responsible for scoring and prioritizing procurements.
 
 from __future__ import annotations
 
-import math
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import numpy as np
+
 from source.public_detective.models.file_records import ExclusionReason
 from source.public_detective.models.procurements import Procurement
-from source.public_detective.providers.config import Config, ConfigProvider
+from source.public_detective.providers.config import Config
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import Modality, PricingService
 
@@ -32,16 +33,18 @@ class RankingService:
         self,
         analysis_repo: AnalysisRepository,
         pricing_service: PricingService,
+        config: Config,
     ) -> None:
         """Initializes the service with its dependencies.
 
         Args:
             analysis_repo: The repository for analysis data.
             pricing_service: The service for calculating costs.
+            config: The application configuration object.
         """
         self.analysis_repo = analysis_repo
         self.pricing_service = pricing_service
-        self.config = ConfigProvider.get_config()
+        self.config = config
 
     def calculate_priority(
         self,
@@ -61,21 +64,19 @@ class RankingService:
         """
         quality_score = self._calculate_quality_score(candidates)
         estimated_cost = self._calculate_estimated_cost(analysis_id)
-        potential_impact_score = self._calculate_potential_impact_score(procurement)
+        urgency_score = self._calculate_urgency_score(procurement)
+        federal_bonus_score = self._calculate_federal_bonus_score(procurement)
+        potential_impact_score = self._calculate_potential_impact_score(procurement, urgency_score, federal_bonus_score)
         is_stable = self._is_stable(procurement)
 
         vote_count = procurement.votes_count or 0
-        if vote_count > 0:
-            vote_factor = 1 + self.config.RANKING_W_VOTOS * math.log(vote_count + 1)
-        else:
-            vote_factor = 1
-
-        impacto_ajustado = potential_impact_score * vote_factor
+        vote_factor = np.log1p(vote_count)
+        impacto_ajustado = potential_impact_score * (1 + self.config.RANKING_W_VOTES * vote_factor)
 
         priority_score = (
-            (self.config.RANKING_W_IMPACTO * impacto_ajustado)
-            + (self.config.RANKING_W_QUALIDADE * quality_score)
-            - (self.config.RANKING_W_CUSTO * float(estimated_cost))
+            (self.config.RANKING_W_IMPACT * impacto_ajustado)
+            + (self.config.RANKING_W_QUALITY * quality_score)
+            - (self.config.RANKING_W_COST * float(estimated_cost))
         )
 
         procurement.quality_score = quality_score
@@ -84,34 +85,10 @@ class RankingService:
         procurement.priority_score = int(priority_score)
         procurement.is_stable = is_stable
         procurement.last_changed_at = procurement.last_update_date
-        procurement.temporal_score = self._calculate_temporal_score(procurement)
+        procurement.urgency_score = urgency_score
+        procurement.federal_bonus_score = federal_bonus_score
 
         return procurement
-
-    def _calculate_temporal_score(self, procurement: Procurement) -> int:
-        """Calculates the temporal score based on the proposal closing date.
-
-        Args:
-            procurement: The procurement to be scored.
-
-        Returns:
-            An integer score from 0 to 100.
-        """
-        if not procurement.proposal_closing_date:
-            return 0
-
-        now = datetime.now(timezone.utc)
-        days_until_closing = (procurement.proposal_closing_date - now).days
-
-        min_days = self.config.RANKING_TEMPORAL_WINDOW_MIN_DAYS
-        max_days = self.config.RANKING_TEMPORAL_WINDOW_MAX_DAYS
-
-        if min_days <= days_until_closing <= max_days:
-            return 100
-        elif days_until_closing < min_days:
-            return 50
-        else:
-            return 10
 
     def _calculate_quality_score(self, candidates: list[AIFileCandidate]) -> int:
         """Calculates the quality score based on file information.
@@ -167,11 +144,15 @@ class RankingService:
         _, _, _, total_cost = self.pricing_service.calculate(analysis.input_tokens_used, 0, 0, modality=Modality.TEXT)
         return total_cost
 
-    def _calculate_potential_impact_score(self, procurement: Procurement) -> int:
+    def _calculate_potential_impact_score(
+        self, procurement: Procurement, urgency_score: int, federal_bonus_score: int
+    ) -> int:
         """Calculates the potential impact score based on metadata.
 
         Args:
             procurement: The procurement to be scored.
+            urgency_score: The pre-calculated urgency score.
+            federal_bonus_score: The pre-calculated federal bonus score.
 
         Returns:
             An integer score from 0 to 100.
@@ -188,6 +169,9 @@ class RankingService:
             if keyword in procurement.object_description.lower():
                 score += 20
 
+        score += urgency_score
+        score += federal_bonus_score
+
         return min(score, 100)
 
     def _is_stable(self, procurement: Procurement) -> bool:
@@ -203,3 +187,35 @@ class RankingService:
         last_updated = procurement.last_update_date.astimezone(timezone.utc)
         quarantine_period = timedelta(hours=self.config.RANKING_STABILITY_PERIOD_HOURS)
         return now - last_updated > quarantine_period
+
+    def _calculate_urgency_score(self, procurement: Procurement) -> int:
+        """Calculates the urgency score based on the proposal opening date.
+
+        Args:
+            procurement: The procurement to check.
+
+        Returns:
+            An integer score from 0 to 30.
+        """
+        if not procurement.proposal_opening_date:
+            return 0
+
+        now = datetime.now(timezone.utc)
+        time_to_opening = procurement.proposal_opening_date.astimezone(timezone.utc) - now
+
+        if timedelta(days=5) <= time_to_opening < timedelta(days=15):
+            return 30
+        if timedelta(days=1) <= time_to_opening < timedelta(days=5):
+            return 15
+        return 0
+
+    def _calculate_federal_bonus_score(self, procurement: Procurement) -> int:
+        """Calculates a bonus score for federal-level procurements.
+
+        Args:
+            procurement: The procurement to check.
+
+        Returns:
+            An integer score of 20 for federal procurements, otherwise 0.
+        """
+        return 20 if procurement.government_entity.sphere == "F" else 0

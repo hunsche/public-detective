@@ -257,7 +257,8 @@ class Procurement(BaseModel):
     is_stable: bool | None = None
     last_changed_at: datetime | None = None
     votes_count: int | None = None
-    temporal_score: int | None = None
+    urgency_score: int | None = None
+    federal_bonus_score: int | None = None
 
 
 class ProcurementListResponse(BaseModel):
