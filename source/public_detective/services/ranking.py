@@ -10,8 +10,11 @@ from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
+import numpy as np
+
 from source.public_detective.models.file_records import ExclusionReason
 from source.public_detective.models.procurements import Procurement
+from source.public_detective.providers.config import Config
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import Modality, PricingService
 
@@ -24,35 +27,24 @@ class RankingService:
 
     analysis_repo: AnalysisRepository
     pricing_service: PricingService
-
-    W_IMPACTO = 1.5
-    W_QUALIDADE = 1.0
-    W_CUSTO = 0.1
-    W_VOTOS = 0.2
-
-    STABILITY_PERIOD_HOURS = 48
-
-    HIGH_IMPACT_KEYWORDS = [
-        "saúde",
-        "hospitalar",
-        "educação",
-        "saneamento",
-        "infraestrutura",
-    ]
+    config: Config
 
     def __init__(
         self,
         analysis_repo: AnalysisRepository,
         pricing_service: PricingService,
+        config: Config,
     ) -> None:
         """Initializes the service with its dependencies.
 
         Args:
             analysis_repo: The repository for analysis data.
             pricing_service: The service for calculating costs.
+            config: The application configuration object.
         """
         self.analysis_repo = analysis_repo
         self.pricing_service = pricing_service
+        self.config = config
 
     def calculate_priority(
         self,
@@ -72,16 +64,21 @@ class RankingService:
         """
         quality_score = self._calculate_quality_score(candidates)
         estimated_cost = self._calculate_estimated_cost(analysis_id)
-        potential_impact_score = self._calculate_potential_impact_score(procurement)
+        temporal_score = self._calculate_temporal_score(procurement)
+        federal_bonus_score = self._calculate_federal_bonus_score(procurement)
+        potential_impact_score = self._calculate_potential_impact_score(
+            procurement, temporal_score, federal_bonus_score
+        )
         is_stable = self._is_stable(procurement)
 
         vote_count = procurement.votes_count or 0
-        impacto_ajustado = potential_impact_score * (1 + self.W_VOTOS * vote_count)
+        vote_factor = np.log1p(vote_count)
+        impacto_ajustado = potential_impact_score * (1 + self.config.RANKING_W_VOTES * vote_factor)
 
         priority_score = (
-            (self.W_IMPACTO * impacto_ajustado)
-            + (self.W_QUALIDADE * quality_score)
-            - (self.W_CUSTO * float(estimated_cost))
+            (self.config.RANKING_W_IMPACT * impacto_ajustado)
+            + (self.config.RANKING_W_QUALITY * quality_score)
+            - (self.config.RANKING_W_COST * float(estimated_cost))
         )
 
         procurement.quality_score = quality_score
@@ -90,6 +87,8 @@ class RankingService:
         procurement.priority_score = int(priority_score)
         procurement.is_stable = is_stable
         procurement.last_changed_at = procurement.last_update_date
+        procurement.temporal_score = temporal_score
+        procurement.federal_bonus_score = federal_bonus_score
 
         return procurement
 
@@ -147,11 +146,15 @@ class RankingService:
         _, _, _, total_cost = self.pricing_service.calculate(analysis.input_tokens_used, 0, 0, modality=Modality.TEXT)
         return total_cost
 
-    def _calculate_potential_impact_score(self, procurement: Procurement) -> int:
+    def _calculate_potential_impact_score(
+        self, procurement: Procurement, temporal_score: int, federal_bonus_score: int
+    ) -> int:
         """Calculates the potential impact score based on metadata.
 
         Args:
             procurement: The procurement to be scored.
+            temporal_score: The pre-calculated temporal score.
+            federal_bonus_score: The pre-calculated federal bonus score.
 
         Returns:
             An integer score from 0 to 100.
@@ -164,9 +167,12 @@ class RankingService:
             elif procurement.total_estimated_value > 100_000:
                 score += 25
 
-        for keyword in self.HIGH_IMPACT_KEYWORDS:
+        for keyword in self.config.RANKING_HIGH_IMPACT_KEYWORDS:
             if keyword in procurement.object_description.lower():
                 score += 20
+
+        score += temporal_score
+        score += federal_bonus_score
 
         return min(score, 100)
 
@@ -181,5 +187,37 @@ class RankingService:
         """
         now = datetime.now(timezone.utc)
         last_updated = procurement.last_update_date.astimezone(timezone.utc)
-        quarantine_period = timedelta(hours=self.STABILITY_PERIOD_HOURS)
+        quarantine_period = timedelta(hours=self.config.RANKING_STABILITY_PERIOD_HOURS)
         return now - last_updated > quarantine_period
+
+    def _calculate_temporal_score(self, procurement: Procurement) -> int:
+        """Calculates the temporal score based on the proposal closing date.
+
+        Args:
+            procurement: The procurement to check.
+
+        Returns:
+            An integer score from 0 to 30.
+        """
+        if not procurement.proposal_closing_date:
+            return 0
+
+        now = datetime.now(timezone.utc)
+        time_to_closing = procurement.proposal_closing_date.astimezone(timezone.utc) - now
+
+        if timedelta(days=5) <= time_to_closing < timedelta(days=15):
+            return 30
+        if timedelta(days=0) <= time_to_closing < timedelta(days=5):
+            return 15
+        return 0
+
+    def _calculate_federal_bonus_score(self, procurement: Procurement) -> int:
+        """Calculates a bonus score for federal-level procurements.
+
+        Args:
+            procurement: The procurement to check.
+
+        Returns:
+            An integer score of 20 for federal procurements, otherwise 0.
+        """
+        return 20 if procurement.government_entity.sphere == "F" else 0

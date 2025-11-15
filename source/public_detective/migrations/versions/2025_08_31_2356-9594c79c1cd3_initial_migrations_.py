@@ -93,6 +93,8 @@ def upgrade() -> None:
             priority_score INTEGER,
             is_stable BOOLEAN,
             last_changed_at TIMESTAMPTZ,
+            temporal_score INTEGER,
+            federal_bonus_score INTEGER,
             UNIQUE (pncp_control_number, version_number)
         );
         CREATE TABLE {procurement_analyses_table} (
@@ -215,6 +217,10 @@ def upgrade() -> None:
             ON {procurements_table} (is_stable);
         CREATE INDEX idx_procurements_last_changed_at
             ON {procurements_table} (last_changed_at);
+        CREATE INDEX idx_procurements_temporal_score
+            ON {procurements_table} (temporal_score);
+        CREATE INDEX idx_procurements_federal_bonus_score
+            ON {procurements_table} (federal_bonus_score);
         -- Indexes for procurement_analyses table
         CREATE INDEX idx_procurement_analyses_procurement_control_number_version
             ON {procurement_analyses_table} (procurement_control_number, version_number);

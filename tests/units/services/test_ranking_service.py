@@ -11,6 +11,7 @@ from uuid import uuid4
 import pytest
 
 from source.public_detective.models.procurements import Procurement
+from source.public_detective.providers.config import ConfigProvider
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import PricingService
 from source.public_detective.services.ranking import RankingService
@@ -34,7 +35,8 @@ def mock_pricing_service() -> MagicMock:
 @pytest.fixture
 def ranking_service(mock_analysis_repo: AnalysisRepository, mock_pricing_service: PricingService) -> RankingService:
     """Provides a RankingService instance with mocked dependencies."""
-    return RankingService(analysis_repo=mock_analysis_repo, pricing_service=mock_pricing_service)
+    config = ConfigProvider.get_config()
+    return RankingService(analysis_repo=mock_analysis_repo, pricing_service=mock_pricing_service, config=config)
 
 
 def test_calculate_priority(ranking_service: RankingService) -> None:
@@ -44,6 +46,8 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     procurement.object_description = "serviços de saúde"
     procurement.votes_count = 10
     procurement.last_update_date = datetime.now(timezone.utc) - timedelta(days=3)
+    procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=10)
+    procurement.government_entity = MagicMock(sphere="M")
 
     candidates: list[AIFileCandidate] = []
     analysis_id = uuid4()
@@ -68,3 +72,43 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     assert result.priority_score is not None
     assert result.is_stable is not None
     assert result.last_changed_at is not None
+    assert result.temporal_score is not None
+    assert result.federal_bonus_score is not None
+
+
+def test_calculate_temporal_score(ranking_service: RankingService) -> None:
+    """Tests the _calculate_temporal_score method."""
+    procurement = MagicMock(spec=Procurement)
+
+    # Test case 1: Ideal window (5-15 days)
+    procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=10)
+    assert ranking_service._calculate_temporal_score(procurement) == 30
+
+    # Test case 2: Close window (0-5 days)
+    procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=3)
+    assert ranking_service._calculate_temporal_score(procurement) == 15
+
+    # Test case 3: Outside window (<0 or >15 days)
+    procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=20)
+    assert ranking_service._calculate_temporal_score(procurement) == 0
+    procurement.proposal_closing_date = datetime.now(timezone.utc) - timedelta(days=1)
+    assert ranking_service._calculate_temporal_score(procurement) == 0
+
+    # Test case 4: No closing date
+    procurement.proposal_closing_date = None
+    assert ranking_service._calculate_temporal_score(procurement) == 0
+
+
+def test_calculate_federal_bonus_score(ranking_service: RankingService) -> None:
+    """Tests the _calculate_federal_bonus_score method."""
+    procurement = MagicMock(spec=Procurement)
+
+    # Test case 1: Federal entity
+    procurement.government_entity = MagicMock(sphere="F")
+    assert ranking_service._calculate_federal_bonus_score(procurement) == 20
+
+    # Test case 2: Non-federal entity
+    procurement.government_entity = MagicMock(sphere="E")
+    assert ranking_service._calculate_federal_bonus_score(procurement) == 0
+    procurement.government_entity = MagicMock(sphere="M")
+    assert ranking_service._calculate_federal_bonus_score(procurement) == 0

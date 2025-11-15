@@ -186,7 +186,9 @@ class AnalysisService:
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.pricing_service = PricingService()
-        self.ranking_service = RankingService(analysis_repo=self.analysis_repo, pricing_service=self.pricing_service)
+        self.ranking_service = RankingService(
+            analysis_repo=self.analysis_repo, pricing_service=self.pricing_service, config=self.config
+        )
         self.gcs_path_prefix = gcs_path_prefix
 
     def _get_modality_from_exts(self, extensions: list[str | None]) -> Modality:
@@ -1175,17 +1177,41 @@ class AnalysisService:
             procurement = self.procurement_repo.get_procurement_by_id_and_version(
                 analysis.procurement_control_number, analysis.version_number
             )
-            if procurement and procurement.is_stable:
-                analyses_with_procurements.append((analysis, procurement))
-            elif procurement:
+            if not procurement:
+                continue
+
+            if not procurement.is_stable:
                 self.logger.info(
                     f"Skipping analysis {analysis.analysis_id} for procurement "
                     f"{procurement.pncp_control_number} because it is not stable."
                 )
+                continue
+
+            if procurement.temporal_score <= 15:
+                self.logger.info(
+                    f"Skipping analysis {analysis.analysis_id} for procurement "
+                    f"{procurement.pncp_control_number} because its temporal_score "
+                    f"({procurement.temporal_score}) is outside the ideal window."
+                )
+                continue
+
+            analyses_with_procurements.append((analysis, procurement))
 
         analyses_with_procurements.sort(key=lambda x: x[1].priority_score, reverse=True)
 
+        procurements_by_city = defaultdict(list)
         for analysis, procurement in analyses_with_procurements:
+            procurements_by_city[procurement.entity_unit.ibge_code].append((analysis, procurement))
+
+        sorted_cities = sorted(procurements_by_city.keys(), key=lambda k: len(procurements_by_city[k]), reverse=True)
+
+        processed_procurements = []
+        while any(procurements_by_city.values()):
+            for city_code in sorted_cities:
+                if procurements_by_city[city_code]:
+                    processed_procurements.append(procurements_by_city[city_code].pop(0))
+
+        for analysis, procurement in processed_procurements:
             if remaining_budget <= 0:
                 self.logger.info("Budget exhausted. Stopping job.")
                 break
