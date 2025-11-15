@@ -1131,6 +1131,39 @@ class AnalysisService:
             )
             self._update_selected_file_records(final_candidates)
 
+    def _apply_city_allocation(
+        self, analyses_with_procurements: list[tuple[Any, Any]], max_messages: int | None
+    ) -> list[tuple[Any, Any]]:
+        """Applies city-based allocation to a list of procurements.
+
+        Args:
+            analyses_with_procurements: A list of tuples (analysis, procurement).
+            max_messages: The maximum number of messages to consider for allocation.
+
+        Returns:
+            A list of procurements after applying the allocation logic.
+        """
+        if not analyses_with_procurements:
+            return []
+
+        procurements_by_city: dict[Any, list[tuple[Any, Any]]] = defaultdict(list)
+        for analysis, procurement in analyses_with_procurements:
+            procurements_by_city[procurement.entity_unit.ibge_code].append((analysis, procurement))
+
+        total_eligible = len(analyses_with_procurements)
+        city_allocations = {
+            city_code: round(len(procurements) / total_eligible * (max_messages or total_eligible))
+            for city_code, procurements in procurements_by_city.items()
+        }
+
+        processed_procurements = []
+        for city_code, allocation in city_allocations.items():
+            processed_procurements.extend(
+                sorted(procurements_by_city[city_code], key=lambda x: x[1].priority_score, reverse=True)[:allocation]
+            )
+
+        return processed_procurements
+
     def run_ranked_analysis(
         self,
         use_auto_budget: bool,
@@ -1138,6 +1171,7 @@ class AnalysisService:
         zero_vote_budget_percent: int,
         budget: Decimal | None = None,
         max_messages: int | None = None,
+        temporal_score_threshold: int | None = None,
     ) -> list[Any]:
         """Runs the ranked analysis job.
 
@@ -1147,6 +1181,7 @@ class AnalysisService:
             zero_vote_budget_percent: The percentage of the budget to use for zero-vote analyses.
             budget: The manual budget to use.
             max_messages: The maximum number of messages to publish.
+            temporal_score_threshold: The minimum temporal score to be included.
 
         Returns:
             A list of analyses that were triggered.
@@ -1172,98 +1207,79 @@ class AnalysisService:
         self.logger.info(f"Found {len(pending_analyses)} pending analyses.")
         triggered_analyses: list[Any] = []
 
-        analyses_with_procurements = []
+        active_procurements = []
+        historical_procurements = []
+        is_explicit_historical_run = temporal_score_threshold is not None
+        threshold = (
+            self.config.RANKING_TEMPORAL_SCORE_THRESHOLD
+            if temporal_score_threshold is None
+            else temporal_score_threshold
+        )
+
         for analysis in pending_analyses:
             procurement = self.procurement_repo.get_procurement_by_id_and_version(
                 analysis.procurement_control_number, analysis.version_number
             )
-            if not procurement:
+            if not procurement or not procurement.is_stable:
                 continue
 
-            if not procurement.is_stable:
-                self.logger.info(
-                    f"Skipping analysis {analysis.analysis_id} for procurement "
-                    f"{procurement.pncp_control_number} because it is not stable."
-                )
-                continue
+            if procurement.temporal_score > threshold:
+                active_procurements.append((analysis, procurement))
+            else:
+                historical_procurements.append((analysis, procurement))
 
-            if procurement.temporal_score <= self.config.RANKING_TEMPORAL_SCORE_THRESHOLD:
-                self.logger.info(
-                    f"Skipping analysis {analysis.analysis_id} for procurement "
-                    f"{procurement.pncp_control_number} because its temporal_score "
-                    f"({procurement.temporal_score}) is outside the ideal window."
-                )
-                continue
+        self.logger.info(
+            f"Found {len(active_procurements)} active and " f"{len(historical_procurements)} historical procurements."
+        )
 
-            analyses_with_procurements.append((analysis, procurement))
+        processed_active = self._apply_city_allocation(active_procurements, max_messages)
+        processed_active.sort(key=lambda x: x[1].priority_score, reverse=True)
 
-        procurements_by_city = defaultdict(list)
-        for analysis, procurement in analyses_with_procurements:
-            procurements_by_city[procurement.entity_unit.ibge_code].append((analysis, procurement))
-
-        total_eligible = len(analyses_with_procurements)
-        city_allocations = {
-            city_code: round(len(procurements) / total_eligible * (max_messages or total_eligible))
-            for city_code, procurements in procurements_by_city.items()
-        }
-
-        processed_procurements = []
-        for city_code, allocation in city_allocations.items():
-            processed_procurements.extend(
-                sorted(procurements_by_city[city_code], key=lambda x: x[1].priority_score, reverse=True)[:allocation]
-            )
-
-        processed_procurements.sort(key=lambda x: x[1].priority_score, reverse=True)
-
-        for analysis, procurement in processed_procurements:
-            if remaining_budget <= 0:
-                self.logger.info("Budget exhausted. Stopping job.")
-                break
-
-            if max_messages is not None and len(triggered_analyses) >= max_messages:
-                self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
+        # Stage 1: Process Active Procurements
+        for analysis, procurement in processed_active:
+            if remaining_budget <= 0 or (max_messages is not None and len(triggered_analyses) >= max_messages):
                 break
 
             estimated_cost = analysis.total_cost or Decimal(0)
-
-            if estimated_cost > remaining_budget:
-                self.logger.info(
-                    f"Skipping analysis {analysis.analysis_id}. "
-                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
-                    f"budget ({remaining_budget:.2f} BRL)."
-                )
+            if estimated_cost > remaining_budget or (
+                analysis.votes_count == 0 and estimated_cost > zero_vote_budget
+            ):
                 continue
 
-            if analysis.votes_count == 0 and estimated_cost > zero_vote_budget:
-                self.logger.info(
-                    f"Skipping zero-vote analysis {analysis.analysis_id}. "
-                    f"Cost ({estimated_cost:.2f} BRL) exceeds remaining "
-                    f"zero-vote budget ({zero_vote_budget:.2f} BRL)."
-                )
-                continue
-
-            self.logger.info(
-                f"Processing analysis {analysis.analysis_id} with "
-                f"priority score {procurement.priority_score} and "
-                f"estimated cost of {estimated_cost:.2f} BRL."
-            )
             try:
                 self.run_specific_analysis(analysis.analysis_id)
                 remaining_budget -= estimated_cost
                 if analysis.votes_count == 0:
                     zero_vote_budget -= estimated_cost
-
-                self.logger.info(
-                    f"Analysis {analysis.analysis_id} triggered. "
-                    f"Remaining budget: {remaining_budget:.2f} BRL. "
-                    f"Zero-vote budget: {zero_vote_budget:.2f} BRL."
-                )
                 triggered_analyses.append(analysis)
             except Exception as e:
-                self.logger.error(
-                    f"Failed to trigger analysis {analysis.analysis_id}: {e}",
-                    exc_info=True,
-                )
+                self.logger.error(f"Failed to trigger analysis {analysis.analysis_id}: {e}", exc_info=True)
+
+        # Stage 2: Fallback to Historical Procurements
+        if not is_explicit_historical_run and (
+            remaining_budget > 0 and (max_messages is None or len(triggered_analyses) < max_messages)
+        ):
+            self.logger.info("Budget remaining, processing historical procurements (fallback).")
+            historical_procurements.sort(key=lambda x: x[1].priority_score, reverse=True)
+
+            for analysis, procurement in historical_procurements:
+                if remaining_budget <= 0 or (max_messages is not None and len(triggered_analyses) >= max_messages):
+                    break
+
+                estimated_cost = analysis.total_cost or Decimal(0)
+                if estimated_cost > remaining_budget or (
+                    analysis.votes_count == 0 and estimated_cost > zero_vote_budget
+                ):
+                    continue
+
+                try:
+                    self.run_specific_analysis(analysis.analysis_id)
+                    remaining_budget -= estimated_cost
+                    if analysis.votes_count == 0:
+                        zero_vote_budget -= estimated_cost
+                    triggered_analyses.append(analysis)
+                except Exception as e:
+                    self.logger.error(f"Failed to trigger analysis {analysis.analysis_id}: {e}", exc_info=True)
 
         self.logger.info("Ranked analysis job completed.")
         return triggered_analyses

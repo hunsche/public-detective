@@ -388,6 +388,7 @@ def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, time
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
 @click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
+@click.option("--include-historical", is_flag=True, help="Include historical procurements in the analysis.")
 @click.pass_context
 def rank(
     ctx: click.Context,
@@ -397,6 +398,7 @@ def rank(
     zero_vote_budget_percent: int,
     max_messages: int | None,
     no_progress: bool,
+    include_historical: bool,
 ) -> None:
     """Triggers a ranked analysis of pending procurements based on budget.
 
@@ -408,6 +410,7 @@ def rank(
         zero_vote_budget_percent: Percentage of budget for zero-vote items.
         max_messages: Maximum number of analyses to trigger.
         no_progress: Whether to disable the progress bar.
+        include_historical: Whether to include historical procurements.
     """
     if not use_auto_budget and budget is None:
         raise click.UsageError("Either --budget or --use-auto-budget must be provided.")
@@ -450,12 +453,14 @@ def rank(
             gcs_path_prefix=gcs_path_prefix,
         )
 
+        temporal_score_threshold = 0 if include_historical else None
         items = service.run_ranked_analysis(
             budget=budget,
             use_auto_budget=use_auto_budget,
             budget_period=budget_period,
             zero_vote_budget_percent=zero_vote_budget_percent,
             max_messages=max_messages,
+            temporal_score_threshold=temporal_score_threshold,
         )
 
         if should_show_progress(no_progress):

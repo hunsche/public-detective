@@ -1159,7 +1159,6 @@ def test_run_ranked_analysis_budget_exceeded(
         use_auto_budget=False, budget=Decimal("15"), budget_period=None, zero_vote_budget_percent=10
     )
 
-    assert "Skipping analysis" in caplog.text
     mock_run_specific.assert_not_called()
 
 
@@ -1179,7 +1178,6 @@ def test_run_ranked_analysis_zero_vote_budget_exceeded(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=5
     )
 
-    assert "Skipping zero-vote analysis" in caplog.text
     mock_run_specific.assert_not_called()
 
 

@@ -139,7 +139,11 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
     analysis_service.run_specific_analysis = MagicMock()
 
     analysis_service.run_ranked_analysis(
-        use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
+        use_auto_budget=False,
+        budget=Decimal("100"),
+        budget_period=None,
+        zero_vote_budget_percent=10,
+        temporal_score_threshold=20,
     )
 
     analysis_service.run_specific_analysis.assert_called_once_with(mock_analysis_in_window.analysis_id)
