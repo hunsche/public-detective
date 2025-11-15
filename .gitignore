@@ -124,5 +124,13 @@ tox.ini
 .mypy_cache
 .agents-scripts/
 
-# Generated test files
+# Terraform files
+**/.terraform/*
+tfplan
+*.tfstate
+*.tfstate.backup
+
+# Temporary and CI/CD generated files
 tests/.tmp
+.tmp/
+.tmp/

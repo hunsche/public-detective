@@ -1,4 +1,5 @@
-name: CI
+# .github/workflows/ci.yml
+name: CI/CD and Deploy
 
 on:
   push:
@@ -9,94 +10,121 @@ on:
   pull_request:
     branches:
       - main
+  release:
+    types: [created]
+
+env:
+  DOCKER_IMAGE_NAME: ${{ github.event.repository.name }}
+  POETRY_VERSION: "1.8.2"
+  # Note: You must create these secrets in your GitHub repository
+  GCP_WORKLOAD_IDENTITY_PROVIDER: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+  GCP_SERVICE_ACCOUNT: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+  GCP_PROJECT_ID: ${{ secrets.GCP_PROJECT_ID }}
 
 jobs:
-  test:
+  # =====================================================================================
+  # VALIDATE JOB: Runs on every push and PR to validate the code and build.
+  # =====================================================================================
+  validate:
+    if: github.event_name == 'push' || github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     permissions:
       issues: write
       pull-requests: write
       contents: write
-
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ssh-key: ${{ secrets.ACTIONS_DEPLOY_KEY }}
+        with: { fetch-depth: 0 }
 
-      - name: Configure Git for SSH
+      - name: Check for infrastructure changes
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            infra:
+              - 'source/infrastructure/**'
+
+      - name: Configure Git
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
           git remote set-url origin git@github.com:${{ github.repository }}.git
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-      - name: Set up Python
-        uses: actions/setup-python@v4
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Cache Poetry dependencies
+        uses: actions/cache@v3
         with:
-          python-version: "3.12"
-
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libreoffice-writer-nogui imagemagick
-
-      - name: Install dependencies
-        run: |
-          poetry install
-
+          path: ~/.cache/pypoetry
+          key: ${{ runner.os }}-poetry-${{ hashFiles('**/poetry.lock') }}
+      - name: Build builder image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          target: builder
+          load: true
+          tags: local-builder:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
       - name: Start services
-        run: |
-          docker compose up -d
-
-      - name: Wait for services to be ready
-        run: |
-          echo "Waiting for PostgreSQL to be ready..."
-          until docker compose exec postgres pg_isready -U postgres -h localhost -p 5432; do
-            sleep 2
-          done
-          echo "PostgreSQL is ready."
-
+        run: docker compose up -d
+      - name: Wait for services
+        run: 'until docker compose exec postgres pg_isready -U postgres -h localhost -p 5432; do sleep 2; done'
       - name: Run pre-commit checks
-        run: |
-          poetry run pre-commit run --all-files
-
+        run: docker run --rm --network host local-builder:latest poetry run pre-commit run --all-files
       - name: Run database migrations
-        run: |
-          poetry run alembic upgrade head
-
-      - name: Generate and Check SQL for Migrations
+        run: docker run --rm --network host local-builder:latest poetry run alembic upgrade head
+      - name: Run tests and generate coverage report
+        run: docker run --rm --network host -v $(pwd):/app local-builder:latest poetry run pytest -n auto --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
+      - name: Coverage Comment
         if: github.event_name == 'pull_request'
-        run: |
-          set -e
-          PR_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
-          git checkout main
-          MAIN_HEAD_REV=$(poetry run alembic heads | awk '{print $1}')
-          git checkout -
-          echo "Generating SQL from ${MAIN_HEAD_REV} to ${PR_HEAD_REV}..."
-          poetry run alembic upgrade ${MAIN_HEAD_REV}:${PR_HEAD_REV} --sql > migration.sql
-          # Check if the migration is empty (only contains BEGIN;, COMMIT;, and whitespace)
-          # If grep finds any line that is NOT one of those, it exits 0, indicating content.
-          if grep -qvE '^(BEGIN;|COMMIT;|\s*)$' migration.sql; then
-              echo "SQL_HAS_CONTENT=true" >> "$GITHUB_ENV"
-          else
-              echo "SQL_HAS_CONTENT=false" >> "$GITHUB_ENV"
-          fi
+        uses: MishaKav/pytest-coverage-comment@main
+        with:
+          pytest-coverage-path: pytest-coverage.txt
+          junitxml-path: junit.xml
 
-      - name: Post SQL migration to PR
-        if: github.event_name == 'pull_request' && env.SQL_HAS_CONTENT == 'true'
+      - name: Run Infrastructure Checks
+        if: steps.filter.outputs.infra == 'true'
+        run: |
+          pip install pre-commit
+          pre-commit run --all-files
+
+  # =====================================================================================
+  # PLAN JOB: Runs on every PR to show a plan of infrastructure changes.
+  # =====================================================================================
+  plan:
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud
+        uses: 'google-github-actions/auth@v2'
+        with:
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Install tools from .tool-versions
+        uses: asdf-vm/actions/install@v3
+      - name: Terragrunt Plan
+        id: plan
+        run: |
+          mkdir -p .tmp
+          cd source/infrastructure
+          terragrunt run-all plan -no-color -out=$(pwd)/../../.tmp/tf.plan
+          terragrunt run-all show -no-color -json $(pwd)/../../.tmp/tf.plan > $(pwd)/../../.tmp/tfplan.json
+      - name: Post Plan to PR
         uses: actions/github-script@v6
         with:
           script: |
             const fs = require('fs');
-            const migration_body = fs.readFileSync('migration.sql', 'utf8');
-            const body = `## SQL Migration\n\`\`\`sql\n${migration_body}\n\`\`\``;
-            const comment_header = "## SQL Migration";
+            const plan = fs.readFileSync('./.tmp/tfplan.json', 'utf8');
+            const body = `## Terraform Plan\n\n\`\`\`json\n${plan}\n\`\`\``;
+            const comment_header = "## Terraform Plan";
 
             const { data: comments } = await github.rest.issues.listComments({
               owner: context.repo.owner,
@@ -122,45 +150,56 @@ jobs:
               });
             }
 
-      - name: Run tests and generate coverage report
-        run: |
-          poetry run pytest -n auto --cov=source --cov-report=xml --cov-report=term-missing --junitxml=junit.xml | tee pytest-coverage.txt
+  # =====================================================================================
+  # DEPLOY JOB: Runs on release and waits for manual approval before deploying.
+  # =====================================================================================
+  deploy:
+    if: github.event_name == 'release'
+    needs: [validate]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: 'read'
+      id-token: 'write'
+    environment:
+      name: production
+      url: 'http://yourapp.yourdomain.com' # Optional: Add your app's URL here
+    concurrency: production # Ensures only one production deployment runs at a time
 
-      - name: Coverage Comment
-        if: github.event_name == 'pull_request'
-        uses: MishaKav/pytest-coverage-comment@main
+    env:
+      GCP_ARTIFACT_REGISTRY_REGION: 'us-central1'
+      GCP_ARTIFACT_REGISTRY_REPO: 'pd-docker-repo' # Simplified repo name
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      - name: Authenticate to Google Cloud
+        id: auth
+        uses: 'google-github-actions/auth@v2'
         with:
-          pytest-coverage-path: pytest-coverage.txt
-          junitxml-path: junit.xml
-          title: Code Coverage
-          badge-title: Coverage
-          hide-badge: false
-          hide-report: false
-          create-new-comment: false
-          hide-comment: false
-
-      - name: Generate code coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: tj-actions/coverage-badge-py@v2
+          workload_identity_provider: ${{ env.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ env.GCP_SERVICE_ACCOUNT }}
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      - name: Login to Artifact Registry
+        uses: docker/login-action@v3
         with:
-          output: .github/badges/code-coverage.svg
-
-      - name: Check docstring coverage
+          registry: '${{ env.GCP_ARTIFACT_REGISTRY_REGION }}-docker.pkg.dev'
+          username: 'oauth2accesstoken'
+          password: '${{ steps.auth.outputs.access_token }}'
+      - name: Extract release tag
+        id: get_tag
+        run: echo "TAG=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: '${{ env.GCP_ARTIFACT_REGISTRY_REGION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GCP_ARTIFACT_REGISTRY_REPO }}/${{ env.DOCKER_IMAGE_NAME }}:${{ steps.get_tag.outputs.TAG }}'
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Install tools from .tool-versions
+        uses: asdf-vm/actions/install@v3
+      - name: Terragrunt Apply
         run: |
-          poetry run interrogate
-
-      - name: Generate docstring coverage badge
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          poetry run interrogate --generate-badge .github/badges/docstring-coverage.svg --badge-format svg
-
-      - name: Commit and push coverage badges
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: |
-          git add .github/badges/
-          if git diff --staged --quiet; then
-            echo "No changes to commit for coverage badges."
-          else
-            git commit -m "chore: update coverage badges"
-            git push
-          fi
+          cd source/infrastructure
+          terragrunt run-all apply -auto-approve
