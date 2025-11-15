@@ -34,7 +34,18 @@ def mock_pricing_service() -> MagicMock:
 @pytest.fixture
 def ranking_service(mock_analysis_repo: AnalysisRepository, mock_pricing_service: PricingService) -> RankingService:
     """Provides a RankingService instance with mocked dependencies."""
-    return RankingService(analysis_repo=mock_analysis_repo, pricing_service=mock_pricing_service)
+    mock_config = MagicMock()
+    mock_config.W_IMPACTO = 1.5
+    mock_config.W_QUALIDADE = 1.0
+    mock_config.W_CUSTO = 0.1
+    mock_config.W_VOTOS = 0.2
+    mock_config.STABILITY_PERIOD_HOURS = 48
+    mock_config.HIGH_IMPACT_KEYWORDS = ["saúde", "educação"]
+    return RankingService(
+        analysis_repo=mock_analysis_repo,
+        pricing_service=mock_pricing_service,
+        config=mock_config,
+    )
 
 
 def test_calculate_priority(ranking_service: RankingService) -> None:
@@ -44,6 +55,7 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     procurement.object_description = "serviços de saúde"
     procurement.votes_count = 10
     procurement.last_update_date = datetime.now(timezone.utc) - timedelta(days=3)
+    procurement.geographic_scope = "municipal"
 
     candidates: list[AIFileCandidate] = []
     analysis_id = uuid4()

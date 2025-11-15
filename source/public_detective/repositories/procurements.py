@@ -160,7 +160,7 @@ class ProcurementsRepository:
                 modality_id, procurement_status_id, total_estimated_value,
                 version_number, raw_data, content_hash, quality_score,
                 estimated_cost, potential_impact_score, priority_score, is_stable,
-                last_changed_at
+                last_changed_at, geographic_scope
             ) VALUES (
                 :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
                 :object_description, :total_awarded_value, :is_srp, :procurement_year,
@@ -168,10 +168,13 @@ class ProcurementsRepository:
                 :modality_id, :procurement_status_id, :total_estimated_value,
                 :version_number, :raw_data, :content_hash, :quality_score,
                 :estimated_cost, :potential_impact_score, :priority_score, :is_stable,
-                :last_changed_at
+                :last_changed_at, :geographic_scope
             );
         """
         )
+
+        procurement.geographic_scope = str(procurement.government_entity.sphere.value)
+
         params = {
             "pncp_control_number": procurement.pncp_control_number,
             "proposal_opening_date": procurement.proposal_opening_date,
@@ -195,6 +198,7 @@ class ProcurementsRepository:
             "priority_score": procurement.priority_score,
             "is_stable": procurement.is_stable,
             "last_changed_at": procurement.last_changed_at,
+            "geographic_scope": procurement.geographic_scope,
         }
         with self.engine.connect() as conn:
             conn.execute(sql, params)

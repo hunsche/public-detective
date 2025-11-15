@@ -12,6 +12,7 @@ from uuid import UUID
 
 from source.public_detective.models.file_records import ExclusionReason
 from source.public_detective.models.procurements import Procurement
+from source.public_detective.providers.config import RankingConfig
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import Modality, PricingService
 
@@ -24,35 +25,24 @@ class RankingService:
 
     analysis_repo: AnalysisRepository
     pricing_service: PricingService
-
-    W_IMPACTO = 1.5
-    W_QUALIDADE = 1.0
-    W_CUSTO = 0.1
-    W_VOTOS = 0.2
-
-    STABILITY_PERIOD_HOURS = 48
-
-    HIGH_IMPACT_KEYWORDS = [
-        "saúde",
-        "hospitalar",
-        "educação",
-        "saneamento",
-        "infraestrutura",
-    ]
+    config: RankingConfig
 
     def __init__(
         self,
         analysis_repo: AnalysisRepository,
         pricing_service: PricingService,
+        config: RankingConfig,
     ) -> None:
         """Initializes the service with its dependencies.
 
         Args:
             analysis_repo: The repository for analysis data.
             pricing_service: The service for calculating costs.
+            config: The ranking configuration object.
         """
         self.analysis_repo = analysis_repo
         self.pricing_service = pricing_service
+        self.config = config
 
     def calculate_priority(
         self,
@@ -76,12 +66,12 @@ class RankingService:
         is_stable = self._is_stable(procurement)
 
         vote_count = procurement.votes_count or 0
-        impacto_ajustado = potential_impact_score * (1 + self.W_VOTOS * vote_count)
+        impacto_ajustado = potential_impact_score * (1 + self.config.W_VOTOS * vote_count)
 
         priority_score = (
-            (self.W_IMPACTO * impacto_ajustado)
-            + (self.W_QUALIDADE * quality_score)
-            - (self.W_CUSTO * float(estimated_cost))
+            (self.config.W_IMPACTO * impacto_ajustado)
+            + (self.config.W_QUALIDADE * quality_score)
+            - (self.config.W_CUSTO * float(estimated_cost))
         )
 
         procurement.quality_score = quality_score
@@ -164,9 +154,12 @@ class RankingService:
             elif procurement.total_estimated_value > 100_000:
                 score += 25
 
-        for keyword in self.HIGH_IMPACT_KEYWORDS:
+        for keyword in self.config.HIGH_IMPACT_KEYWORDS:
             if keyword in procurement.object_description.lower():
                 score += 20
+
+        if procurement.geographic_scope == "federal":
+            score += 20
 
         return min(score, 100)
 
@@ -181,5 +174,5 @@ class RankingService:
         """
         now = datetime.now(timezone.utc)
         last_updated = procurement.last_update_date.astimezone(timezone.utc)
-        quarantine_period = timedelta(hours=self.STABILITY_PERIOD_HOURS)
+        quarantine_period = timedelta(hours=self.config.STABILITY_PERIOD_HOURS)
         return now - last_updated > quarantine_period

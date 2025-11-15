@@ -815,6 +815,7 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     proc.priority_score = None
     proc.is_stable = None
     proc.last_update_date = datetime.now(timezone.utc)
+    proc.geographic_scope = "municipal"
 
     mock_legal = MagicMock()
     mock_legal.model_dump.return_value = {}

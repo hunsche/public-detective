@@ -14,6 +14,25 @@ IBGE_CODE_SAO_PAULO = 3550308
 IBGE_CODE_RIO_DE_JANEIRO = 3304557
 
 
+class RankingConfig(BaseSettings):
+    """A Pydantic model for managing ranking settings."""
+
+    model_config = SettingsConfigDict(env_prefix="RANKING_")
+
+    W_IMPACTO: float = 1.5
+    W_QUALIDADE: float = 1.0
+    W_CUSTO: float = 0.1
+    W_VOTOS: float = 0.2
+    STABILITY_PERIOD_HOURS: int = 48
+    HIGH_IMPACT_KEYWORDS: list[str] = [
+        "saúde",
+        "hospitalar",
+        "educação",
+        "saneamento",
+        "infraestrutura",
+    ]
+
+
 class Config(BaseSettings):
     """A Pydantic model for managing application settings.
 
@@ -73,6 +92,8 @@ class Config(BaseSettings):
     GCP_GEMINI_THINKING_BUDGET: int = 32768
 
     WORKER_MAX_CONCURRENCY: int = 4
+
+    ranking: RankingConfig = RankingConfig()
 
     @model_validator(mode="after")
     def set_derived_pubsub_names(self) -> "Config":
