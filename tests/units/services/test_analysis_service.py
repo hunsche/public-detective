@@ -16,6 +16,23 @@ from public_detective.repositories.procurements import ProcessedFile
 from public_detective.services.analysis import AIFileCandidate, AnalysisService
 
 
+def _build_ranked_procurement(
+    pncp_control_number: str = "PNCP123",
+    priority_score: int = 100,
+    temporal_score: int = 20,
+    is_stable: bool = True,
+    ibge_code: str = "1234567",
+) -> MagicMock:
+    procurement = MagicMock(spec=Procurement)
+    procurement.pncp_control_number = pncp_control_number
+    procurement.priority_score = priority_score
+    procurement.temporal_score = temporal_score
+    procurement.is_stable = is_stable
+    procurement.entity_unit = MagicMock()
+    procurement.entity_unit.ibge_code = ibge_code
+    return procurement
+
+
 @pytest.fixture
 def mock_procurement_repo() -> MagicMock:
     """Provides a mock ProcurementsRepository."""
@@ -859,6 +876,9 @@ def test_run_ranked_analysis_and_skips(analysis_service: AnalysisService) -> Non
     analysis.version_number = 1
     analysis.analysis_id = uuid.uuid4()
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [analysis]
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = _build_ranked_procurement(
+        pncp_control_number="P"
+    )
     res = analysis_service.run_ranked_analysis(False, None, 50, budget=Decimal("10"))
     assert res == []
 
@@ -1115,6 +1135,7 @@ def test_run_ranked_analysis_manual_budget(mock_run_specific: MagicMock, analysi
     mock_analysis.total_cost = Decimal("10")
     mock_analysis.votes_count = 1
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = _build_ranked_procurement()
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("15"), budget_period=None, zero_vote_budget_percent=10
@@ -1132,6 +1153,7 @@ def test_run_ranked_analysis_budget_exceeded(
     mock_analysis.analysis_id = uuid.uuid4()
     mock_analysis.total_cost = Decimal("20")
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = _build_ranked_procurement()
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("15"), budget_period=None, zero_vote_budget_percent=10
@@ -1151,6 +1173,7 @@ def test_run_ranked_analysis_zero_vote_budget_exceeded(
     mock_analysis.total_cost = Decimal("10")
     mock_analysis.votes_count = 0
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = _build_ranked_procurement()
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=5
@@ -1181,7 +1204,14 @@ def test_run_ranked_analysis_max_messages(mock_run_specific: MagicMock, analysis
 
     # Mock procurements with priority scores to allow sorting
     mock_proc1 = MagicMock(spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1")
+    mock_proc1.temporal_score = 20
+    mock_proc1.entity_unit = MagicMock()
+    mock_proc1.entity_unit.ibge_code = "1001"
+
     mock_proc2 = MagicMock(spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2")
+    mock_proc2.temporal_score = 20
+    mock_proc2.entity_unit = MagicMock()
+    mock_proc2.entity_unit.ibge_code = "1001"
 
     def get_procurement_side_effect(control_number: str, _: int) -> MagicMock | None:
         if control_number == "PCN1":
@@ -1350,6 +1380,7 @@ def test_run_ranked_analysis_zero_vote_happy(mock_run_specific: MagicMock, analy
     mock_analysis.total_cost = Decimal("5")
     mock_analysis.votes_count = 0
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis]
+    analysis_service.procurement_repo.get_procurement_by_id_and_version.return_value = _build_ranked_procurement()
 
     analysis_service.run_ranked_analysis(
         use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10

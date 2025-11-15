@@ -598,6 +598,8 @@ def mock_procurement() -> MagicMock:
     procurement.is_stable = True
     procurement.last_changed_at = date(2023, 1, 1)
     procurement.votes_count = 5
+    procurement.temporal_score = 20
+    procurement.federal_bonus_score = 10
     return procurement
 
 
