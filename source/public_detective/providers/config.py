@@ -74,10 +74,10 @@ class Config(BaseSettings):
 
     WORKER_MAX_CONCURRENCY: int = 4
 
-    RANKING_W_IMPACT: float = 1.5
-    RANKING_W_QUALITY: float = 1.0
-    RANKING_W_COST: float = 0.1
-    RANKING_W_VOTES: float = 0.2
+    RANKING_WEIGHT_IMPACT: float = 1.5
+    RANKING_WEIGHT_QUALITY: float = 1.0
+    RANKING_WEIGHT_COST: float = 0.1
+    RANKING_WEIGHT_VOTES: float = 0.5
     RANKING_STABILITY_PERIOD_HOURS: int = 48
     RANKING_HIGH_IMPACT_KEYWORDS: list[str] = [
         "saúde",
