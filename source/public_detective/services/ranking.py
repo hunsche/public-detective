@@ -5,15 +5,17 @@ It is responsible for scoring and prioritizing procurements.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
 from typing import TYPE_CHECKING
 from uuid import UUID
 
-from source.public_detective.models.file_records import ExclusionReason
 from source.public_detective.models.procurements import Procurement
+from source.public_detective.providers.logging import LoggingProvider
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import Modality, PricingService
+from source.public_detective.services.ranking_config import ranking_config
 
 if TYPE_CHECKING:
     from source.public_detective.services.analysis import AIFileCandidate
@@ -24,21 +26,6 @@ class RankingService:
 
     analysis_repo: AnalysisRepository
     pricing_service: PricingService
-
-    W_IMPACTO = 1.5
-    W_QUALIDADE = 1.0
-    W_CUSTO = 0.1
-    W_VOTOS = 0.2
-
-    STABILITY_PERIOD_HOURS = 48
-
-    HIGH_IMPACT_KEYWORDS = [
-        "saúde",
-        "hospitalar",
-        "educação",
-        "saneamento",
-        "infraestrutura",
-    ]
 
     def __init__(
         self,
@@ -53,6 +40,7 @@ class RankingService:
         """
         self.analysis_repo = analysis_repo
         self.pricing_service = pricing_service
+        self.logger = LoggingProvider().get_logger()
 
     def calculate_priority(
         self,
@@ -74,14 +62,17 @@ class RankingService:
         estimated_cost = self._calculate_estimated_cost(analysis_id)
         potential_impact_score = self._calculate_potential_impact_score(procurement)
         is_stable = self._is_stable(procurement)
+        temporal_score = self._calculate_temporal_score(procurement)
 
         vote_count = procurement.votes_count or 0
-        impacto_ajustado = potential_impact_score * (1 + self.W_VOTOS * vote_count)
+        vote_factor = math.log(vote_count + 1, 10)
+        impacto_ajustado = potential_impact_score * (1 + ranking_config.W_VOTES * vote_factor)
 
         priority_score = (
-            (self.W_IMPACTO * impacto_ajustado)
-            + (self.W_QUALIDADE * quality_score)
-            - (self.W_CUSTO * float(estimated_cost))
+            (ranking_config.W_IMPACT * impacto_ajustado)
+            + (ranking_config.W_QUALITY * quality_score)
+            + (ranking_config.W_TEMPORAL * temporal_score)
+            - (ranking_config.W_COST * float(estimated_cost))
         )
 
         procurement.quality_score = quality_score
@@ -90,6 +81,22 @@ class RankingService:
         procurement.priority_score = int(priority_score)
         procurement.is_stable = is_stable
         procurement.last_changed_at = procurement.last_update_date
+
+        self.logger.info(
+            "Procurement ranking calculated.",
+            extra={
+                "procurement_id": procurement.id,
+                "quality_score": quality_score,
+                "estimated_cost": estimated_cost,
+                "potential_impact_score": potential_impact_score,
+                "temporal_score": temporal_score,
+                "is_stable": is_stable,
+                "vote_count": vote_count,
+                "vote_factor": vote_factor,
+                "adjusted_impact": impacto_ajustado,
+                "final_priority_score": priority_score,
+            },
+        )
 
         return procurement
 
@@ -106,13 +113,7 @@ class RankingService:
             return 0
 
         score = 100
-        penalty_points = {
-            ExclusionReason.EXTRACTION_FAILED: 20,
-            ExclusionReason.CONVERSION_FAILED: 15,
-            ExclusionReason.UNSUPPORTED_EXTENSION: 10,
-            ExclusionReason.LOCK_FILE: 5,
-            ExclusionReason.TOKEN_LIMIT_EXCEEDED: 5,
-        }
+        penalty_points = ranking_config.QUALITY_PENALTY_POINTS
 
         for candidate in candidates:
             if candidate.exclusion_reason:
@@ -159,14 +160,14 @@ class RankingService:
         score = 0
 
         if procurement.total_estimated_value:
-            if procurement.total_estimated_value > 1_000_000:
-                score += 50
-            elif procurement.total_estimated_value > 100_000:
-                score += 25
+            if procurement.total_estimated_value > ranking_config.IMPACT_VALUE_THRESHOLDS["HIGH"]:
+                score += ranking_config.IMPACT_VALUE_SCORES["HIGH"]
+            elif procurement.total_estimated_value > ranking_config.IMPACT_VALUE_THRESHOLDS["MEDIUM"]:
+                score += ranking_config.IMPACT_VALUE_SCORES["MEDIUM"]
 
-        for keyword in self.HIGH_IMPACT_KEYWORDS:
+        for keyword in ranking_config.HIGH_IMPACT_KEYWORDS:
             if keyword in procurement.object_description.lower():
-                score += 20
+                score += ranking_config.IMPACT_KEYWORD_SCORE
 
         return min(score, 100)
 
@@ -181,5 +182,31 @@ class RankingService:
         """
         now = datetime.now(timezone.utc)
         last_updated = procurement.last_update_date.astimezone(timezone.utc)
-        quarantine_period = timedelta(hours=self.STABILITY_PERIOD_HOURS)
+        quarantine_period = timedelta(hours=ranking_config.STABILITY_PERIOD_HOURS)
         return now - last_updated > quarantine_period
+
+    def _calculate_temporal_score(self, procurement: Procurement) -> int:
+        """Calculates a score based on the proximity to the deadline.
+
+        Args:
+            procurement: The procurement to check.
+
+        Returns:
+            An integer score from 0 to 100.
+        """
+        if not ranking_config.TEMPORAL_SCORE_ENABLED or not procurement.deadline_date:
+            return 0
+
+        now = datetime.now(timezone.utc)
+        deadline = procurement.deadline_date.astimezone(timezone.utc)
+        days_to_deadline = (deadline - now).days
+
+        min_days = ranking_config.TEMPORAL_WINDOW_DAYS_MIN
+        max_days = ranking_config.TEMPORAL_WINDOW_DAYS_MAX
+
+        if min_days <= days_to_deadline <= max_days:
+            return 100
+        elif days_to_deadline < min_days:
+            return int(max(0, 100 - (min_days - days_to_deadline) * 10))
+        else:
+            return int(max(0, 100 - (days_to_deadline - max_days) * 5))

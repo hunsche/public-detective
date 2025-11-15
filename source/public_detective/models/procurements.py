@@ -186,6 +186,8 @@ class Procurement(BaseModel):
     process, including dates, values, responsible parties, and legal details.
 
     Attributes:
+        id: The internal unique identifier for the procurement record.
+        deadline_date: The deadline for submitting proposals.
         procurement_id: The internal unique identifier for the procurement
             record in the local database.
         proposal_opening_date: The date and time when proposals are opened.
@@ -223,9 +225,10 @@ class Procurement(BaseModel):
 
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
+    id: UUID | None = None
+    deadline_date: datetime | None = Field(None, alias="dataEncerramentoProposta")
     procurement_id: UUID | None = None
     proposal_opening_date: datetime | None = Field(None, alias="dataAberturaProposta")
-    proposal_closing_date: datetime | None = Field(None, alias="dataEncerramentoProposta")
     additional_information: str | None = Field(None, alias="informacaoComplementar")
     process_number: str = Field(..., alias="processo")
     object_description: str = Field(..., alias="objetoCompra")

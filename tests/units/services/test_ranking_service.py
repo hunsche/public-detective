@@ -14,6 +14,7 @@ from source.public_detective.models.procurements import Procurement
 from source.public_detective.repositories.analyses import AnalysisRepository
 from source.public_detective.services.pricing import PricingService
 from source.public_detective.services.ranking import RankingService
+from source.public_detective.services.ranking_config import ranking_config
 
 if TYPE_CHECKING:
     from source.public_detective.services.analysis import AIFileCandidate
@@ -40,10 +41,12 @@ def ranking_service(mock_analysis_repo: AnalysisRepository, mock_pricing_service
 def test_calculate_priority(ranking_service: RankingService) -> None:
     """Tests the calculate_priority method with a basic scenario."""
     procurement = MagicMock(spec=Procurement)
+    procurement.id = uuid4()
     procurement.total_estimated_value = Decimal("500000")
     procurement.object_description = "serviços de saúde"
     procurement.votes_count = 10
     procurement.last_update_date = datetime.now(timezone.utc) - timedelta(days=3)
+    procurement.deadline_date = datetime.now(timezone.utc) + timedelta(days=10)
 
     candidates: list[AIFileCandidate] = []
     analysis_id = uuid4()
@@ -68,3 +71,30 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
     assert result.priority_score is not None
     assert result.is_stable is not None
     assert result.last_changed_at is not None
+
+
+def test_temporal_score(ranking_service: RankingService) -> None:
+    """Tests the _calculate_temporal_score method."""
+    procurement = MagicMock(spec=Procurement)
+
+    # Test case 1: Deadline within the optimal window
+    procurement.deadline_date = datetime.now(timezone.utc) + timedelta(days=10)
+    score = ranking_service._calculate_temporal_score(procurement)
+    assert score == 100
+
+    # Test case 2: Deadline too close
+    procurement.deadline_date = datetime.now(timezone.utc) + timedelta(days=2)
+    score = ranking_service._calculate_temporal_score(procurement)
+    assert score < 100
+
+    # Test case 3: Deadline too far
+    procurement.deadline_date = datetime.now(timezone.utc) + timedelta(days=20)
+    score = ranking_service._calculate_temporal_score(procurement)
+    assert score < 100
+
+    # Test case 4: Temporal score disabled
+    ranking_config.TEMPORAL_SCORE_ENABLED = False
+    procurement.deadline_date = datetime.now(timezone.utc) + timedelta(days=10)
+    score = ranking_service._calculate_temporal_score(procurement)
+    assert score == 0
+    ranking_config.TEMPORAL_SCORE_ENABLED = True
