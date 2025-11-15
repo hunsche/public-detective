@@ -210,9 +210,9 @@ class RankingService:
             <= time_to_closing
             < timedelta(days=self.config.RANKING_TEMPORAL_WINDOW_MAX_DAYS)
         ):
-            return 30
+            return 10
         if timedelta(days=0) <= time_to_closing < timedelta(days=self.config.RANKING_TEMPORAL_WINDOW_MIN_DAYS):
-            return 15
+            return 5
         return 0
 
     def _calculate_federal_bonus_score(self, procurement: Procurement) -> int:

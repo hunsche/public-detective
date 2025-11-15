@@ -84,11 +84,11 @@ def test_calculate_temporal_score(ranking_service: RankingService) -> None:
 
     # Test case 1: Ideal window
     procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=10)
-    assert ranking_service._calculate_temporal_score(procurement) == 30
+    assert ranking_service._calculate_temporal_score(procurement) == 10
 
     # Test case 2: Close window
     procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=3)
-    assert ranking_service._calculate_temporal_score(procurement) == 15
+    assert ranking_service._calculate_temporal_score(procurement) == 5
 
     # Test case 3: Outside window
     procurement.proposal_closing_date = datetime.now(timezone.utc) + timedelta(days=20)
