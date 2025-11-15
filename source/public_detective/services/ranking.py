@@ -73,10 +73,10 @@ class RankingService:
 
         vote_count = procurement.votes_count or 0
         vote_factor = np.log1p(vote_count)
-        impacto_ajustado = potential_impact_score * (1 + self.config.RANKING_WEIGHT_VOTES * vote_factor)
+        adjusted_impact = potential_impact_score * (1 + self.config.RANKING_WEIGHT_VOTES * vote_factor)
 
         priority_score = (
-            (self.config.RANKING_WEIGHT_IMPACT * impacto_ajustado)
+            (self.config.RANKING_WEIGHT_IMPACT * adjusted_impact)
             + (self.config.RANKING_WEIGHT_QUALITY * quality_score)
             - (self.config.RANKING_WEIGHT_COST * float(estimated_cost))
         )
