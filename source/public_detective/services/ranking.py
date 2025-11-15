@@ -171,7 +171,7 @@ class RankingService:
             if keyword in procurement.object_description.lower():
                 score += 20
 
-        score += temporal_score / 3
+        score += temporal_score // 3
         score += federal_bonus_score
 
         return min(score, 100)

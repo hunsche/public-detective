@@ -2,7 +2,7 @@
 
 import uuid
 from decimal import Decimal
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -136,41 +136,41 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
         return None
 
     analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
-    analysis_service.run_specific_analysis = MagicMock()
 
-    analysis_service.run_ranked_analysis(
-        use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
-    )
+    with patch.object(analysis_service, "run_specific_analysis", MagicMock()) as run_specific_analysis_mock:
+        analysis_service.run_ranked_analysis(
+            use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
+        )
 
-    assert analysis_service.run_specific_analysis.call_count == 2
-    analysis_service.run_specific_analysis.assert_any_call(mock_analysis_in_window.analysis_id)
-    analysis_service.run_specific_analysis.assert_any_call(mock_analysis_outside_window.analysis_id)
+        assert run_specific_analysis_mock.call_count == 2
+        run_specific_analysis_mock.assert_any_call(mock_analysis_in_window.analysis_id)
+        run_specific_analysis_mock.assert_any_call(mock_analysis_outside_window.analysis_id)
 
 
 def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisService) -> None:
     """Tests the proportional allocation logic for regional diversity."""
-    mock_analysis1_cityA = MagicMock(
+    mock_analysis_city_a_primary = MagicMock(
         analysis_id=uuid.uuid4(),
         procurement_control_number="PCN1",
         version_number=1,
         total_cost=Decimal("10"),
     )
-    mock_analysis2_cityA = MagicMock(
+    mock_analysis_city_a_secondary = MagicMock(
         analysis_id=uuid.uuid4(),
         procurement_control_number="PCN2",
         version_number=1,
         total_cost=Decimal("10"),
     )
-    mock_analysis1_cityB = MagicMock(
+    mock_analysis_city_b_primary = MagicMock(
         analysis_id=uuid.uuid4(),
         procurement_control_number="PCN3",
         version_number=1,
         total_cost=Decimal("10"),
     )
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [
-        mock_analysis1_cityA,
-        mock_analysis2_cityA,
-        mock_analysis1_cityB,
+        mock_analysis_city_a_primary,
+        mock_analysis_city_a_secondary,
+        mock_analysis_city_b_primary,
     ]
 
     mock_proc1 = MagicMock(
@@ -208,18 +208,18 @@ def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisS
         return None
 
     analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
-    analysis_service.run_specific_analysis = MagicMock()
 
-    triggered_analyses = analysis_service.run_ranked_analysis(
-        use_auto_budget=False,
-        budget=Decimal("100"),
-        budget_period=None,
-        zero_vote_budget_percent=10,
-        max_messages=2,
-    )
+    with patch.object(analysis_service, "run_specific_analysis", MagicMock()):
+        triggered_analyses = analysis_service.run_ranked_analysis(
+            use_auto_budget=False,
+            budget=Decimal("100"),
+            budget_period=None,
+            zero_vote_budget_percent=10,
+            max_messages=2,
+        )
 
-    assert len(triggered_analyses) == 2
-    assert {a.analysis_id for a in triggered_analyses} == {
-        mock_analysis1_cityA.analysis_id,
-        mock_analysis1_cityB.analysis_id,
-    }
+        assert len(triggered_analyses) == 2
+        assert {a.analysis_id for a in triggered_analyses} == {
+            mock_analysis_city_a_primary.analysis_id,
+            mock_analysis_city_b_primary.analysis_id,
+        }
