@@ -54,6 +54,7 @@ class Config(BaseSettings):
     GCP_PUBSUB_TOPIC_PROCUREMENTS: str = "procurements"
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
+    STORAGE_EMULATOR_HOST: str | None = None
     GCP_GEMINI_HOST: str | None = None
     GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 65535

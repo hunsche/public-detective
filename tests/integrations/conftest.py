@@ -125,7 +125,7 @@ def db_session() -> Generator[Engine, Any, None]:
     host = "localhost"
     os.environ["POSTGRES_HOST"] = host
     os.environ["PUBSUB_EMULATOR_HOST"] = f"{host}:8085"
-    os.environ["GCP_GCS_HOST"] = f"http://{host}:8086"
+    os.environ["STORAGE_EMULATOR_HOST"] = f"http://{host}:8086"
 
     schema_name = f"test_schema_{uuid.uuid4().hex}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name

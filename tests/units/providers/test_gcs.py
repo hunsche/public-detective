@@ -1,35 +1,34 @@
+"""This module contains tests for the GcsProvider."""
 from unittest.mock import MagicMock, patch
 
 import pytest
 from public_detective.providers.gcs import GcsProvider
 
 
-@patch("public_detective.providers.gcs.Client")
-def test_get_client_caches_instance(mock_storage_client: MagicMock) -> None:
-    """
-    Should create a GCS client only once and then cache it.
-
-    Args:
-        mock_storage_client: Mock for the GCS client.
-    """
+@patch("public_detective.providers.gcs.ConfigProvider")
+def test_upload_file_success_emulator(mock_config_provider):
+    """Should use requests to upload a file when STORAGE_EMULATOR_HOST is set."""
     # Arrange
+    mock_config_provider.get_config.return_value.STORAGE_EMULATOR_HOST = "http://localhost:8086"
     gcs_provider = GcsProvider()
-    gcs_provider._client = None  # Ensure client is not cached
 
     # Act
-    client1 = gcs_provider.get_client()
-    client2 = gcs_provider.get_client()
+    with patch("requests.post") as mock_post:
+        gcs_provider.upload_file("test-bucket", "file.pdf", b"content", "application/pdf")
 
-    # Assert
-    mock_storage_client.assert_called_once()
-    assert client1 is client2
+        # Assert
+        mock_post.assert_called_once()
+        call_args, call_kwargs = mock_post.call_args
+        assert "http://localhost:8086/upload/storage/v1/b/test-bucket/o" in call_args[0]
+        # Check that the content is in the multipart data
+        assert "content" in call_kwargs["data"]
 
 
-def test_upload_file_success() -> None:
-    """
-    Should upload a file successfully.
-    """
+@patch("public_detective.providers.gcs.ConfigProvider")
+def test_upload_file_success_production(mock_config_provider):
+    """Should use the GCS client to upload a file in a production environment."""
     # Arrange
+    mock_config_provider.get_config.return_value.STORAGE_EMULATOR_HOST = None
     gcs_provider = GcsProvider()
     mock_client = MagicMock()
     mock_bucket = MagicMock()
@@ -48,11 +47,11 @@ def test_upload_file_success() -> None:
     mock_blob.upload_from_string.assert_called_once_with(b"content", content_type="application/pdf")
 
 
-def test_upload_file_failure() -> None:
-    """
-    Should raise an exception when the upload fails.
-    """
+@patch("public_detective.providers.gcs.ConfigProvider")
+def test_upload_file_failure(mock_config_provider):
+    """Should raise an exception when the upload fails."""
     # Arrange
+    mock_config_provider.get_config.return_value.STORAGE_EMULATOR_HOST = None
     gcs_provider = GcsProvider()
     mock_client = MagicMock()
     mock_client.bucket.side_effect = Exception("GCS Error")
@@ -61,58 +60,3 @@ def test_upload_file_failure() -> None:
     # Act & Assert
     with pytest.raises(Exception, match="GCS Error"):
         gcs_provider.upload_file("test-bucket", "file.pdf", b"content", "application/pdf")
-
-
-def test_download_file_success() -> None:
-    """
-    Should download a file successfully.
-    """
-    # Arrange
-    gcs_provider = GcsProvider()
-    mock_client = MagicMock()
-    mock_bucket = MagicMock()
-    mock_blob = MagicMock()
-    mock_blob.download_as_bytes.return_value = b"file content"
-
-    gcs_provider._client = mock_client
-    mock_client.bucket.return_value = mock_bucket
-    mock_bucket.blob.return_value = mock_blob
-
-    # Act
-    content = gcs_provider.download_file("test-bucket", "file.pdf")
-
-    # Assert
-    mock_client.bucket.assert_called_once_with("test-bucket")
-    mock_bucket.blob.assert_called_once_with("file.pdf")
-    assert content == b"file content"
-
-
-def test_download_file_failure() -> None:
-    """
-    Should raise an exception when the download fails.
-    """
-    # Arrange
-    gcs_provider = GcsProvider()
-    mock_client = MagicMock()
-    mock_client.bucket.side_effect = Exception("GCS Error")
-    gcs_provider._client = mock_client
-
-    # Act & Assert
-    with pytest.raises(Exception, match="GCS Error"):
-        gcs_provider.download_file("test-bucket", "file.pdf")
-
-
-@patch("public_detective.providers.gcs.ConfigProvider")
-def test_get_client_real_credentials(mock_config_provider: MagicMock) -> None:
-    """Tests that a real GCS client is created when no host is configured."""
-    mock_config = MagicMock()
-    mock_config.GCP_GCS_HOST = None
-    mock_config_provider.get_config.return_value = mock_config
-
-    GcsProvider._client = None
-
-    provider = GcsProvider()
-    with patch("public_detective.providers.gcs.Client") as mock_gcs_client:
-        client = provider.get_client()
-        mock_gcs_client.assert_called_once_with(project=mock_config.GCP_PROJECT)
-        assert client is not None

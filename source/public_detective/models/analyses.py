@@ -15,7 +15,10 @@ class RedFlagCategory(StrEnum):
     DIRECTING = "DIRECIONAMENTO"
     COMPETITION_RESTRICTION = "RESTRICAO_COMPETITIVIDADE"
     OVERPRICE = "SOBREPRECO"
-    POTENTIAL_OVERPRICE = "POTENCIAL_SOBREPRECO"
+    FRAUD = "FRAUDE"
+    IRREGULAR_DOCUMENTATION = "DOCUMENTACAO_IRREGULAR"
+    OTHER = "OUTROS"
+    SUPERFATURAMENTO = "SUPERFATURAMENTO"
 
 
 class RedFlag(BaseModel):
@@ -25,10 +28,17 @@ class RedFlag(BaseModel):
         RedFlagCategory.DIRECTING,
         RedFlagCategory.COMPETITION_RESTRICTION,
         RedFlagCategory.OVERPRICE,
-        RedFlagCategory.POTENTIAL_OVERPRICE,
+        RedFlagCategory.FRAUD,
+        RedFlagCategory.IRREGULAR_DOCUMENTATION,
+        RedFlagCategory.OTHER,
+        RedFlagCategory.SUPERFATURAMENTO,
     ] = Field(
         ...,
         description=("The category of the irregularity, which must be one of the allowed " "values."),
+    )
+    severity: str | None = Field(
+        None,
+        description="The severity of the red flag, which can be 'leve', 'moderada', or 'grave'.",
     )
     description: str = Field(
         ...,
@@ -71,6 +81,10 @@ class Analysis(BaseModel):
     red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
+    )
+    price_sources: list[str] | None = Field(
+        None,
+        description="A list of price sources used by the model for its analysis.",
     )
     seo_keywords: list[str] = Field(
         default_factory=list,

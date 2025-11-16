@@ -783,24 +783,55 @@ class AnalysisService:
         você deve extrair a citação exata de um dos documentos que embase sua
         análise.
 
-        1.  Direcionamento para Fornecedor Específico (DIRECIONAMENTO)
-        2.  Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE)
-        3.  Potencial de Sobrepreço (SOBREPRECO)
+        **Categorias de Irregularidades:**
+        1.  **Direcionamento (DIRECIONAMENTO):** Cláusulas que favorecem um
+            fornecedor específico, como exigências de marca, qualificações
+            irrelevantes ou prazos inexequíveis.
+        2.  **Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE):**
+            Requisitos que limitam a participação de concorrentes, como
+            amostras excessivas ou critérios de habilitação desproporcionais.
+        3.  **Sobrepreço (SOBREPRECO):** Preços orçados ou contratados
+            significativamente acima da média de mercado. Ao analisar,
+            considere o momento da cotação, a quantidade e a logística.
+            **Sempre que apontar sobrepreço, cite a fonte de sua referência
+            (ex: Painel de Preços, SINAPI, atas de outros pregões, etc.).**
+        4.  **Superfaturamento (SUPERFATURAMENTO):** Dano efetivo ao erário,
+            comprovado por pagamentos por serviços não executados, medições
+            falsas ou aditivos contratuais que desequilibram o valor inicial.
+            **Só utilize esta categoria se houver evidência clara de dano
+            consumado.**
+        5.  **Fraude (FRAUDE):** Indícios de conluio entre licitantes,
+            documentos falsificados ou outras práticas fraudulentas.
+        6.  **Documentação Irregular (DOCUMENTACAO_IRREGULAR):** Falhas formais
+            graves, como ausência de justificativa de preço, parecer jurídico
+            ou publicação obrigatória.
+        7.  **Outros (OUTROS):** Irregularidades que não se encaixam nas
+            categorias anteriores.
 
-        Após a análise, atribua uma nota de risco de 0 a 10 e forneça uma
+        **Classificação de Severidade:**
+        Para cada `red_flag` identificada, classifique sua severidade como
+        `leve`, `moderada` ou `grave`. Alegações vagas sem citação literal
+        devem ser descartadas.
 
-        **Critérios para a Nota de Risco:**
-        - **0-2 (Risco Baixo):** Nenhuma irregularidade significativa
-          encontrada.
-        - **3-5 (Risco Moderado):** Foram encontrados indícios de
-          irregularidades, mas sem evidências conclusivas.
-        - **6-8 (Risco Alto):** Evidências claras de irregularidades em uma ou
-          mais categorias.
-        - **9-10 (Risco Crítico):** Irregularidades graves e generalizadas, com
-          forte suspeita de fraude.
+        **Critérios para a Nota de Risco (0 a 10):**
+        A nota deve ponderar a quantidade, a severidade das irregularidades e
+        o impacto financeiro da licitação.
+        - **0-1 (Risco Mínimo):** Apenas pequenas falhas formais que não
+          comprometem o processo.
+        - **2-3 (Risco Baixo):** Indícios de irregularidades de baixa
+          severidade ou falhas formais.
+        - **4-5 (Risco Moderado):** Evidências de restrição de
+          competitividade ou sobrepreço em itens de menor valor.
+        - **6-7 (Risco Alto):** Direcionamento claro, sobrepreço em itens
+          relevantes ou múltiplas irregularidades moderadas.
+        - **8-9 (Risco Crítico):** Evidência forte de fraude, conluio ou
+          superfaturamento.
+        - **10 (Risco Máximo):** Múltiplas irregularidades graves e
+          combinadas, com dano comprovado ao erário.
 
         Sua resposta deve ser um objeto JSON que siga estritamente o esquema
-        fornecido, incluindo os campos `procurement_summary`, `analysis_summary` e `risk_score_rationale`.
+        fornecido, incluindo os campos `procurement_summary`, `analysis_summary`,
+        `risk_score_rationale`, e a lista de `price_sources` quando aplicável.
 
         Forneça um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação no campo `procurement_summary`.
 
