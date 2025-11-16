@@ -21,6 +21,14 @@ class RedFlagCategory(StrEnum):
     SUPERFATURAMENTO = "SUPERFATURAMENTO"
 
 
+class RedFlagSeverity(StrEnum):
+    """Enumeration for the severity levels of an identified red flag."""
+
+    MILD = "LEVE"
+    MODERATE = "MODERADA"
+    SEVERE = "GRAVE"
+
+
 class RedFlag(BaseModel):
     """Represents a single red flag identified during an audit."""
 
@@ -34,11 +42,11 @@ class RedFlag(BaseModel):
         RedFlagCategory.SUPERFATURAMENTO,
     ] = Field(
         ...,
-        description=("The category of the irregularity, which must be one of the allowed " "values."),
+        description=("The category of the irregularity, which must be one of the allowed values."),
     )
-    severity: str | None = Field(
+    severity: RedFlagSeverity | None = Field(
         None,
-        description="The severity of the red flag, which can be 'leve', 'moderada', or 'grave'.",
+        description="The severity of the red flag, which can be 'LEVE', 'MODERADA', or 'GRAVE'.",
     )
     description: str = Field(
         ...,
@@ -46,7 +54,7 @@ class RedFlag(BaseModel):
     )
     evidence_quote: str = Field(
         ...,
-        description=("The exact, literal quote from the document that serves as evidence " "for the finding."),
+        description=("The exact, literal quote from the document (in pt-br) that serves as evidence for the finding."),
     )
     auditor_reasoning: str = Field(
         ...,
@@ -64,11 +72,11 @@ class Analysis(BaseModel):
         None,
         ge=0,
         le=10,
-        description=("An integer from 0 to 10 representing the calculated risk level based " "on the findings."),
+        description=("An integer from 0 to 10 representing the calculated risk level based on the findings."),
     )
     risk_score_rationale: str | None = Field(
         None,
-        description=("A detailed rationale (in pt-br) explaining the reasoning behind the " "assigned risk score."),
+        description=("A detailed rationale (in pt-br) explaining the reasoning behind the assigned risk score."),
     )
     procurement_summary: str | None = Field(
         None,

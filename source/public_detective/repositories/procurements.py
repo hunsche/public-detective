@@ -289,6 +289,46 @@ class ProcurementsRepository:
             ).scalar_one_or_none()
         return result
 
+    def update_procurement_ranking_data(self, procurement: Procurement, version_number: int) -> None:
+        """Updates the ranking-related fields for an existing procurement.
+
+        Args:
+            procurement: The procurement object with updated ranking data.
+            version_number: The version of the procurement to update.
+        """
+        sql = text(
+            """
+            UPDATE procurements
+            SET
+                quality_score = :quality_score,
+                estimated_cost = :estimated_cost,
+                potential_impact_score = :potential_impact_score,
+                priority_score = :priority_score,
+                is_stable = :is_stable,
+                last_changed_at = :last_changed_at,
+                temporal_score = :temporal_score,
+                federal_bonus_score = :federal_bonus_score
+            WHERE
+                pncp_control_number = :pncp_control_number AND
+                version_number = :version_number;
+            """
+        )
+        params = {
+            "pncp_control_number": procurement.pncp_control_number,
+            "version_number": version_number,
+            "quality_score": procurement.quality_score,
+            "estimated_cost": procurement.estimated_cost,
+            "potential_impact_score": procurement.potential_impact_score,
+            "priority_score": procurement.priority_score,
+            "is_stable": procurement.is_stable,
+            "last_changed_at": procurement.last_changed_at,
+            "temporal_score": procurement.temporal_score,
+            "federal_bonus_score": procurement.federal_bonus_score,
+        }
+        with self.engine.connect() as conn:
+            conn.execute(sql, params)
+            conn.commit()
+
     def get_procurement_by_control_number(self, pncp_control_number: str) -> tuple[Procurement | None, dict | None]:
         """Fetches a single procurement and its raw data by its PNCP control number.
 

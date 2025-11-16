@@ -1114,6 +1114,15 @@ class AnalysisService:
             analysis_prompt=prompt,
         )
 
+        updated_procurement = self.procurement_repo.get_procurement_by_id_and_version(
+            procurement.pncp_control_number, new_version
+        )
+        if updated_procurement:
+            updated_procurement = self.ranking_service.calculate_priority(
+                updated_procurement, all_candidates, analysis_id
+            )
+            self.procurement_repo.update_procurement_ranking_data(updated_procurement, new_version)
+
         correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
         with LoggingProvider().set_correlation_id(correlation_id):
             self.status_history_repo.create_record(

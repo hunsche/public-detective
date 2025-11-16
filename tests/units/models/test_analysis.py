@@ -2,13 +2,14 @@
 Unit tests for the analysis models.
 """
 
-from public_detective.models.analyses import Analysis, RedFlag, RedFlagCategory
+from public_detective.models.analyses import Analysis, RedFlag, RedFlagCategory, RedFlagSeverity
 
 
 def test_red_flag_creation() -> None:
     """Tests the creation of a RedFlag object."""
     red_flag = RedFlag(
         category=RedFlagCategory.DIRECTING,
+        severity=RedFlagSeverity.MILD,
         description="Test description",
         evidence_quote="Test quote",
         auditor_reasoning="Test reasoning",
@@ -35,6 +36,7 @@ def test_red_flag_parsing() -> None:
     red_flags_dicts = [
         {
             "category": "DIRECIONAMENTO",
+            "severity": "LEVE",
             "description": "Test",
             "evidence_quote": "Test",
             "auditor_reasoning": "Test",

@@ -86,6 +86,7 @@ def test_parse_row_to_model_with_json_string(analysis_repository: AnalysisReposi
     red_flags_list = [
         {
             "category": "SOBREPRECO",
+            "severity": "MODERADA",
             "description": "Test description",
             "evidence_quote": "Test quote",
             "auditor_reasoning": "Test reasoning",
@@ -131,6 +132,7 @@ def test_parse_row_to_model_with_dict(analysis_repository: AnalysisRepository) -
     red_flags_list = [
         {
             "category": "DIRECIONAMENTO",
+            "severity": "GRAVE",
             "description": "Test description 2",
             "evidence_quote": "Test quote 2",
             "auditor_reasoning": "Test reasoning 2",
