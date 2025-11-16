@@ -1,5 +1,6 @@
 import json
 import os
+import time
 import uuid
 from typing import Any
 
@@ -36,6 +37,7 @@ def test_ranked_analysis_e2e_flow(
     gcs_prefix = gcs_cleanup_manager.prefix
 
     os.environ["TARGET_IBGE_CODES"] = f"[{ibge_code}]"
+    os.environ["RANKING_STABILITY_PERIOD_HOURS"] = "0"
 
     pre_analyze_command = (
         f"poetry run pd analysis --gcs-path-prefix {gcs_prefix} prepare "
@@ -43,6 +45,11 @@ def test_ranked_analysis_e2e_flow(
         f"--max-messages {max_items_to_process}"
     )
     run_command(pre_analyze_command)
+
+    # Add a small delay to ensure the transaction from the prepare step is committed
+    # before the rank step reads from the database. This helps to avoid race
+    # conditions in the E2E test environment.
+    time.sleep(2)
 
     print("\n--- Setting up database for ranked analysis ---")
     with db_session.connect() as connection:
