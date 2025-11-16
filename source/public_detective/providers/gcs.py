@@ -3,7 +3,11 @@
 It encapsulates the logic for interacting with GCS, such as uploading
 and downloading files.
 """
-
+import json
+import requests
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
+from email.mime.text import MIMEText
 from typing import cast
 
 from google.auth.credentials import AnonymousCredentials
@@ -24,11 +28,10 @@ class GcsProvider:
         """
         if not self._client:
             config = ConfigProvider.get_config()
-            if config.GCP_GCS_HOST:
+            if config.STORAGE_EMULATOR_HOST:
                 self._client = Client(
                     credentials=AnonymousCredentials(),
                     project=config.GCP_PROJECT,
-                    client_options={"api_endpoint": config.GCP_GCS_HOST},
                 )
             else:
                 self._client = Client(project=config.GCP_PROJECT)
@@ -52,14 +55,35 @@ class GcsProvider:
             content_type: The content type of the file.
             metadata: Optional metadata to attach to the GCS object.
         """
-        client = self.get_client()
-        bucket = client.bucket(bucket_name)
-        blob = bucket.blob(destination_blob_name)
+        config = ConfigProvider.get_config()
+        # Use a simple requests POST for the emulator, as the client library
+        # has issues with fake-gcs-server.
+        if config.STORAGE_EMULATOR_HOST:
+            related = MIMEMultipart('related')
 
-        if metadata:
-            blob.metadata = metadata
+            metadata_part = MIMEApplication(json.dumps({'name': destination_blob_name, 'metadata': metadata}), 'json', _encoder=lambda x: x)
+            metadata_part.add_header('Content-Type', 'application/json; charset=UTF-8')
+            related.attach(metadata_part)
 
-        blob.upload_from_string(content, content_type=content_type)
+            media_part = MIMEApplication(content, _encoder=lambda x: x)
+            media_part.add_header('Content-Type', content_type)
+            related.attach(media_part)
+
+            body = related.as_string().split('\n\n', 1)[1]
+            headers = {'Content-Type': related.get('Content-Type')}
+
+            url = f"{config.STORAGE_EMULATOR_HOST}/upload/storage/v1/b/{bucket_name}/o?uploadType=multipart"
+            response = requests.post(url, data=body, headers=headers, timeout=10)
+            response.raise_for_status()
+        else:
+            client = self.get_client()
+            bucket = client.bucket(bucket_name)
+            blob = bucket.blob(destination_blob_name)
+
+            if metadata:
+                blob.metadata = metadata
+
+            blob.upload_from_string(content, content_type=content_type)
 
     def download_file(self, bucket_name: str, source_blob_name: str) -> bytes:
         """Downloads a file from a GCS bucket.
