@@ -762,13 +762,12 @@ class AnalysisService:
         document_context_section = "\n\n---\n\n".join(document_context_parts)
 
         return f"""
-        Você é um auditor sênior especializado em licitações públicas no Brasil.
-        Sua tarefa é analisar os documentos em anexo para identificar
-        possíveis irregularidades no processo de licitação.
+        Você é um auditor sênior do Tribunal de Contas, especializado em licitações públicas no Brasil.
+        Sua tarefa é analisar os documentos em anexo para identificar possíveis irregularidades,
+        seguindo as diretrizes da Lei 14.133/2021 e as melhores práticas de auditoria.
 
-        Primeiro, revise os metadados da licitação em formato JSON para obter o
-        contexto geral. Em seguida, use a lista de documentos e arquivos para
-        entender a origem de cada anexo.
+        Primeiro, revise os metadados da licitação para obter o contexto geral. Em seguida, use a
+        lista de documentos e arquivos para entender a origem de cada anexo.
 
         --- SUMÁRIO DA LICITAÇÃO ---
         {procurement_summary_str}
@@ -778,40 +777,57 @@ class AnalysisService:
         {document_context_section}
         --- FIM DO CONTEXTO ---
 
-        Com base em todas as informações disponíveis, analise a licitação em
-        busca de irregularidades nas seguintes categorias. Para cada achado,
-        você deve extrair a citação exata de um dos documentos que embase sua
-        análise.
+        Com base em todas as informações disponíveis, analise a licitação em busca de irregularidades.
+        Para cada achado (`red_flag`), você deve:
+        1.  Extrair a citação exata (`evidence_quote`) de um dos documentos que embase sua análise.
+            Alegações vagas sem base documental devem ser descartadas.
+        2.  Elaborar um raciocínio técnico (`auditor_reasoning`) que explique por que a evidência
+            constitui uma irregularidade.
+        3.  Classificar a severidade (`severity`) do achado como 'leve', 'moderada' ou 'grave'.
 
-        1.  Direcionamento para Fornecedor Específico (DIRECIONAMENTO)
-        2.  Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE)
-        3.  Potencial de Sobrepreço (SOBREPRECO)
+        As irregularidades devem ser classificadas nas seguintes categorias:
 
-        Após a análise, atribua uma nota de risco de 0 a 10 e forneça uma
+        1.  **DIRECIONAMENTO:** Cláusulas que favorecem um fornecedor específico (ex: exigência de
+            marca sem justificativa, qualificações técnicas excessivas e irrelevantes, prazos
+            inexequíveis para novos concorrentes).
+        2.  **RESTRICAO_COMPETITIVIDADE:** Requisitos que limitam indevidamente o número de
+            participantes (ex: exigências de habilitação desproporcionais, aglutinação indevida
+            de itens, falta de publicidade adequada).
+        3.  **SOBREPRECO:** Preço orçado ou contratado **antes da execução** que está expressivamente
+            acima dos parâmetros de mercado. Para justificar, você **deve** pesquisar preços de
+            referência em fontes como o Painel de Preços do Governo, TRP/TCU, SINAPI ou pesquisas
+            de mercado robustas. **Obrigatoriamente**, mencione a fonte usada no campo
+            `price_reference_sources` e demonstre o cálculo da diferença no seu raciocínio,
+            considerando fatores como economia de escala e logística.
+        4.  **SUPERFATURAMENTO:** Dano efetivo ao erário **durante a execução** do contrato. Procure
+            por evidências de medições superiores às realizadas, pagamentos por serviços não
+            executados, alterações contratuais que causem desequilíbrio econômico ou pagamentos
+            antecipados indevidos.
+
+        Após a análise, atribua uma nota de risco de 0 a 10, ponderando o valor da licitação, a
+        essencialidade do objeto (ex: saúde, educação) e a gravidade dos achados. Use os
+        seguintes critérios:
 
         **Critérios para a Nota de Risco:**
-        - **0-2 (Risco Baixo):** Nenhuma irregularidade significativa
-          encontrada.
-        - **3-5 (Risco Moderado):** Foram encontrados indícios de
-          irregularidades, mas sem evidências conclusivas.
-        - **6-8 (Risco Alto):** Evidências claras de irregularidades em uma ou
-          mais categorias.
-        - **9-10 (Risco Crítico):** Irregularidades graves e generalizadas, com
-          forte suspeita de fraude.
+        - **0–1 (Risco Inexistente):** Nenhum problema; documentos completos e aderentes à lei.
+        - **2–3 (Risco Baixo):** Falhas formais sem impacto econômico (ex: ausência de cronograma
+          físico-financeiro, pequenas inconsistências na redação).
+        - **4–5 (Risco Moderado):** Indícios de irregularidades isoladas, sem dano comprovado
+          (ex: pesquisa de preços incompleta, exigências restritivas de baixo impacto).
+        - **6–7 (Risco Alto):** Evidências claras de direcionamento, restrição à competitividade
+          ou sobrepreço comprovado no orçamento.
+        - **8–9 (Risco Muito Alto):** Combinação de duas ou mais irregularidades graves, com alto
+          potencial de dano ao erário.
+        - **10 (Risco Crítico):** Superfaturamento materializado, fraude evidente ou conluio, com
+          provas documentais robustas.
 
-        Sua resposta deve ser um objeto JSON que siga estritamente o esquema
-        fornecido, incluindo os campos `procurement_summary`, `analysis_summary` e `risk_score_rationale`.
+        Sua resposta deve ser um objeto JSON que siga estritamente o esquema fornecido.
 
-        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação no campo `procurement_summary`.
-
-        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) da análise geral no campo `analysis_summary`.
-
-        **Palavras-chave para SEO:**
-        Finalmente, gere uma lista de 5 a 10 palavras-chave estratégicas (em pt-br)
-        que um usuário interessado nesta licitação digitaria no Google. Pense em
-        termos como o objeto da licitação, o órgão público, a cidade/estado, e
-        possíveis sinônimos ou termos relacionados que maximizem a
-        encontrabilidade desta análise.
+        **Resumos e Palavras-chave:**
+        - `procurement_summary`: Um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação.
+        - `analysis_summary`: Um resumo conciso (em pt-br, máximo 3 sentenças) da análise geral.
+        - `seo_keywords`: Uma lista de 5 a 10 palavras-chave estratégicas (em pt-br) para
+          maximizar a encontrabilidade desta análise.
         """
 
     def _calculate_hash(self, files: list[tuple[str, bytes | list[bytes]]]) -> str:
