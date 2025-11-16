@@ -326,8 +326,8 @@ This project uses a specific package structure where each component in the `sour
 
 **All internal imports must be absolute from the component's root.** The `source` directory is **not** a package and must never be used as a prefix.
 
--   **Correct:** `from cli.commands import analyze`
--   **Incorrect:** `from source.cli.commands import analyze`
+-   **Correct:** `from public_detective.commands import analyze`
+-   **Incorrect:** `from source.public_detective.commands import analyze`
 
 This structure is defined in `pyproject.toml`. If you encounter import-related errors with tooling, do not add the `source.` prefix. The solution will likely involve adjusting the tool's configuration.
 

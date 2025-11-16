@@ -2,12 +2,11 @@
 
 import uuid
 from decimal import Decimal
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
-
-from source.public_detective.models.procurements import Procurement
-from source.public_detective.services.analysis import AnalysisService
+from public_detective.models.procurements import Procurement
+from public_detective.services.analysis import AnalysisService
 
 
 @pytest.fixture
@@ -136,15 +135,16 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
         return None
 
     analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
+    run_specific_analysis_mock = MagicMock()
+    analysis_service.run_specific_analysis = run_specific_analysis_mock
 
-    with patch.object(analysis_service, "run_specific_analysis", MagicMock()) as run_specific_analysis_mock:
-        analysis_service.run_ranked_analysis(
-            use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
-        )
+    analysis_service.run_ranked_analysis(
+        use_auto_budget=False, budget=Decimal("100"), budget_period=None, zero_vote_budget_percent=10
+    )
 
-        assert run_specific_analysis_mock.call_count == 2
-        run_specific_analysis_mock.assert_any_call(mock_analysis_in_window.analysis_id)
-        run_specific_analysis_mock.assert_any_call(mock_analysis_outside_window.analysis_id)
+    assert run_specific_analysis_mock.call_count == 2
+    run_specific_analysis_mock.assert_any_call(mock_analysis_in_window.analysis_id)
+    run_specific_analysis_mock.assert_any_call(mock_analysis_outside_window.analysis_id)
 
 
 def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisService) -> None:
@@ -208,18 +208,19 @@ def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisS
         return None
 
     analysis_service.procurement_repo.get_procurement_by_id_and_version.side_effect = get_procurement_side_effect
+    run_specific_analysis_mock = MagicMock()
+    analysis_service.run_specific_analysis = run_specific_analysis_mock
 
-    with patch.object(analysis_service, "run_specific_analysis", MagicMock()):
-        triggered_analyses = analysis_service.run_ranked_analysis(
-            use_auto_budget=False,
-            budget=Decimal("100"),
-            budget_period=None,
-            zero_vote_budget_percent=10,
-            max_messages=2,
-        )
+    triggered_analyses = analysis_service.run_ranked_analysis(
+        use_auto_budget=False,
+        budget=Decimal("100"),
+        budget_period=None,
+        zero_vote_budget_percent=10,
+        max_messages=2,
+    )
 
-        assert len(triggered_analyses) == 2
-        assert {a.analysis_id for a in triggered_analyses} == {
-            mock_analysis_city_a_primary.analysis_id,
-            mock_analysis_city_b_primary.analysis_id,
-        }
+    assert len(triggered_analyses) == 2
+    assert {a.analysis_id for a in triggered_analyses} == {
+        mock_analysis_city_a_primary.analysis_id,
+        mock_analysis_city_b_primary.analysis_id,
+    }

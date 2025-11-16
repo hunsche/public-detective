@@ -1,16 +1,19 @@
 import bz2
 import gzip
 import io
+import json
 import logging
 import lzma
 import tarfile
 import zipfile
 from collections.abc import Callable, Iterable
 from datetime import date
+from decimal import Decimal
 from http import HTTPStatus
 from types import SimpleNamespace
 from typing import Any, Literal
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import py7zr
 import pytest
@@ -1081,9 +1084,23 @@ def test_get_procurement_by_hash_not_found(repo: ProcurementsRepository) -> None
 def test_get_procurement_by_id_and_version_found(repo: ProcurementsRepository) -> None:
     """Tests fetching a procurement that exists."""
     raw_data = _get_mock_procurement_data("PNCP-123")
-    mock_scalar = MagicMock()
-    mock_scalar.scalar_one_or_none.return_value = raw_data
-    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    mock_connection = repo.engine.connect.return_value.__enter__.return_value
+    mock_execute = mock_connection.execute.return_value
+    mock_mappings = MagicMock()
+    mock_execute.mappings.return_value = mock_mappings
+    mock_mappings.one_or_none.return_value = {
+        "raw_data": json.dumps(raw_data),
+        "procurement_id": uuid4(),
+        "votes_count": 0,
+        "quality_score": 75,
+        "estimated_cost": Decimal("0"),
+        "potential_impact_score": 10,
+        "priority_score": 20,
+        "is_stable": True,
+        "last_changed_at": "2025-01-01T12:00:00",
+        "temporal_score": 5,
+        "federal_bonus_score": 0,
+    }
     result = repo.get_procurement_by_id_and_version("PNCP-123", 1)
     assert result is not None
     assert isinstance(result, Procurement)
@@ -1092,9 +1109,11 @@ def test_get_procurement_by_id_and_version_found(repo: ProcurementsRepository) -
 
 def test_get_procurement_by_id_and_version_not_found(repo: ProcurementsRepository) -> None:
     """Tests fetching a procurement that does not exist."""
-    mock_scalar = MagicMock()
-    mock_scalar.scalar_one_or_none.return_value = None
-    repo.engine.connect.return_value.__enter__.return_value.execute.return_value = mock_scalar
+    mock_connection = repo.engine.connect.return_value.__enter__.return_value
+    mock_execute = mock_connection.execute.return_value
+    mock_mappings = MagicMock()
+    mock_execute.mappings.return_value = mock_mappings
+    mock_mappings.one_or_none.return_value = None
     result = repo.get_procurement_by_id_and_version("123", 1)
     assert result is None
 

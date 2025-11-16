@@ -10,6 +10,7 @@ various types of archived files.
 import bz2
 import gzip
 import io
+import json
 import lzma
 import os
 import re
@@ -214,18 +215,59 @@ class ProcurementsRepository:
             A `Procurement` object if found, otherwise `None`.
         """
         sql = text(
-            "SELECT raw_data FROM procurements "
-            "WHERE pncp_control_number = :pncp_control_number AND version_number = :version_number"
+            """
+            SELECT
+                raw_data,
+                procurement_id,
+                votes_count,
+                quality_score,
+                estimated_cost,
+                potential_impact_score,
+                priority_score,
+                is_stable,
+                last_changed_at,
+                temporal_score,
+                federal_bonus_score
+            FROM procurements
+            WHERE pncp_control_number = :pncp_control_number
+              AND version_number = :version_number
+            """
         )
-        with self.engine.connect() as conn:
-            result = conn.execute(
-                sql, {"pncp_control_number": pncp_control_number, "version_number": version_number}
-            ).scalar_one_or_none()
 
-        if not result:
+        with self.engine.connect() as conn:
+            row = (
+                conn.execute(
+                    sql,
+                    {
+                        "pncp_control_number": pncp_control_number,
+                        "version_number": version_number,
+                    },
+                )
+                .mappings()
+                .one_or_none()
+            )
+
+        if row is None:
             return None
 
-        return Procurement.model_validate(result)
+        raw_payload = row["raw_data"]
+        if isinstance(raw_payload, str):
+            raw_data: dict[str, Any] = json.loads(raw_payload)
+        else:
+            raw_data = dict(raw_payload)
+
+        raw_data["procurement_id"] = row["procurement_id"]
+        raw_data["votes_count"] = row["votes_count"]
+        raw_data["quality_score"] = row["quality_score"]
+        raw_data["estimated_cost"] = row["estimated_cost"]
+        raw_data["potential_impact_score"] = row["potential_impact_score"]
+        raw_data["priority_score"] = row["priority_score"]
+        raw_data["is_stable"] = row["is_stable"]
+        raw_data["last_changed_at"] = row["last_changed_at"]
+        raw_data["temporal_score"] = row["temporal_score"]
+        raw_data["federal_bonus_score"] = row["federal_bonus_score"]
+
+        return Procurement.model_validate(raw_data)
 
     def get_procurement_uuid(self, pncp_control_number: str, version_number: int) -> UUID | None:
         """Retrieves the UUID for a specific version of a procurement.

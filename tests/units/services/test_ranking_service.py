@@ -4,20 +4,16 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING
 from unittest.mock import MagicMock, patch
 from uuid import uuid4
 
 import pytest
-
-from source.public_detective.models.procurements import Procurement
-from source.public_detective.providers.config import ConfigProvider
-from source.public_detective.repositories.analyses import AnalysisRepository
-from source.public_detective.services.pricing import PricingService
-from source.public_detective.services.ranking import RankingService
-
-if TYPE_CHECKING:
-    from source.public_detective.services.analysis import AIFileCandidate
+from public_detective.models.procurements import Procurement
+from public_detective.providers.config import ConfigProvider
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.services.analysis import AIFileCandidate
+from public_detective.services.pricing import PricingService
+from public_detective.services.ranking import RankingService
 
 
 @pytest.fixture

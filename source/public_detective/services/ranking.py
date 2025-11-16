@@ -7,19 +7,15 @@ from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import TYPE_CHECKING
 from uuid import UUID
 
 import numpy as np
-
-from source.public_detective.models.file_records import ExclusionReason
-from source.public_detective.models.procurements import Procurement
-from source.public_detective.providers.config import Config
-from source.public_detective.repositories.analyses import AnalysisRepository
-from source.public_detective.services.pricing import Modality, PricingService
-
-if TYPE_CHECKING:
-    from source.public_detective.services.analysis import AIFileCandidate
+from public_detective.models.candidates import AIFileCandidate
+from public_detective.models.file_records import ExclusionReason
+from public_detective.models.procurements import Procurement
+from public_detective.providers.config import Config
+from public_detective.repositories.analyses import AnalysisRepository
+from public_detective.services.pricing import Modality, PricingService
 
 
 class RankingService:
@@ -143,8 +139,10 @@ class RankingService:
         if not analysis or not analysis.input_tokens_used:
             return Decimal("0.0")
 
-        _, _, _, total_cost = self.pricing_service.calculate(analysis.input_tokens_used, 0, 0, modality=Modality.TEXT)
-        return total_cost
+        _, _, _, total_cost_decimal = self.pricing_service.calculate(
+            analysis.input_tokens_used, 0, 0, modality=Modality.TEXT
+        )
+        return Decimal(total_cost_decimal)
 
     def _calculate_potential_impact_score(
         self, procurement: Procurement, temporal_score: int, federal_bonus_score: int
@@ -188,7 +186,7 @@ class RankingService:
         now = datetime.now(timezone.utc)
         last_updated = procurement.last_update_date.astimezone(timezone.utc)
         quarantine_period = timedelta(hours=self.config.RANKING_STABILITY_PERIOD_HOURS)
-        return now - last_updated > quarantine_period
+        return bool(now - last_updated > quarantine_period)
 
     def _calculate_temporal_score(self, procurement: Procurement) -> int:
         """Calculates the temporal score based on the proposal closing date.

@@ -72,7 +72,6 @@ def test_ranked_analysis_e2e_flow(
         f"--gcs-path-prefix {gcs_prefix} "
         f"--max-messages {max_items_to_process} "
         f"--timeout 15 "
-        f"--max-output-tokens None"
     )
     run_command(worker_command)
 
