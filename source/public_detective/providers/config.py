@@ -74,6 +74,8 @@ class Config(BaseSettings):
 
     WORKER_MAX_CONCURRENCY: int = 4
 
+    DAILY_ANALYSIS_LIMIT: int = 1000
+
     RANKING_WEIGHT_IMPACT: float = 1.5
     RANKING_WEIGHT_QUALITY: float = 0.5
     RANKING_WEIGHT_COST: float = 0.1

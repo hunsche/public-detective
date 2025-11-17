@@ -145,6 +145,7 @@ def analysis_service(
     mock_pubsub_provider: MagicMock,
 ) -> AnalysisService:
     """Provides an AnalysisService instance with mocked dependencies."""
+    mock_analysis_repo.count_analyses_today.return_value = 0
     service = AnalysisService(
         procurement_repo=mock_procurement_repo,
         analysis_repo=mock_analysis_repo,
