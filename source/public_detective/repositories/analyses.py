@@ -737,3 +737,28 @@ class AnalysisRepository:
             return None
 
         return dict(result._mapping)
+
+    def count_analyses_today(self) -> int:
+        """Counts the number of successful analyses created today.
+
+        Returns:
+            The number of analyses with status 'ANALYSIS_SUCCESSFUL' created
+            since the beginning of the current day (UTC).
+        """
+        self.logger.info("Counting successful analyses for today.")
+        sql = text(
+            """
+            SELECT COUNT(*)
+            FROM procurement_analyses
+            WHERE
+                status = :status
+                AND created_at >= date_trunc('day', now() AT TIME ZONE 'utc');
+            """
+        )
+        params = {
+            "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
+        }
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, params).scalar_one_or_none()
+
+        return result if result is not None else 0

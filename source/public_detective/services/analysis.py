@@ -1170,6 +1170,7 @@ class AnalysisService:
         zero_vote_budget_percent: int,
         budget: Decimal | None = None,
         max_messages: int | None = None,
+        daily_analysis_limit: int | None = None,
     ) -> list[Any]:
         """Runs the ranked analysis job.
 
@@ -1179,6 +1180,7 @@ class AnalysisService:
             zero_vote_budget_percent: The percentage of the budget to use for zero-vote analyses.
             budget: The manual budget to use.
             max_messages: The maximum number of messages to publish.
+            daily_analysis_limit: The maximum number of analyses to perform today.
 
         Returns:
             A list of analyses that were triggered.
@@ -1193,8 +1195,35 @@ class AnalysisService:
             raise ValueError("Either a manual budget must be provided or auto-budget must be enabled.")
 
         self.logger.info(f"Starting ranked analysis job with a budget of {execution_budget:.2f} BRL.")
-        if max_messages is not None:
-            self.logger.info(f"Analysis run is limited to a maximum of {max_messages} message(s).")
+
+        analyses_today = self.analysis_repo.count_analyses_today()
+        limit = daily_analysis_limit if daily_analysis_limit is not None else self.config.DAILY_ANALYSIS_LIMIT
+        remaining_daily_limit = limit - analyses_today
+
+        if remaining_daily_limit <= 0:
+            self.logger.info(
+                f"Daily analysis limit of {limit} reached "
+                f"({analyses_today} performed today). No new analyses will be triggered."
+            )
+            return []
+
+        self.logger.info(
+            f"{analyses_today} analyses performed today. " f"Remaining daily quota: {remaining_daily_limit}."
+        )
+
+        if max_messages is None:
+            max_messages = remaining_daily_limit
+            self.logger.info(f"Applying daily analysis limit of {max_messages} as the message limit.")
+        else:
+            self.logger.info(f"User-defined message limit is {max_messages}.")
+            if max_messages > remaining_daily_limit:
+                self.logger.info(
+                    f"User limit of {max_messages} exceeds remaining daily quota of {remaining_daily_limit}. "
+                    f"Using quota as the effective limit."
+                )
+                max_messages = remaining_daily_limit
+            else:
+                self.logger.info("User limit is within the daily quota. Applying user limit.")
 
         remaining_budget = execution_budget
         zero_vote_budget = execution_budget * (Decimal(zero_vote_budget_percent) / 100)
@@ -1245,7 +1274,7 @@ class AnalysisService:
                 break
 
             if max_messages is not None and len(triggered_analyses) >= max_messages:
-                self.logger.info(f"Reached max_messages limit of {max_messages}. Stopping job.")
+                self.logger.info(f"Reached message limit of {max_messages}. Stopping job.")
                 break
 
             estimated_cost = analysis.total_cost or Decimal(0)

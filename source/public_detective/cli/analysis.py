@@ -387,6 +387,12 @@ def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, time
     default=None,
     help="Maximum number of analyses to trigger. If None, triggers all possible within budget.",
 )
+@click.option(
+    "--daily-analysis-limit",
+    type=int,
+    default=None,
+    help="Maximum number of analyses to perform today. Overrides the default config.",
+)
 @click.option("--no-progress", is_flag=True, help="Disable the progress bar.")
 @click.pass_context
 def rank(
@@ -396,6 +402,7 @@ def rank(
     budget_period: str | None,
     zero_vote_budget_percent: int,
     max_messages: int | None,
+    daily_analysis_limit: int | None,
     no_progress: bool,
 ) -> None:
     """Triggers a ranked analysis of pending procurements based on budget.
@@ -407,6 +414,7 @@ def rank(
         budget_period: The period for auto-budget calculation.
         zero_vote_budget_percent: Percentage of budget for zero-vote items.
         max_messages: Maximum number of analyses to trigger.
+        daily_analysis_limit: Maximum number of analyses to perform today.
         no_progress: Whether to disable the progress bar.
     """
     if not use_auto_budget and budget is None:
@@ -456,6 +464,7 @@ def rank(
             budget_period=budget_period,
             zero_vote_budget_percent=zero_vote_budget_percent,
             max_messages=max_messages,
+            daily_analysis_limit=daily_analysis_limit,
         )
 
         if should_show_progress(no_progress):
