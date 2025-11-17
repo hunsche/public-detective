@@ -3,7 +3,7 @@
 import json
 from uuid import UUID
 
-from public_detective.models.source_documents import NewSourceDocument
+from public_detective.models.source_documents import NewSourceDocument, SourceDocument
 from sqlalchemy import Engine, text
 
 
@@ -52,3 +52,40 @@ class SourceDocumentsRepository:
             result: UUID = conn.execute(sql, parameters=params).scalar_one()
             conn.commit()
             return result
+
+    def get_source_documents_by_ids(self, ids: list[UUID]) -> list[SourceDocument]:
+        """Retrieves source documents by their primary keys.
+
+        Args:
+            ids: A list of UUIDs of the source documents to retrieve.
+
+        Returns:
+            A list of `SourceDocument` objects.
+        """
+        if not ids:
+            return []
+
+        sql = text(
+            """
+            SELECT
+                id,
+                analysis_id,
+                synthetic_id,
+                title,
+                publication_date,
+                document_type_name,
+                url,
+                raw_metadata,
+                created_at,
+                updated_at
+            FROM procurement_source_documents
+            WHERE id = ANY(:ids)
+        """
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"ids": ids}).mappings().fetchall()
+
+        if not result:
+            return []
+
+        return [SourceDocument.model_validate(row) for row in result]

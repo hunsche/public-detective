@@ -488,8 +488,14 @@ def test_analyze_procurement_happy_path(analysis_service: AnalysisService, mock_
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = mock_file_records
     analysis_service.procurement_repo.get_procurement_uuid.return_value = procurement_id
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10)
-    analysis_service.pricing_service.calculate.return_value = (Decimal(0), Decimal(0), Decimal(0), Decimal(0))
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, 0, 0, 0)
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal(0),
+        Decimal(0),
+        Decimal(0),
+        Decimal(0),
+        Decimal(0),
+    )
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
@@ -900,7 +906,13 @@ def test_retry_analyses_triggers_run(analysis_service: AnalysisService) -> None:
     analysis_service.analysis_repo.get_analyses_to_retry.return_value = [analysis]
     analysis_service.analysis_repo.save_retry_analysis.return_value = uuid.uuid4()
     analysis_service.run_specific_analysis = MagicMock()
-    analysis_service.pricing_service.calculate.return_value = (Decimal("0"), Decimal("0"), Decimal("0"), Decimal("0"))
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal("0"),
+        Decimal("0"),
+        Decimal("0"),
+        Decimal("0"),
+        Decimal("0"),
+    )
     count = analysis_service.retry_analyses(initial_backoff_hours=1, max_retries=3, timeout_hours=1)
     assert count >= 0
 
@@ -1342,12 +1354,13 @@ def test_analyze_procurement_save_analysis_fails(
         {"included_in_analysis": True, "prepared_content_gcs_uris": ["uri"]}
     ]
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1)
-    analysis_service.pricing_service.calculate.return_value = (
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1, 0, 0, 0)
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
         Decimal("0.6"),
+        Decimal("0"),
     )
     error_message = "Database save failed"
     analysis_service.analysis_repo.save_analysis.side_effect = Exception(error_message)

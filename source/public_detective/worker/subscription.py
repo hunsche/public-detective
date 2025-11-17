@@ -61,6 +61,7 @@ class Subscription:
         analysis_service: AnalysisService | None = None,
         processing_complete_event: threading.Event | None = None,
         gcs_path_prefix: str | None = None,
+        no_ai_tools: bool = False,
     ):
         """Initializes the worker, loading configuration and services.
 
@@ -73,6 +74,7 @@ class Subscription:
             processing_complete_event: An optional event to signal when a
                 message has been fully processed.
             gcs_path_prefix: Overwrites the base GCS path for uploads.
+            no_ai_tools: Use the direct Gemini API without tools.
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -85,7 +87,7 @@ class Subscription:
         else:
             db_engine = DatabaseManager.get_engine()
             gcs_provider = GcsProvider()
-            ai_provider = AiProvider(Analysis)
+            ai_provider = AiProvider(Analysis, no_ai_tools=no_ai_tools)
 
             http_provider = HttpProvider()
             analysis_repo = AnalysisRepository(engine=db_engine)

@@ -17,7 +17,7 @@ class AIFileCandidate(BaseModel):
     synthetic_id: str
     raw_document_metadata: dict
     original_path: str
-    original_content: bytes
+    original_content: bytes = b""
     ai_path: str = ""
     ai_content: bytes | list[bytes] = b""
     ai_gcs_uris: list[str] = Field(default_factory=list)

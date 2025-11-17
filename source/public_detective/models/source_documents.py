@@ -4,7 +4,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class NewSourceDocument(BaseModel):
@@ -27,3 +27,22 @@ class NewSourceDocument(BaseModel):
     document_type_name: str | None
     url: str | None
     raw_metadata: dict[str, Any]
+
+
+class SourceDocument(NewSourceDocument):
+    """Represents a source document record read from the database."""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    document_id: UUID = Field(alias="id")
+    created_at: datetime
+    updated_at: datetime
+
+    @property
+    def id(self) -> UUID:
+        """Returns the database identifier for compatibility with legacy code.
+
+        Returns:
+            The UUID primary key of the source document record.
+        """
+        return self.document_id

@@ -229,6 +229,7 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         output_cost=Decimal("0.2"),
         thinking_cost=Decimal("0.05"),
         total_cost=Decimal("0.35"),
+        fallback_analysis_cost=Decimal("0.0"),
     )
 
     # Assert
@@ -293,7 +294,7 @@ def test_get_analysis_by_hash_not_found(analysis_repository: AnalysisRepository)
     assert result is None
 
 
-def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -> None:
+def test_create_pre_analysis_record_returns_id(analysis_repository: AnalysisRepository) -> None:
     """
     Should return the ID of the newly inserted pre-analysis record.
 
@@ -308,17 +309,10 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
     # Act
-    returned_id = analysis_repository.save_pre_analysis(
+    returned_id = analysis_repository.create_pre_analysis_record(
         procurement_control_number="PNCP-456",
         version_number=1,
         document_hash="pre-analysis-hash",
-        input_tokens_used=200,
-        output_tokens_used=100,
-        thinking_tokens_used=20,
-        input_cost=Decimal("0.2"),
-        output_cost=Decimal("0.3"),
-        thinking_cost=Decimal("0.1"),
-        total_cost=Decimal("0.6"),
     )
 
     # Assert
@@ -328,12 +322,11 @@ def test_save_pre_analysis_returns_id(analysis_repository: AnalysisRepository) -
     params = args[1]
     assert params["procurement_control_number"] == "PNCP-456"
     assert params["version_number"] == 1
-    assert params["input_tokens_used"] == 200
-    assert params["output_tokens_used"] == 100
     assert params["document_hash"] == "pre-analysis-hash"
-    assert params["thinking_tokens_used"] == 20
-    assert params["cost_thinking_tokens"] == Decimal("0.1")
-    assert params["total_cost"] == Decimal("0.6")
+    assert params["status"] == ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value
+    assert "INSERT INTO procurement_analyses" in str(args[0])
+    assert "status, document_hash" in str(args[0])
+    assert "PENDING_TOKEN_CALCULATION" in str(args[1]["status"])
 
 
 def test_get_analysis_by_id_not_found(analysis_repository: AnalysisRepository) -> None:
@@ -530,7 +523,11 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
     """
     mock_conn = MagicMock()
     mock_result_proxy = MagicMock()
-    mock_result_proxy.scalar_one.return_value = uuid4()
+    mock_result_proxy.scalar_one.side_effect = [
+        uuid4(),
+        None,
+        None,
+    ]  # First call returns UUID, subsequent return None for updates
     mock_conn.execute.return_value = mock_result_proxy
     analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
 
@@ -545,18 +542,81 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         output_cost=Decimal("0.3"),
         thinking_cost=Decimal("0.1"),
         total_cost=Decimal("0.6"),
+        fallback_analysis_cost=Decimal("0.0"),
         retry_count=1,
         analysis_prompt="Test prompt",
     )
 
     assert isinstance(returned_id, UUID)
+    assert mock_conn.execute.call_count == 3
+
+    # Assert call for create_pre_analysis_record
+    create_call_args, _ = mock_conn.execute.call_args_list[0]
+    create_params = create_call_args[1]
+    assert create_params["procurement_control_number"] == "PNCP-789"
+    assert create_params["version_number"] == 1
+    assert create_params["document_hash"] == "retry-hash"
+    assert create_params["retry_count"] == 1
+    assert create_params["status"] == ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value
+    assert "INSERT INTO procurement_analyses" in str(create_call_args[0])
+
+    # Assert call for update_pre_analysis_with_tokens
+    update_tokens_call_args, _ = mock_conn.execute.call_args_list[1]
+    update_tokens_params = update_tokens_call_args[1]
+    assert update_tokens_params["analysis_id"] == returned_id
+    assert update_tokens_params["input_tokens_used"] == 200
+    assert update_tokens_params["total_cost"] == Decimal("0.6")
+    assert update_tokens_params["fallback_analysis_cost"] == Decimal("0.0")
+    assert "UPDATE procurement_analyses" in str(update_tokens_call_args[0])
+
+    # Assert call for update_analysis_status
+    update_status_call_args, _ = mock_conn.execute.call_args_list[2]
+    update_status_params = update_status_call_args[1]
+    assert update_status_params["analysis_id"] == returned_id
+    assert update_status_params["status"] == ProcurementAnalysisStatus.PENDING_ANALYSIS.value
+    assert "UPDATE procurement_analyses" in str(update_status_call_args[0])
+
+
+def test_get_analyses_to_retry_includes_pending_token_calculation(
+    analysis_repository: AnalysisRepository,
+) -> None:
+    """
+    Should include analyses stuck in PENDING_TOKEN_CALCULATION in the retry list.
+
+    Args:
+        analysis_repository: The AnalysisRepository instance.
+    """
+    # Arrange
+    mock_conn = MagicMock()
+    mock_result_proxy = MagicMock()
+    mock_row = MagicMock()
+    mock_row._fields = ["procurement_control_number", "status"]
+    mock_row.__iter__.return_value = ["PNCP-STUCK", ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value]
+    mock_result_proxy.fetchall.return_value = [mock_row]
+    mock_conn.execute.return_value = mock_result_proxy
+    analysis_repository.engine.connect.return_value.__enter__.return_value = mock_conn
+
+    mock_analysis_result = MagicMock(spec=AnalysisResult)
+    mock_analysis_result.status = ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value
+
+    with patch.object(analysis_repository, "_parse_row_to_model", return_value=mock_analysis_result) as mock_parse:
+        # Act
+        result = analysis_repository.get_analyses_to_retry(max_retries=3, timeout_hours=1)
+
+    # Assert
+    assert result is not None
+    assert len(result) == 1
+    assert result[0].status == ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value
+    mock_parse.assert_called_once()
+
+    # Check the params passed to the query
     mock_conn.execute.assert_called_once()
     args, _ = mock_conn.execute.call_args
     params = args[1]
-    assert params["procurement_control_number"] == "PNCP-789"
-    assert params["retry_count"] == 1
-    assert params["thinking_tokens_used"] == 50
-    assert params["total_cost"] == Decimal("0.6")
+    assert params["failed_status"] == ProcurementAnalysisStatus.ANALYSIS_FAILED.value
+    assert params["in_progress_status"] == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value
+    assert params["pending_token_status"] == ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value
+    assert "status = :pending_token_status" in str(args[0])
 
 
 def test_get_pending_analyses_ranked(analysis_repository: AnalysisRepository) -> None:

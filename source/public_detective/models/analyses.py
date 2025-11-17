@@ -29,6 +29,48 @@ class RedFlagSeverity(StrEnum):
     SEVERE = "GRAVE"
 
 
+class Source(BaseModel):
+    """Represents an external reference used to justify a red flag.
+
+    Unlike the evidence quote, which comes from the procurement documents,
+    sources provide supporting information from outside references. They may
+    include price benchmarks, legal opinions or other materials used by the
+    auditor to substantiate the finding.
+    """
+
+    name: str = Field(
+        ...,
+        description=("The name or title of the external source, e.g., 'Painel de Preços " "do Governo Federal'."),
+    )
+    url: str | None = Field(
+        None,
+        description="The public URL to the source, when available.",
+    )
+    reference_price: Decimal | None = Field(
+        None,
+        description="The reference price per unit obtained from the source (if available).",
+    )
+    price_unit: str | None = Field(
+        None,
+        description="The unit for the reference price, e.g., 'unit', 'meter', etc.",
+    )
+    reference_date: datetime | None = Field(
+        None,
+        description="The date when the price reference or quote was valid or collected.",
+    )
+    evidence: str | None = Field(
+        None,
+        description=("A literal snippet or quote from the source (in pt-br) supporting the price " "or irregularity."),
+    )
+    rationale: str | None = Field(
+        None,
+        description=(
+            "Explanation (in pt-br) of how the source was used in the analysis; include the comparison "
+            "or calculation between the contracted price and the reference price, when applicable."
+        ),
+    )
+
+
 class RedFlag(BaseModel):
     """Represents a single red flag identified during an audit."""
 
@@ -44,8 +86,12 @@ class RedFlag(BaseModel):
         ...,
         description=("The category of the irregularity, which must be one of the allowed values."),
     )
-    severity: RedFlagSeverity | None = Field(
-        None,
+    severity: Literal[
+        RedFlagSeverity.MILD,
+        RedFlagSeverity.MODERATE,
+        RedFlagSeverity.SEVERE,
+    ] = Field(
+        ...,
         description="The severity of the red flag, which can be 'LEVE', 'MODERADA', or 'GRAVE'.",
     )
     description: str = Field(
@@ -61,6 +107,13 @@ class RedFlag(BaseModel):
         description=(
             "A technical justification (in pt-br) from the auditor's "
             "perspective, explaining why the quote represents a risk."
+        ),
+    )
+    sources: list[Source] | None = Field(
+        None,
+        description=(
+            "A list of external sources used to justify the red flag. "
+            "Only include this field when the category requires additional evidence (e.g., SOBREPRECO)."
         ),
     )
 
@@ -89,10 +142,6 @@ class Analysis(BaseModel):
     red_flags: list[RedFlag] = Field(
         default_factory=list,
         description="A list of all red flag objects identified in the document.",
-    )
-    price_sources: list[str] | None = Field(
-        None,
-        description="A list of price sources used by the model for its analysis.",
     )
     seo_keywords: list[str] = Field(
         default_factory=list,
@@ -139,7 +188,7 @@ class AnalysisResult(BaseModel):
     document_hash: str | None = None
     original_documents_gcs_path: str | None = None
     processed_documents_gcs_path: str | None = None
-    analysis_prompt: str
+    analysis_prompt: str | None = None
     input_tokens_used: int | None = None
     output_tokens_used: int | None = None
     thinking_tokens_used: int | None = None

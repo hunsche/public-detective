@@ -47,6 +47,7 @@ class RankingService:
         procurement: Procurement,
         candidates: list[AIFileCandidate],
         analysis_id: UUID | None,
+        input_tokens: int | None = None,
     ) -> Procurement:
         """Calculates and updates the procurement with all ranking scores.
 
@@ -54,12 +55,13 @@ class RankingService:
             procurement: The procurement to be scored.
             candidates: A list of file candidates for quality scoring.
             analysis_id: The ID of the analysis for cost estimation.
+            input_tokens: The number of input tokens, if already calculated.
 
         Returns:
             The updated procurement object with all scores.
         """
         quality_score = self._calculate_quality_score(candidates)
-        estimated_cost = self._calculate_estimated_cost(analysis_id)
+        estimated_cost = self._calculate_estimated_cost(analysis_id, input_tokens)
         temporal_score = self._calculate_temporal_score(procurement)
         federal_bonus_score = self._calculate_federal_bonus_score(procurement)
         potential_impact_score = self._calculate_potential_impact_score(
@@ -124,23 +126,36 @@ class RankingService:
 
         return max(0, score)
 
-    def _calculate_estimated_cost(self, analysis_id: UUID | None) -> Decimal:
+    def _calculate_estimated_cost(self, analysis_id: UUID | None, input_tokens: int | None = None) -> Decimal:
         """Calculates the estimated cost of analysis.
 
         Args:
             analysis_id: The ID of the pre-analysis record.
+            input_tokens: The number of input tokens, if already calculated.
 
         Returns:
             The estimated cost as a Decimal.
         """
-        if not analysis_id:
-            return Decimal("0.0")
-        analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
-        if not analysis or not analysis.input_tokens_used:
+        tokens_to_use = input_tokens
+        if tokens_to_use is None:
+            if not analysis_id:
+                return Decimal("0.0")
+            analysis = self.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis or not analysis.input_tokens_used:
+                return Decimal("0.0")
+            tokens_to_use = analysis.input_tokens_used
+
+        if tokens_to_use is None:
             return Decimal("0.0")
 
-        _, _, _, total_cost_decimal = self.pricing_service.calculate(
-            analysis.input_tokens_used, 0, 0, modality=Modality.TEXT
+        _, _, _, total_cost_decimal, _ = self.pricing_service.calculate_total_cost(
+            tokens_to_use,
+            0,
+            0,
+            modality=Modality.TEXT,
+            fallback_input_tokens=0,
+            fallback_output_tokens=0,
+            fallback_thinking_tokens=0,
         )
         return Decimal(total_cost_decimal)
 

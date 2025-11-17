@@ -146,7 +146,10 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         patch.object(procurement_repo, "get_procurement_by_hash", return_value=False),
         patch.object(analysis_service, "_process_and_save_source_documents", return_value={}),
         patch.object(analysis_service, "_upload_and_save_initial_records"),
-        patch.object(analysis_repo, "save_pre_analysis", return_value=uuid4()) as save_pre_analysis_mock,
+        patch.object(
+            analysis_repo, "create_pre_analysis_record", return_value=uuid4()
+        ) as create_pre_analysis_record_mock,
+        patch.object(analysis_repo, "update_pre_analysis_with_tokens") as update_pre_analysis_with_tokens_mock,
         patch.object(procurement_repo, "get_procurement_uuid", return_value=str(uuid4())),
         patch.object(procurement_repo, "get_latest_version", return_value=1),
         patch.object(procurement_repo, "save_procurement_version"),
@@ -155,4 +158,5 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         # Consume the generator to trigger the logic
         list(analysis_service.run_pre_analysis(date(2025, 1, 1), date(2025, 1, 1), 10, 60, None))
 
-    save_pre_analysis_mock.assert_called_once()
+    create_pre_analysis_record_mock.assert_called_once()
+    update_pre_analysis_with_tokens_mock.assert_called_once()

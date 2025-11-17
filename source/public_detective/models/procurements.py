@@ -224,6 +224,7 @@ class Procurement(BaseModel):
     model_config = ConfigDict(extra="allow", use_enum_values=True)
 
     procurement_id: UUID | None = None
+    version_number: int | None = None
     proposal_opening_date: datetime | None = Field(None, alias="dataAberturaProposta")
     proposal_closing_date: datetime | None = Field(None, alias="dataEncerramentoProposta")
     additional_information: str | None = Field(None, alias="informacaoComplementar")

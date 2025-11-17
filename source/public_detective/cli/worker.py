@@ -36,11 +36,18 @@ def worker_group() -> None:
     default=None,
     help="[Internal Testing] Overwrites the base GCS path for uploads.",
 )
+@click.option(
+    "--no-ai-tools",
+    is_flag=True,
+    default=False,
+    help="[Internal Testing] Use the direct Gemini API without tools.",
+)
 def start(
     max_messages: int | None,
     timeout: int | None,
     max_output_tokens: str | None,
     gcs_path_prefix: str | None,
+    no_ai_tools: bool,
 ) -> None:
     """Initializes and runs the Pub/Sub subscription worker.
 
@@ -49,6 +56,7 @@ def start(
         timeout: Time in seconds to wait for a message.
         max_output_tokens: Maximum number of output tokens for the AI model.
         gcs_path_prefix: Overwrites the base GCS path for uploads.
+        no_ai_tools: Use the direct Gemini API without tools.
     """
     logger = LoggingProvider().get_logger()
     if max_messages is not None and timeout is None:
@@ -67,7 +75,10 @@ def start(
             return
 
     try:
-        subscription = Subscription(gcs_path_prefix=gcs_path_prefix)
+        subscription = Subscription(
+            gcs_path_prefix=gcs_path_prefix,
+            no_ai_tools=no_ai_tools,
+        )
         subscription.run(
             max_messages=max_messages,
             timeout=timeout,

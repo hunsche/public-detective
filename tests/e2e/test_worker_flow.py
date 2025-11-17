@@ -120,7 +120,9 @@ def test_worker_flow(db_session: Engine, e2e_pubsub: tuple, gcs_cleanup_manager:
     )
     gcs_prefix = gcs_cleanup_manager.prefix
     worker_command = (
-        f"{env_vars} poetry run pd worker start --max-messages 1 --timeout 5 --gcs-path-prefix {gcs_prefix}"
+        f"{env_vars} poetry run pd worker start "
+        f"--max-messages 1 --timeout 5 --gcs-path-prefix {gcs_prefix} "
+        f"--no-ai-tools"
     )
     run_command(worker_command)
 

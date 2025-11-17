@@ -1,5 +1,6 @@
 """This module defines the repository for managing analysis status history."""
 
+from typing import Any
 from uuid import UUID
 
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -56,3 +57,31 @@ class StatusHistoryRepository:
             conn.execute(sql, params)
             conn.commit()
         self.logger.info("Status history record created successfully.")
+
+    def get_history_by_analysis_id(self, analysis_id: UUID) -> list[dict[str, Any]]:
+        """Retrieves the status history for a given analysis ID.
+
+        Args:
+            analysis_id: The ID of the analysis to retrieve history for.
+
+        Returns:
+            A list of dictionaries, where each dictionary represents a status
+            history record.
+        """
+        self.logger.debug(f"Fetching status history for analysis_id {analysis_id}.")
+        sql = text(
+            """
+            SELECT
+                id,
+                analysis_id,
+                status,
+                details,
+                created_at
+            FROM procurement_analysis_status_history
+            WHERE analysis_id = :analysis_id
+            ORDER BY created_at ASC;
+            """
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"analysis_id": analysis_id}).mappings().all()
+        return [dict(row) for row in result]

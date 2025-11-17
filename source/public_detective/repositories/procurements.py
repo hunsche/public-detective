@@ -227,7 +227,8 @@ class ProcurementsRepository:
                 is_stable,
                 last_changed_at,
                 temporal_score,
-                federal_bonus_score
+                federal_bonus_score,
+                version_number
             FROM procurements
             WHERE pncp_control_number = :pncp_control_number
               AND version_number = :version_number
@@ -266,6 +267,7 @@ class ProcurementsRepository:
         raw_data["last_changed_at"] = row["last_changed_at"]
         raw_data["temporal_score"] = row["temporal_score"]
         raw_data["federal_bonus_score"] = row["federal_bonus_score"]
+        raw_data["version_number"] = row["version_number"]
 
         return Procurement.model_validate(raw_data)
 

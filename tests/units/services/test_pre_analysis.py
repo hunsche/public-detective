@@ -4,6 +4,7 @@ from collections.abc import Generator
 from datetime import date
 from typing import Any
 from unittest.mock import MagicMock, patch
+from uuid import uuid4
 
 import pytest
 from public_detective.models.procurements import Procurement
@@ -45,7 +46,7 @@ def test_run_pre_analysis_happy_path(mock_dependencies: dict, mock_procurement: 
     service.procurement_repo.get_updated_procurements_with_raw_data.side_effect = mock_generator
     service.procurement_repo.get_latest_version.return_value = 0
     service.procurement_repo.get_procurement_by_hash.return_value = False
-    service.analysis_repo.save_pre_analysis.return_value = "new-analysis-id"
+    service.analysis_repo.create_pre_analysis_record.return_value = uuid4()
 
     with patch.object(service, "_pre_analyze_procurement") as mock_pre_analyze:
         # Consume the generator to trigger the logic
@@ -64,7 +65,7 @@ def test_run_pre_analysis_no_procurements_found(mock_dependencies: dict) -> None
     list(service.run_pre_analysis(start_date, end_date, 100, 60, None))
 
     service.procurement_repo.get_updated_procurements_with_raw_data.assert_called_once_with(target_date=start_date)
-    service.analysis_repo.save_pre_analysis.assert_not_called()
+    service.analysis_repo.create_pre_analysis_record.assert_not_called()
 
 
 def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procurement: Procurement) -> None:
@@ -79,7 +80,7 @@ def test_pre_analyze_procurement_idempotency(mock_dependencies: dict, mock_procu
     service._pre_analyze_procurement(mock_procurement, {})
 
     service.procurement_repo.save_procurement_version.assert_not_called()
-    service.analysis_repo.save_pre_analysis.assert_not_called()
+    service.analysis_repo.create_pre_analysis_record.assert_not_called()
 
 
 def test_pre_analyze_procurement_existing_hash(mock_dependencies: dict, mock_procurement: Procurement) -> None:

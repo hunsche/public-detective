@@ -1,6 +1,5 @@
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import cast
 from uuid import UUID, uuid4
 
 import numpy as np
@@ -158,10 +157,13 @@ def _save_analysis(
     ranking_service: RankingService, procurement: Procurement, input_tokens: int, version_number: int = 1
 ) -> UUID:
     _persist_procurement(ranking_service, procurement, version_number)
-    analysis_id = ranking_service.analysis_repo.save_pre_analysis(
+    analysis_id: UUID = ranking_service.analysis_repo.create_pre_analysis_record(
         procurement_control_number=procurement.pncp_control_number,
         version_number=version_number,
         document_hash=uuid4().hex,
+    )
+    ranking_service.analysis_repo.update_pre_analysis_with_tokens(
+        analysis_id=analysis_id,
         input_tokens_used=input_tokens,
         output_tokens_used=0,
         thinking_tokens_used=0,
@@ -169,9 +171,10 @@ def _save_analysis(
         output_cost=Decimal("0"),
         thinking_cost=Decimal("0"),
         total_cost=Decimal("0"),
+        fallback_analysis_cost=Decimal("0"),
         analysis_prompt="",
     )
-    return cast(UUID, analysis_id)
+    return analysis_id
 
 
 def _expected_priority(

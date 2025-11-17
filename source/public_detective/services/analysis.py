@@ -235,11 +235,16 @@ class AnalysisService:
     ) -> None:
         """Executes the full analysis pipeline for a single procurement.
 
+        This method orchestrates the main analysis phase. It retrieves the
+        necessary data, calls the AI provider to perform the analysis, calculates
+        the final costs based on token usage (including potential fallbacks), and
+        saves the complete analysis result to the database.
+
         Args:
-            procurement: The procurement to analyze.
-            version_number: The version number of the procurement.
-            analysis_id: The ID of the analysis.
-            max_output_tokens: The maximum number of output tokens for the AI model.
+            procurement: The procurement record to analyze.
+            version_number: The version number associated with the procurement.
+            analysis_id: The persistent identifier of the analysis execution.
+            max_output_tokens: The optional maximum number of output tokens for the AI model.
         """
         procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, version_number)
         if not procurement_id:
@@ -291,7 +296,15 @@ class AnalysisService:
             prompt = analysis_record.analysis_prompt
 
             try:
-                ai_analysis, input_tokens, output_tokens, thinking_tokens = self.ai_provider.get_structured_analysis(
+                (
+                    ai_analysis,
+                    input_tokens,
+                    output_tokens,
+                    thinking_tokens,
+                    fallback_input_tokens,
+                    fallback_output_tokens,
+                    fallback_thinking_tokens,
+                ) = self.ai_provider.get_structured_analysis(
                     prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
                 )
 
@@ -309,8 +322,20 @@ class AnalysisService:
                     processed_documents_gcs_path=None,
                     analysis_prompt=prompt,
                 )
-                input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
-                    input_tokens, output_tokens, thinking_tokens, modality=modality
+                (
+                    input_cost,
+                    output_cost,
+                    thinking_cost,
+                    total_cost,
+                    fallback_cost,
+                ) = self.pricing_service.calculate_total_cost(
+                    input_tokens,
+                    output_tokens,
+                    thinking_tokens,
+                    modality=modality,
+                    fallback_input_tokens=fallback_input_tokens,
+                    fallback_output_tokens=fallback_output_tokens,
+                    fallback_thinking_tokens=fallback_thinking_tokens,
                 )
                 self.analysis_repo.save_analysis(
                     analysis_id=analysis_id,
@@ -322,6 +347,7 @@ class AnalysisService:
                     output_cost=output_cost,
                     thinking_cost=thinking_cost,
                     total_cost=total_cost,
+                    fallback_analysis_cost=fallback_cost,
                 )
 
                 self.budget_ledger_repo.save_expense(
@@ -763,8 +789,8 @@ class AnalysisService:
 
         return f"""
         Você é um auditor sênior especializado em licitações públicas no Brasil.
-        Sua tarefa é analisar os documentos em anexo para identificar
-        possíveis irregularidades no processo de licitação.
+        Sua tarefa é analisar os documentos em anexo para identificar possíveis
+        irregularidades no processo de contratação.
 
         Primeiro, revise os metadados da licitação em formato JSON para obter o
         contexto geral. Em seguida, use a lista de documentos e arquivos para
@@ -780,70 +806,56 @@ class AnalysisService:
 
         Com base em todas as informações disponíveis, analise a licitação em
         busca de irregularidades nas seguintes categorias. Para cada achado,
-        você deve extrair a citação exata de um dos documentos que embase sua
-        análise.
+        extraia a citação exata de um dos documentos que embase sua análise e
+        preencha um objeto `red_flag` com os campos definidos no esquema.
 
         **Categorias de Irregularidades:**
-        1.  **Direcionamento (DIRECIONAMENTO):** Cláusulas que favorecem um
-            fornecedor específico, como exigências de marca, qualificações
-            irrelevantes ou prazos inexequíveis.
-        2.  **Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE):**
-            Requisitos que limitam a participação de concorrentes, como
-            amostras excessivas ou critérios de habilitação desproporcionais.
-        3.  **Sobrepreço (SOBREPRECO):** Preços orçados ou contratados
-            significativamente acima da média de mercado. Ao analisar,
-            considere o momento da cotação, a quantidade e a logística.
-            **Sempre que apontar sobrepreço, cite a fonte de sua referência
-            (ex: Painel de Preços, SINAPI, atas de outros pregões, etc.).**
-        4.  **Superfaturamento (SUPERFATURAMENTO):** Dano efetivo ao erário,
-            comprovado por pagamentos por serviços não executados, medições
-            falsas ou aditivos contratuais que desequilibram o valor inicial.
-            **Só utilize esta categoria se houver evidência clara de dano
-            consumado.**
-        5.  **Fraude (FRAUDE):** Indícios de conluio entre licitantes,
-            documentos falsificados ou outras práticas fraudulentas.
-        6.  **Documentação Irregular (DOCUMENTACAO_IRREGULAR):** Falhas formais
-            graves, como ausência de justificativa de preço, parecer jurídico
-            ou publicação obrigatória.
-        7.  **Outros (OUTROS):** Irregularidades que não se encaixam nas
-            categorias anteriores.
+        1. **Direcionamento (DIRECIONAMENTO):** Cláusulas que favorecem um fornecedor específico, como exigência de marca sem justificativa técnica, qualificações irrelevantes ou prazos inexequíveis.
+        2. **Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE):** Requisitos que limitam a participação, como amostras excessivas ou critérios de habilitação desproporcionais.
+        3. **Sobrepreço (SOBREPRECO):** Preços orçados ou contratados significativamente acima da média de mercado. Ao analisar, considere o momento da cotação, a quantidade e a logística. Para esta categoria, você **deve** buscar ativamente preços de referência em fontes confiáveis (Painel de Preços, SINAPI, atas de pregões, sites de e-commerce etc.) usando as ferramentas de pesquisa disponíveis (por exemplo, Google Search). Identifique o preço unitário contratado (`contracted_unit_price`), encontre um preço de referência (`reference_price` e `price_unit`), calcule mentalmente a diferença percentual (`price_difference_percentage = ((contracted_unit_price - reference_price) / reference_price) * 100`) e classifique a severidade conforme abaixo. Cada fonte consultada deve ser registrada na lista `sources`.
+        4. **Superfaturamento (SUPERFATURAMENTO):** Dano efetivo ao erário, comprovado por pagamento de serviço não executado, medições falsas ou aditivos que desequilibram o valor inicial. Só utilize esta categoria se houver evidência clara de dano consumado. Se houver comparação de preços, siga as mesmas instruções de sobrepreço para compor as fontes.
+        5. **Fraude (FRAUDE):** Indícios de conluio entre licitantes, documentos falsificados ou outras práticas fraudulentas.
+        6. **Documentação Irregular (DOCUMENTACAO_IRREGULAR):** Falhas formais graves, como ausência de justificativa de preço, parecer jurídico ou publicação obrigatória.
+        7. **Outros (OUTROS):** Irregularidades que não se encaixam nas categorias anteriores.
 
-        **Classificação de Severidade:**
-        Para cada `red_flag` identificada, classifique sua severidade como
-        `leve`, `moderada` ou `grave`. Alegações vagas sem citação literal
-        devem ser descartadas.
+        **Estrutura do `red_flag`:**
+        - `category`: uma das categorias acima.
+        - `severity`: `LEVE`, `MODERADA` ou `GRAVE` (veja critérios abaixo).
+        - `description`: descrição objetiva (em pt-br) da irregularidade.
+        - `evidence_quote`: citação literal (em pt-br) de um documento da licitação que comprova a irregularidade.
+        - `auditor_reasoning`: justificativa técnica (em pt-br) explicando por que a evidência representa um risco.
+        - `sources` (opcional): lista de fontes externas utilizadas para justificar o red flag. Preencha apenas para categorias que exijam evidências adicionais (sobrepreço e superfaturamento). Cada item deve conter:
+        - `name`: nome ou título da fonte.
+        - `url`: URL pública da fonte (quando houver).
+        - `reference_price`: preço de referência por unidade (quando disponível).
+        - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
+        - `reference_date`: data em que o preço foi válido ou coletado.
+        - `evidence`: trecho literal (em pt-br) da fonte que apoia a comparação.
+        - `rationale`: explicação de como a fonte foi utilizada; inclua o cálculo mental do preço contratado versus o de referência e a diferença percentual.
 
-        **Critérios para a Nota de Risco (0 a 10):**
-        A nota deve ponderar a quantidade, a severidade das irregularidades e
-        o impacto financeiro da licitação.
-        - **0-1 (Risco Mínimo):** Apenas pequenas falhas formais que não
-          comprometem o processo.
-        - **2-3 (Risco Baixo):** Indícios de irregularidades de baixa
-          severidade ou falhas formais.
-        - **4-5 (Risco Moderado):** Evidências de restrição de
-          competitividade ou sobrepreço em itens de menor valor.
-        - **6-7 (Risco Alto):** Direcionamento claro, sobrepreço em itens
-          relevantes ou múltiplas irregularidades moderadas.
-        - **8-9 (Risco Crítico):** Evidência forte de fraude, conluio ou
-          superfaturamento.
-        - **10 (Risco Máximo):** Múltiplas irregularidades graves e
-          combinadas, com dano comprovado ao erário.
+        **Classificação de Severidade (calibrada):**
+        - **Leve:** falhas formais, ou sobrepreço com diferença < 20 % em itens de baixo valor.
+        - **Moderada:** restrição de competitividade, sobrepreço com diferença entre 20 % e 50 %, ou ausência parcial de pesquisa de preços.
+        - **Grave:** direcionamento claro, ausência total de pesquisa de preços, sobrepreço com diferença > 50 %, ou qualquer indício de fraude ou dano consumado.
 
-        Sua resposta deve ser um objeto JSON que siga estritamente o esquema
-        fornecido, incluindo os campos `procurement_summary`, `analysis_summary`,
-        `risk_score_rationale`, e a lista de `price_sources` quando aplicável.
+        **Critérios para a Nota de Risco (0 a 10 – calibrada):**
+        A nota deve ponderar a quantidade, a severidade das irregularidades e o impacto financeiro. Utilize os seguintes exemplos como referência:
+        - **0–1 (Risco Mínimo):** apenas falhas burocráticas menores (ex.: atestado técnico vencido poucos dias).
+        - **2–3 (Risco Baixo):** irregularidades leves sem indício de má-fé (ex.: sobrepreço de 15 % em item de baixo valor).
+        - **4–5 (Risco Moderado):** evidências de restrição de competitividade ou sobrepreço relevante (ex.: exigência de certificação específica; sobrepreço de 40 % no item principal).
+        - **6–7 (Risco Alto):** direcionamento claro, múltiplas irregularidades ou sobrepreço elevado (ex.: especificação de marca sem justificativa; pesquisa de preços com apenas uma cotação).
+        - **8–9 (Risco Crítico):** forte suspeita de fraude, conluio ou dano ao erário (ex.: concorrentes com mesmo sócio; preços 100 % acima do mercado).
+        - **10 (Risco Máximo):** prova documental de fraude ou superfaturamento, ou conjunto de irregularidades graves que demonstram má-fé e dano iminente ou consumado.
+
+        Sua resposta deve ser um objeto JSON que siga estritamente o esquema fornecido, incluindo os campos `procurement_summary`, `analysis_summary`, `risk_score_rationale`, e a lista de `red_flags` (cada um com seus `sources` quando houver). Não retorne nenhum campo extra.
 
         Forneça um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação no campo `procurement_summary`.
 
         Forneça um resumo conciso (em pt-br, máximo 3 sentenças) da análise geral no campo `analysis_summary`.
 
         **Palavras-chave para SEO:**
-        Finalmente, gere uma lista de 5 a 10 palavras-chave estratégicas (em pt-br)
-        que um usuário interessado nesta licitação digitaria no Google. Pense em
-        termos como o objeto da licitação, o órgão público, a cidade/estado, e
-        possíveis sinônimos ou termos relacionados que maximizem a
-        encontrabilidade desta análise.
-        """
+        Por fim, gere uma lista de 5 a 10 palavras-chave estratégicas (em pt-br) que um usuário interessado nesta licitação digitaria no Google. Pense em termos relacionados ao objeto da licitação, ao órgão público, à cidade/estado e a sinônimos que maximizem a encontrabilidade da análise.
+        """  # noqa: E501
 
     def _calculate_hash(self, files: list[tuple[str, bytes | list[bytes]]]) -> str:
         """Calculates a SHA-256 hash from the content of a list of files.
@@ -1054,33 +1066,31 @@ class AnalysisService:
     def _pre_analyze_procurement(self, procurement: Procurement, raw_data: dict) -> None:
         """Performs the pre-analysis for a single procurement.
 
+        This method handles the initial processing before the main AI analysis.
+        It includes preparing file candidates, calculating content hashes, saving
+        the initial procurement version and analysis records, selecting files
+        based on token limits, and calculating the final estimated cost and
+        priority score.
+
         Args:
             procurement: The procurement to pre-analyze.
             raw_data: The raw data of the procurement.
         """
         all_original_files = self.procurement_repo.process_procurement_documents(procurement)
-        all_candidates = self._prepare_ai_candidates(all_original_files)
-        final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
-        files_for_ai = [(c.ai_path, c.ai_content) for c in final_candidates if c.is_included]
-
         procurement_content_hash = self._calculate_procurement_hash(procurement, all_original_files)
-
         if self.procurement_repo.get_procurement_by_hash(procurement_content_hash):
             self.logger.info(f"Procurement with hash {procurement_content_hash} already exists. Skipping.")
             return
 
-        raw_data_str = json.dumps(raw_data, sort_keys=True)
-
-        analysis_document_hash = self._calculate_hash(files_for_ai)
+        all_candidates = self._prepare_ai_candidates(all_original_files)
+        files_for_hash = [(c.ai_path, c.ai_content) for c in all_candidates if not c.exclusion_reason]
+        analysis_document_hash = self._calculate_hash(files_for_hash)
 
         latest_version = self.procurement_repo.get_latest_version(procurement.pncp_control_number)
         new_version = latest_version + 1
-
-        procurement = self.ranking_service.calculate_priority(procurement, all_candidates, None)
-
         self.procurement_repo.save_procurement_version(
             procurement=procurement,
-            raw_data=raw_data_str,
+            raw_data=json.dumps(raw_data, sort_keys=True),
             version_number=new_version,
             content_hash=procurement_content_hash,
         )
@@ -1089,51 +1099,69 @@ class AnalysisService:
         if not procurement_id:
             raise AnalysisError(f"Could not find procurement UUID for {procurement.pncp_control_number} v{new_version}")
 
-        prompt = self._build_analysis_prompt(procurement, final_candidates)
-        uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
-        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
-
-        output_tokens = 0
-        thinking_tokens = 0
-        modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
-        input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
-            input_tokens, output_tokens, thinking_tokens, modality=modality
-        )
-
-        analysis_id = self.analysis_repo.save_pre_analysis(
+        analysis_id = self.analysis_repo.create_pre_analysis_record(
             procurement_control_number=procurement.pncp_control_number,
             version_number=new_version,
             document_hash=analysis_document_hash,
-            input_tokens_used=input_tokens,
-            output_tokens_used=output_tokens,
-            thinking_tokens_used=thinking_tokens,
-            input_cost=input_cost,
-            output_cost=output_cost,
-            thinking_cost=thinking_cost,
-            total_cost=total_cost,
-            analysis_prompt=prompt,
         )
-
-        updated_procurement = self.procurement_repo.get_procurement_by_id_and_version(
-            procurement.pncp_control_number, new_version
-        )
-        if updated_procurement:
-            updated_procurement = self.ranking_service.calculate_priority(
-                updated_procurement, all_candidates, analysis_id
-            )
-            self.procurement_repo.update_procurement_ranking_data(updated_procurement, new_version)
 
         correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
         with LoggingProvider().set_correlation_id(correlation_id):
-            self.status_history_repo.create_record(
-                analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
-            )
-
             source_docs_map = self._process_and_save_source_documents(analysis_id, all_candidates)
             self._upload_and_save_initial_records(
                 procurement, procurement_id, analysis_id, all_candidates, source_docs_map
             )
+
+            final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
+            prompt = self._build_analysis_prompt(procurement, final_candidates)
+            uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
+            input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
+
+            output_tokens = 0
+            thinking_tokens = 0
+            modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
+            (
+                input_cost,
+                output_cost,
+                thinking_cost,
+                total_cost,
+                fallback_cost,
+            ) = self.pricing_service.calculate_total_cost(
+                input_tokens,
+                output_tokens,
+                thinking_tokens,
+                modality=modality,
+                fallback_input_tokens=0,
+                fallback_output_tokens=0,
+                fallback_thinking_tokens=0,
+            )
+
+            self.analysis_repo.update_pre_analysis_with_tokens(
+                analysis_id=analysis_id,
+                input_tokens_used=input_tokens,
+                output_tokens_used=output_tokens,
+                thinking_tokens_used=thinking_tokens,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                thinking_cost=thinking_cost,
+                total_cost=total_cost,
+                fallback_analysis_cost=fallback_cost,
+                analysis_prompt=prompt,
+            )
+
+            db_procurement = self.procurement_repo.get_procurement_by_id_and_version(
+                procurement.pncp_control_number, new_version
+            )
+            if db_procurement:
+                db_procurement = self.ranking_service.calculate_priority(
+                    db_procurement, all_candidates, analysis_id, input_tokens
+                )
+                self.procurement_repo.update_procurement_ranking_data(db_procurement, new_version)
+
             self._update_selected_file_records(final_candidates)
+            self._update_status_with_history(
+                analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis completed."
+            )
 
     def run_ranked_analysis(
         self,
@@ -1285,14 +1313,41 @@ class AnalysisService:
                 backoff_hours = initial_backoff_hours * (2**analysis.retry_count)
                 next_retry_time = last_updated + timedelta(hours=backoff_hours)
 
-                if now >= next_retry_time:
+                if now < next_retry_time:
+                    continue
+
+                if analysis.status == ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value:
+                    self.logger.info(f"Resuming pre-analysis for stuck analysis {analysis.analysis_id}...")
+                    try:
+                        self._resume_pre_analysis(analysis)
+                        self.run_specific_analysis(analysis.analysis_id)
+                        retried_count += 1
+                    except Exception as e:
+                        self.logger.error(
+                            f"Failed to resume pre-analysis for {analysis.analysis_id}: {e}", exc_info=True
+                        )
+                        self._update_status_with_history(
+                            analysis.analysis_id,
+                            ProcurementAnalysisStatus.ANALYSIS_FAILED,
+                            f"Pre-analysis resumption failed: {e}",
+                        )
+                else:
                     self.logger.info(f"Retrying analysis {analysis.analysis_id}...")
                     modality = Modality.TEXT
-                    input_cost, output_cost, thinking_cost, total_cost = self.pricing_service.calculate(
+                    (
+                        input_cost,
+                        output_cost,
+                        thinking_cost,
+                        total_cost,
+                        fallback_cost,
+                    ) = self.pricing_service.calculate_total_cost(
                         analysis.input_tokens_used,
                         analysis.output_tokens_used,
                         analysis.thinking_tokens_used,
                         modality=modality,
+                        fallback_input_tokens=0,
+                        fallback_output_tokens=0,
+                        fallback_thinking_tokens=0,
                     )
                     new_analysis_id = self.analysis_repo.save_retry_analysis(
                         procurement_control_number=analysis.procurement_control_number,
@@ -1305,6 +1360,7 @@ class AnalysisService:
                         output_cost=output_cost,
                         thinking_cost=thinking_cost,
                         total_cost=total_cost,
+                        fallback_analysis_cost=fallback_cost,
                         retry_count=analysis.retry_count + 1,
                         analysis_prompt=analysis.analysis_prompt,
                     )
@@ -1314,6 +1370,118 @@ class AnalysisService:
             return retried_count
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during retry analyses: {e}") from e
+
+    def _rebuild_candidates_from_db(self, analysis_id: UUID) -> list[AIFileCandidate]:
+        """Rebuilds a list of AIFileCandidate objects from database records.
+
+        Args:
+            analysis_id: The ID of the analysis to rebuild candidates for.
+
+        Returns:
+            A list of AIFileCandidate objects.
+        """
+        file_records = self.file_record_repo.get_all_file_records_by_analysis_id(str(analysis_id))
+        source_doc_ids = {record["source_document_id"] for record in file_records}
+        source_docs = self.source_document_repo.get_source_documents_by_ids(list(source_doc_ids))
+        source_docs_map = {doc.id: doc for doc in source_docs}
+
+        candidates = []
+        for record in file_records:
+            source_doc = source_docs_map.get(record["source_document_id"])
+            if not source_doc:
+                self.logger.warning(f"Source document not found for file record: {record['file_record_id']}")
+                continue
+
+            relative_path = record["file_name"]
+
+            prepared_uris = record.get("prepared_content_gcs_uris") or []
+            if prepared_uris:
+                ai_path = prepared_uris[0].split("/")[-1]
+                ai_gcs_uris = prepared_uris
+            else:
+                ai_path = relative_path
+                ai_gcs_uris = [f"gs://{self.config.GCP_GCS_BUCKET_PROCUREMENTS}/{record['gcs_path']}"]
+
+            candidate = AIFileCandidate(
+                synthetic_id=source_doc.synthetic_id,
+                raw_document_metadata=source_doc.raw_metadata,
+                original_path=relative_path,
+                file_record_id=record["file_record_id"],
+                ai_gcs_uris=ai_gcs_uris,
+                ai_path=ai_path,
+                exclusion_reason=record.get("exclusion_reason"),
+            )
+            candidates.append(candidate)
+        return candidates
+
+    def _resume_pre_analysis(self, analysis: AnalysisResult) -> None:
+        """Resumes a pre-analysis that was stuck in PENDING_TOKEN_CALCULATION.
+
+        Args:
+            analysis: The analysis to resume.
+        """
+        self.logger.info(f"Resuming pre-analysis for {analysis.analysis_id}")
+        analysis_id = analysis.analysis_id
+
+        procurement = self.procurement_repo.get_procurement_by_id_and_version(
+            analysis.procurement_control_number, analysis.version_number
+        )
+        if not procurement:
+            raise AnalysisError(f"Procurement not found for resuming analysis {analysis_id}")
+
+        all_candidates = self._rebuild_candidates_from_db(analysis_id)
+
+        final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
+        prompt = self._build_analysis_prompt(procurement, final_candidates)
+        uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
+        input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
+
+        output_tokens = 0
+        thinking_tokens = 0
+        modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
+        (
+            input_cost,
+            output_cost,
+            thinking_cost,
+            total_cost,
+            fallback_cost,
+        ) = self.pricing_service.calculate_total_cost(
+            input_tokens,
+            output_tokens,
+            thinking_tokens,
+            modality=modality,
+            fallback_input_tokens=0,
+            fallback_output_tokens=0,
+            fallback_thinking_tokens=0,
+        )
+
+        self.analysis_repo.update_pre_analysis_with_tokens(
+            analysis_id=analysis_id,
+            input_tokens_used=input_tokens,
+            output_tokens_used=output_tokens,
+            thinking_tokens_used=thinking_tokens,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            thinking_cost=thinking_cost,
+            total_cost=total_cost,
+            fallback_analysis_cost=fallback_cost,
+            analysis_prompt=prompt,
+        )
+
+        db_procurement = self.procurement_repo.get_procurement_by_id_and_version(
+            procurement.pncp_control_number, procurement.version_number
+        )
+        if db_procurement:
+            db_procurement = self.ranking_service.calculate_priority(
+                db_procurement, all_candidates, analysis_id, input_tokens
+            )
+            self.procurement_repo.update_procurement_ranking_data(db_procurement, procurement.version_number)
+
+        self._update_selected_file_records(final_candidates)
+        self._update_status_with_history(
+            analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS, "Pre-analysis resumed and completed."
+        )
+        self.logger.info(f"Successfully resumed pre-analysis for {analysis.analysis_id}")
 
     def get_procurement_overall_status(self, procurement_control_number: str) -> dict[str, Any] | None:
         """Retrieves the overall status of a procurement.

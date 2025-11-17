@@ -1100,6 +1100,7 @@ def test_get_procurement_by_id_and_version_found(repo: ProcurementsRepository) -
         "last_changed_at": "2025-01-01T12:00:00",
         "temporal_score": 5,
         "federal_bonus_score": 0,
+        "version_number": 1,
     }
     result = repo.get_procurement_by_id_and_version("PNCP-123", 1)
     assert result is not None

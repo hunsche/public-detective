@@ -37,11 +37,18 @@ def pricing_service() -> Generator[PricingService, Any, None]:
 
 def test_calculate_zero_tokens(pricing_service: PricingService) -> None:
     """Tests cost calculation with zero tokens."""
-    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(0, 0, 0, Modality.TEXT)
+    (
+        input_cost,
+        output_cost,
+        thinking_cost,
+        total_cost,
+        fallback_cost,
+    ) = pricing_service.calculate_total_cost(0, 0, 0, Modality.TEXT, 0, 0, 0)
     assert input_cost == Decimal("0")
     assert output_cost == Decimal("0")
     assert thinking_cost == Decimal("0")
     assert total_cost == Decimal("0")
+    assert fallback_cost == Decimal("0")
 
 
 @pytest.mark.parametrize(
@@ -61,9 +68,13 @@ def test_calculate_standard_context_modalities(
     output_tokens = 10_000
     thinking_tokens = 5_000
 
-    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(
-        input_tokens, output_tokens, thinking_tokens, modality
-    )
+    (
+        input_cost,
+        output_cost,
+        thinking_cost,
+        total_cost,
+        fallback_cost,
+    ) = pricing_service.calculate_total_cost(input_tokens, output_tokens, thinking_tokens, modality, 0, 0, 0)
 
     expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
     expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_COST
@@ -73,6 +84,7 @@ def test_calculate_standard_context_modalities(
     assert output_cost == expected_output
     assert thinking_cost == expected_thinking
     assert total_cost == expected_input + expected_output + expected_thinking
+    assert fallback_cost == Decimal("0")
 
 
 @pytest.mark.parametrize(
@@ -92,9 +104,13 @@ def test_calculate_long_context_modalities(
     output_tokens = 10_000
     thinking_tokens = 5_000
 
-    input_cost, output_cost, thinking_cost, total_cost = pricing_service.calculate(
-        input_tokens, output_tokens, thinking_tokens, modality
-    )
+    (
+        input_cost,
+        output_cost,
+        thinking_cost,
+        total_cost,
+        fallback_cost,
+    ) = pricing_service.calculate_total_cost(input_tokens, output_tokens, thinking_tokens, modality, 0, 0, 0)
 
     expected_input = (Decimal(input_tokens) / 1_000_000) * expected_input_cost_per_million
     expected_output = (Decimal(output_tokens) / 1_000_000) * pricing_service.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST
@@ -106,3 +122,4 @@ def test_calculate_long_context_modalities(
     assert output_cost == expected_output
     assert thinking_cost == expected_thinking
     assert total_cost == expected_input + expected_output + expected_thinking
+    assert fallback_cost == Decimal("0")

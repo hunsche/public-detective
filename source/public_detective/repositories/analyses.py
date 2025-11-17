@@ -96,6 +96,7 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
+        fallback_analysis_cost: Decimal,
     ) -> None:
         """Updates an existing analysis record with the full analysis results.
 
@@ -115,6 +116,7 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
+            fallback_analysis_cost: The cost of the fallback analysis.
         """
         self.logger.info(f"Updating analysis for analysis_id {analysis_id}.")
 
@@ -139,6 +141,7 @@ class AnalysisRepository:
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
                 total_cost = :total_cost,
+                fallback_analysis_cost = :fallback_analysis_cost,
                 analysis_prompt = :analysis_prompt
         WHERE analysis_id = :analysis_id;
         """
@@ -167,6 +170,7 @@ class AnalysisRepository:
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
+            "fallback_analysis_cost": fallback_analysis_cost,
         }
 
         with self.engine.connect() as conn:
@@ -239,40 +243,26 @@ class AnalysisRepository:
 
         return self._parse_row_to_model(row, columns)
 
-    def save_pre_analysis(
+    def create_pre_analysis_record(
         self,
         procurement_control_number: str,
         version_number: int,
         document_hash: str,
-        input_tokens_used: int,
-        output_tokens_used: int,
-        thinking_tokens_used: int,
-        input_cost: Decimal,
-        output_cost: Decimal,
-        thinking_cost: Decimal,
-        total_cost: Decimal,
-        analysis_prompt: str = "",
+        retry_count: int = 0,
     ) -> UUID:
         """Saves a new, pending analysis record to the database.
 
         This method creates the initial record in the `procurement_analyses`
         table. This record acts as a placeholder, indicating that a
         procurement has been identified for analysis but has not yet been
-        fully processed. It sets the initial status to 'PENDING_ANALYSIS'.
+        fully processed. It sets the initial status to 'PENDING_TOKEN_CALCULATION'.
 
         Args:
             procurement_control_number: The control number of the associated
                 procurement.
             version_number: The version of the procurement being analyzed.
             document_hash: The hash of the documents selected for analysis.
-            input_tokens_used: The estimated number of input tokens.
-            output_tokens_used: The estimated number of output tokens.
-            thinking_tokens_used: The estimated number of thinking tokens used.
-            input_cost: The calculated cost of the input tokens.
-            output_cost: The calculated cost of the output tokens.
-            thinking_cost: The calculated cost of the thinking tokens.
-            total_cost: The total calculated cost of the analysis.
-            analysis_prompt: The prompt used for the analysis.
+            retry_count: The number of times this analysis has been retried.
 
         Returns:
             The newly created `analysis_id` for the record.
@@ -281,15 +271,9 @@ class AnalysisRepository:
         sql = text(
             """
             INSERT INTO procurement_analyses (
-                procurement_control_number, version_number, status, document_hash,
-                input_tokens_used, output_tokens_used, thinking_tokens_used,
-                cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
-                analysis_prompt
+                procurement_control_number, version_number, status, document_hash, retry_count
             ) VALUES (
-                :procurement_control_number, :version_number, :status, :document_hash,
-                :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
-                :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
-                :analysis_prompt
+                :procurement_control_number, :version_number, :status, :document_hash, :retry_count
             )
             RETURNING analysis_id;
             """
@@ -298,7 +282,62 @@ class AnalysisRepository:
             "procurement_control_number": procurement_control_number,
             "version_number": version_number,
             "document_hash": document_hash,
-            "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
+            "status": ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value,
+            "retry_count": retry_count,
+        }
+        with self.engine.connect() as conn:
+            result_proxy = conn.execute(sql, params)
+            analysis_id = cast(UUID, result_proxy.scalar_one())
+            conn.commit()
+        self.logger.info(f"Pre-analysis record created successfully with ID: {analysis_id}.")
+        return analysis_id
+
+    def update_pre_analysis_with_tokens(
+        self,
+        analysis_id: UUID,
+        input_tokens_used: int,
+        output_tokens_used: int,
+        thinking_tokens_used: int,
+        input_cost: Decimal,
+        output_cost: Decimal,
+        thinking_cost: Decimal,
+        total_cost: Decimal,
+        fallback_analysis_cost: Decimal,
+        analysis_prompt: str = "",
+    ) -> None:
+        """Updates an existing analysis record with token counts and costs.
+
+        Args:
+            analysis_id: The ID of the analysis record to update.
+            input_tokens_used: The estimated number of input tokens.
+            output_tokens_used: The estimated number of output tokens.
+            thinking_tokens_used: The estimated number of thinking tokens used.
+            input_cost: The calculated cost of the input tokens.
+            output_cost: The calculated cost of the output tokens.
+            thinking_cost: The calculated cost of the thinking tokens.
+            total_cost: The total calculated cost of the analysis.
+            fallback_analysis_cost: The cost of the fallback analysis.
+            analysis_prompt: The prompt used for the analysis.
+        """
+        self.logger.info(f"Updating pre-analysis record {analysis_id} with token counts.")
+        sql = text(
+            """
+            UPDATE procurement_analyses
+            SET
+                input_tokens_used = :input_tokens_used,
+                output_tokens_used = :output_tokens_used,
+                thinking_tokens_used = :thinking_tokens_used,
+                cost_input_tokens = :cost_input_tokens,
+                cost_output_tokens = :cost_output_tokens,
+                cost_thinking_tokens = :cost_thinking_tokens,
+                total_cost = :total_cost,
+                fallback_analysis_cost = :fallback_analysis_cost,
+                analysis_prompt = :analysis_prompt
+            WHERE analysis_id = :analysis_id;
+            """
+        )
+        params = {
+            "analysis_id": analysis_id,
             "input_tokens_used": input_tokens_used,
             "output_tokens_used": output_tokens_used,
             "thinking_tokens_used": thinking_tokens_used,
@@ -306,14 +345,13 @@ class AnalysisRepository:
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
+            "fallback_analysis_cost": fallback_analysis_cost,
             "analysis_prompt": analysis_prompt,
         }
         with self.engine.connect() as conn:
-            result_proxy = conn.execute(sql, params)
-            analysis_id = cast(UUID, result_proxy.scalar_one())
+            conn.execute(sql, params)
             conn.commit()
-        self.logger.info(f"Pre-analysis saved successfully with ID: {analysis_id}.")
-        return analysis_id
+        self.logger.info(f"Pre-analysis record {analysis_id} updated successfully.")
 
     def get_analysis_by_id(self, analysis_id: UUID) -> AnalysisResult | None:
         """Retrieves a single analysis record by its primary key.
@@ -394,14 +432,14 @@ class AnalysisRepository:
     def get_analyses_to_retry(self, max_retries: int, timeout_hours: int) -> list[AnalysisResult]:
         """Retrieves a list of analyses that are eligible for a retry attempt.
 
-        This method identifies analyses that have failed or have been stuck in
-        progress for too long, and have not yet exceeded the maximum number of
-        retry attempts.
+        This method identifies analyses that have failed, have been stuck in
+        progress, or are stuck calculating tokens for too long, and have not
+        yet exceeded the maximum number of retry attempts.
 
         Args:
             max_retries: The maximum number of retries allowed for an analysis.
-            timeout_hours: The number of hours after which an 'IN_PROGRESS' task
-                is considered stale.
+            timeout_hours: The number of hours after which a task is considered
+                stale.
 
         Returns:
             A list of `AnalysisResult` objects that are eligible for retry.
@@ -443,6 +481,10 @@ class AnalysisRepository:
                         status = :in_progress_status
                         AND updated_at < NOW() - (INTERVAL '1 hour' * :timeout_hours)
                     )
+                    OR (
+                        status = :pending_token_status
+                        AND updated_at < NOW() - (INTERVAL '1 hour' * :timeout_hours)
+                    )
                 )
                 AND retry_count < :max_retries;
             """
@@ -450,6 +492,7 @@ class AnalysisRepository:
         params = {
             "failed_status": ProcurementAnalysisStatus.ANALYSIS_FAILED.value,
             "in_progress_status": ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value,
+            "pending_token_status": ProcurementAnalysisStatus.PENDING_TOKEN_CALCULATION.value,
             "timeout_hours": timeout_hours,
             "max_retries": max_retries,
         }
@@ -475,6 +518,7 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
+        fallback_analysis_cost: Decimal,
         retry_count: int,
         analysis_prompt: str,
     ) -> UUID:
@@ -495,6 +539,7 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
+            fallback_analysis_cost: The cost of the fallback analysis.
             retry_count: The new retry count for this analysis attempt.
             analysis_prompt: The prompt from the original analysis.
 
@@ -505,41 +550,25 @@ class AnalysisRepository:
             f"Saving new retry analysis for {procurement_control_number} "
             f"version {version_number} (attempt {retry_count})."
         )
-        sql = text(
-            """
-            INSERT INTO procurement_analyses (
-                procurement_control_number, version_number, status, document_hash,
-                input_tokens_used, output_tokens_used, thinking_tokens_used,
-                cost_input_tokens, cost_output_tokens, cost_thinking_tokens, total_cost,
-                retry_count, analysis_prompt
-            ) VALUES (
-                :procurement_control_number, :version_number, :status, :document_hash,
-                :input_tokens_used, :output_tokens_used, :thinking_tokens_used,
-                :cost_input_tokens, :cost_output_tokens, :cost_thinking_tokens, :total_cost,
-                :retry_count, :analysis_prompt
-            )
-            RETURNING analysis_id;
-            """
+        analysis_id = self.create_pre_analysis_record(
+            procurement_control_number=procurement_control_number,
+            version_number=version_number,
+            document_hash=document_hash,
+            retry_count=retry_count,
         )
-        params = {
-            "procurement_control_number": procurement_control_number,
-            "version_number": version_number,
-            "document_hash": document_hash,
-            "status": ProcurementAnalysisStatus.PENDING_ANALYSIS.value,
-            "input_tokens_used": input_tokens_used,
-            "output_tokens_used": output_tokens_used,
-            "thinking_tokens_used": thinking_tokens_used,
-            "cost_input_tokens": input_cost,
-            "cost_output_tokens": output_cost,
-            "cost_thinking_tokens": thinking_cost,
-            "total_cost": total_cost,
-            "retry_count": retry_count,
-            "analysis_prompt": analysis_prompt,
-        }
-        with self.engine.connect() as conn:
-            result_proxy = conn.execute(sql, params)
-            analysis_id = cast(UUID, result_proxy.scalar_one())
-            conn.commit()
+        self.update_pre_analysis_with_tokens(
+            analysis_id=analysis_id,
+            input_tokens_used=input_tokens_used,
+            output_tokens_used=output_tokens_used,
+            thinking_tokens_used=thinking_tokens_used,
+            input_cost=input_cost,
+            output_cost=output_cost,
+            thinking_cost=thinking_cost,
+            total_cost=total_cost,
+            fallback_analysis_cost=fallback_analysis_cost,
+            analysis_prompt=analysis_prompt,
+        )
+        self.update_analysis_status(analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS)
         self.logger.info(f"Retry analysis saved successfully with ID: {analysis_id}.")
         return analysis_id
 

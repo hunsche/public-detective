@@ -50,18 +50,18 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
 
     with (
         patch.object(ranking_service.analysis_repo, "get_analysis_by_id") as mock_get_analysis,
-        patch.object(ranking_service.pricing_service, "calculate") as mock_calculate,
+        patch.object(ranking_service.pricing_service, "calculate_total_cost") as mock_calculate_total_cost,
     ):
         mock_get_analysis.return_value = MagicMock(input_tokens_used=1000)
-        mock_calculate.return_value = (
+        mock_calculate_total_cost.return_value = (
             Decimal("0.01"),
             Decimal("0"),
             Decimal("0"),
             Decimal("0.01"),
+            Decimal("0"),  # Add fallback_cost
         )
 
         result = ranking_service.calculate_priority(procurement, candidates, analysis_id)
-
     assert result.quality_score is not None
     assert result.estimated_cost is not None
     assert result.potential_impact_score is not None

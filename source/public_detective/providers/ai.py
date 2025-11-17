@@ -31,20 +31,23 @@ class AiProvider(Generic[PydanticModel]):
     client: genai.Client
     gcs_provider: GcsProvider
     output_schema: type[PydanticModel]
+    no_ai_tools: bool
 
-    def __init__(self, output_schema: type[PydanticModel]):
-        """Initializes the AiProvider.
+    def __init__(self, output_schema: type[PydanticModel], no_ai_tools: bool = False):
+        """Initialize the AiProvider.
 
         This method configures the Gemini client for a specific output schema.
 
         Args:
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
+            no_ai_tools: If True, the AI model will not use any tools.
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
+        self.no_ai_tools = no_ai_tools
 
         self.client = genai.Client(vertexai=True, project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
 
@@ -55,12 +58,14 @@ class AiProvider(Generic[PydanticModel]):
 
     def get_structured_analysis(
         self, prompt: str, file_uris: list[str], max_output_tokens: int | None = None
-    ) -> tuple[PydanticModel, int, int, int]:
-        """Sends a file for analysis and parses the response.
+    ) -> tuple[PydanticModel, int, int, int, int, int, int]:
+        """Send files for analysis and parse the response.
 
-        This method is designed to be highly robust, handling cases where the AI
-        response might be empty, blocked by safety settings, or returned in a
-        format that doesn't match the expected Pydantic schema.
+        This method is designed to be highly robust. It includes a retry mechanism
+        that, in case of a specific failure (e.g., the model returning a tool
+        call instead of JSON), will make a second attempt with AI tools disabled.
+        It also handles cases where the AI response might be empty, blocked by
+        safety settings, or returned in a malformed/unexpected structure.
 
         Args:
             prompt: The instructional prompt for the AI model.
@@ -76,6 +81,9 @@ class AiProvider(Generic[PydanticModel]):
             - The number of input tokens used.
             - The number of output tokens used.
             - The number of thinking tokens used.
+            - The number of input tokens used in a fallback scenario.
+            - The number of output tokens used in a fallback scenario.
+            - The number of thinking tokens used in a fallback scenario.
         """
         file_parts: list[types.Part] = []
         for gcs_uri in file_uris:
@@ -85,31 +93,80 @@ class AiProvider(Generic[PydanticModel]):
         all_parts = [types.Part(text=prompt), *file_parts]
         request_contents = types.Content(role="user", parts=all_parts)
 
-        response = self.client.models.generate_content(
-            model=self.config.GCP_GEMINI_MODEL,
-            contents=request_contents,
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json",
-                response_schema=self.output_schema,
-                max_output_tokens=max_output_tokens,
-            ),
-        )
-        self.logger.info(f"Full API Response: {response}")
+        total_input_tokens = 0
+        total_output_tokens = 0
+        total_thinking_tokens = 0
+        fallback_input_tokens = 0
+        fallback_output_tokens = 0
+        fallback_thinking_tokens = 0
+
+        enable_tools = not self.no_ai_tools
+        response = self._generate_content_response(request_contents, max_output_tokens, enable_tools=enable_tools)
+        self.logger.info(f"Full API Response (first attempt): {response}")
+
+        if response.usage_metadata:
+            total_input_tokens += response.usage_metadata.prompt_token_count or 0
+            total_output_tokens += response.usage_metadata.candidates_token_count or 0
+            total_thinking_tokens += response.usage_metadata.thoughts_token_count or 0
+
+        validated_response: PydanticModel
+        try:
+            validated_response = self._parse_and_validate_response(response)
+            self.logger.debug(f"Validated AI response (first attempt): {validated_response}")
+        except ValueError as e:
+            if self._should_retry_without_tools(response) and not self.no_ai_tools:
+                self.logger.warning(
+                    "AI returned a raw tool call string when a JSON object was expected. "
+                    "Retrying with tools disabled to force JSON output."
+                )
+                response = self._generate_content_response(request_contents, max_output_tokens, enable_tools=False)
+                self.logger.info(f"Full API Response (second attempt): {response}")
+
+                if response.usage_metadata:
+                    fallback_input_tokens = response.usage_metadata.prompt_token_count or 0
+                    fallback_output_tokens = response.usage_metadata.candidates_token_count or 0
+                    fallback_thinking_tokens = response.usage_metadata.thoughts_token_count or 0
+                    total_output_tokens += fallback_output_tokens
+                    total_thinking_tokens += fallback_thinking_tokens
+
+                validated_response = self._parse_and_validate_response(response)
+                self.logger.debug(f"Validated AI response (second attempt): {validated_response}")
+            else:
+                raise e
+
+        if response.candidates:
+            for index, candidate in enumerate(response.candidates):
+                metadata = getattr(candidate, "grounding_metadata", None)
+                if metadata is None:
+                    continue
+
+                queries = getattr(metadata, "web_search_queries", None)
+                self.logger.info(
+                    "Grounding metadata web_search_queries (candidate %s): %s",
+                    index,
+                    queries,
+                )
+
+                references = getattr(metadata, "grounded_content", None)
+                self.logger.info(
+                    "Grounding metadata grounded_content (candidate %s): %s",
+                    index,
+                    references,
+                )
         self.logger.debug("Successfully received response from Generative AI API.")
 
-        validated_response = self._parse_and_validate_response(response)
-        input_tokens = 0
-        output_tokens = 0
-        thinking_tokens = 0
-        if response.usage_metadata:
-            input_tokens = response.usage_metadata.prompt_token_count or 0
-            output_tokens = response.usage_metadata.candidates_token_count or 0
-            thinking_tokens = response.usage_metadata.thoughts_token_count or 0
-
-        return validated_response, input_tokens, output_tokens, thinking_tokens
+        return (
+            validated_response,
+            total_input_tokens,
+            total_output_tokens,
+            total_thinking_tokens,
+            fallback_input_tokens,
+            fallback_output_tokens,
+            fallback_thinking_tokens,
+        )
 
     def count_tokens_for_analysis(self, prompt: str, file_uris: list[str]) -> tuple[int, int, int]:
-        """Calculates the number of tokens for a given prompt and files.
+        """Calculate the number of tokens for a given prompt and files.
 
         Args:
             prompt: The instructional prompt for the AI model.
@@ -135,7 +192,7 @@ class AiProvider(Generic[PydanticModel]):
         return token_count or 0, 0, 0
 
     def _parse_and_validate_response(self, response) -> PydanticModel:  # type: ignore
-        """Parses the AI's response, handling multiple potential formats and errors.
+        """Parse the AI's response, handling multiple potential formats and errors.
 
         This method provides a robust, multi-step process to extract and validate
         the structured data from the model's response.
@@ -173,3 +230,60 @@ class AiProvider(Generic[PydanticModel]):
             raise ValueError(
                 "AI model returned a response that could not be parsed into the " "expected structure."
             ) from e
+
+    def _generate_content_response(
+        self, request_contents: types.Content, max_output_tokens: int | None, enable_tools: bool
+    ) -> types.GenerateContentResponse:
+        """Generate model output using the configured schema.
+
+        Args:
+            request_contents: The structured prompt and attachments sent to Gemini.
+            max_output_tokens: Optional limit for the model output.
+            enable_tools: Flag indicating whether external tools should be enabled.
+
+        Returns:
+            The raw GenerateContent response from the Gemini API.
+        """
+        tools: list[types.Tool] = []
+        if enable_tools:
+            tools.append(types.Tool(google_search=types.GoogleSearch()))
+
+        return self.client.models.generate_content(
+            model=self.config.GCP_GEMINI_MODEL,
+            contents=request_contents,
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json",
+                response_schema=self.output_schema,
+                max_output_tokens=max_output_tokens,
+                tools=tools,
+            ),
+        )
+
+    def _should_retry_without_tools(self, response) -> bool:  # type: ignore
+        """Determine whether the response suggests retrying without tools.
+
+        Args:
+            response: The initial GenerateContent response to inspect.
+
+        Returns:
+            True when the response unexpectedly includes a raw tool call.
+        """
+        if not response.candidates:
+            return False
+
+        first_candidate = response.candidates[0]
+        candidate_content = getattr(first_candidate, "content", None)
+        if candidate_content is None:
+            return False
+
+        parts = getattr(candidate_content, "parts", None)
+        if parts is None:
+            return False
+
+        for part in parts:
+            text = getattr(part, "text", None)
+            if isinstance(text, str):
+                self.logger.debug(f"Checking part text for tool call: '{text}'")
+                if "call:google_search.search" in text:
+                    return True
+        return False

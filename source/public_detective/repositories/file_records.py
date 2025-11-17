@@ -106,7 +106,7 @@ class FileRecordsRepository:
         sql = text(
             """
             SELECT
-                fr.id,
+                fr.id AS file_record_id,
                 fr.created_at,
                 fr.updated_at,
                 fr.source_document_id,
