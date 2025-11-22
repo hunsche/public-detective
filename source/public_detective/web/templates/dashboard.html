@@ -1,0 +1,204 @@
+{% extends "base.html" %}
+
+{% block title %}{{ strings.NAV_DASHBOARD }} - {{ strings.SITE_TITLE }}{% endblock %}
+
+{% block content %}
+<div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+    
+    <div class="flex flex-col lg:flex-row gap-8">
+        <!-- Sidebar Filters -->
+        <aside class="w-full lg:w-64 flex-shrink-0">
+            <div class="bg-white/5 border border-white/10 rounded-xl p-6 sticky top-24">
+                <h2 class="text-lg font-bold mb-4 flex items-center gap-2">
+                    <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5 text-primary" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M3 3a1 1 0 011-1h12a1 1 0 011 1v3a1 1 0 01-.293.707L12 11.414V15a1 1 0 01-.293.707l-2 2A1 1 0 018 17v-5.586L3.293 6.707A1 1 0 013 6V3z" clip-rule="evenodd" />
+                    </svg>
+                    Filtros
+                </h2>
+                
+                <form hx-get="/dashboard" hx-target="#activity-list" hx-select="#activity-list" hx-trigger="change delay:500ms, submit" hx-push-url="true" class="space-y-6">
+                    
+                    <!-- Search -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">BUSCA TEXTUAL</label>
+                        <input type="text" name="q" placeholder="Ex: Medicamentos..." 
+                               class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                    </div>
+
+                    <!-- Risk Level -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">NÍVEL DE RISCO</label>
+                        <select name="risk" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                            <option value="">Todos</option>
+                            <option value="high">Alto Risco (8-10)</option>
+                            <option value="medium">Médio Risco (5-7)</option>
+                            <option value="low">Baixo Risco (0-4)</option>
+                        </select>
+                    </div>
+
+                    <!-- Value Range -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">VALOR ESTIMADO (R$)</label>
+                        <div class="flex gap-2">
+                            <input type="number" name="min_value" placeholder="Min" 
+                                   class="w-1/2 bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                            <input type="number" name="max_value" placeholder="Max" 
+                                   class="w-1/2 bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                        </div>
+                    </div>
+
+                    <!-- Date Range -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">DATA DE ATUALIZAÇÃO</label>
+                        <div class="space-y-2">
+                            <input type="date" name="start_date" 
+                                   class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors text-gray-400">
+                            <input type="date" name="end_date" 
+                                   class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors text-gray-400">
+                        </div>
+                    </div>
+
+                    <!-- Location -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">LOCALIZAÇÃO</label>
+                        <div class="space-y-2">
+                            <select name="state" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                                <option value="">Todos os Estados</option>
+                                <option value="AC">Acre</option>
+                                <option value="AL">Alagoas</option>
+                                <option value="AP">Amapá</option>
+                                <option value="AM">Amazonas</option>
+                                <option value="BA">Bahia</option>
+                                <option value="CE">Ceará</option>
+                                <option value="DF">Distrito Federal</option>
+                                <option value="ES">Espírito Santo</option>
+                                <option value="GO">Goiás</option>
+                                <option value="MA">Maranhão</option>
+                                <option value="MT">Mato Grosso</option>
+                                <option value="MS">Mato Grosso do Sul</option>
+                                <option value="MG">Minas Gerais</option>
+                                <option value="PA">Pará</option>
+                                <option value="PB">Paraíba</option>
+                                <option value="PR">Paraná</option>
+                                <option value="PE">Pernambuco</option>
+                                <option value="PI">Piauí</option>
+                                <option value="RJ">Rio de Janeiro</option>
+                                <option value="RN">Rio Grande do Norte</option>
+                                <option value="RS">Rio Grande do Sul</option>
+                                <option value="RO">Rondônia</option>
+                                <option value="RR">Roraima</option>
+                                <option value="SC">Santa Catarina</option>
+                                <option value="SP">São Paulo</option>
+                                <option value="SE">Sergipe</option>
+                                <option value="TO">Tocantins</option>
+                            </select>
+                            <input type="text" name="city" placeholder="Cidade..." 
+                                   class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                        </div>
+                    </div>
+
+                    <!-- Details -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">DETALHES</label>
+                        <div class="space-y-2">
+                            <select name="modality" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                                <option value="">Todas Modalidades</option>
+                                <option value="6">Pregão Eletrônico</option>
+                                <option value="8">Dispensa de Licitação</option>
+                                <option value="9">Inexigibilidade</option>
+                                <option value="13">Concorrência Eletrônica</option>
+                            </select>
+                            <input type="number" name="year" placeholder="Ano (ex: 2025)" 
+                                   class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                        </div>
+                    </div>
+
+                    <!-- Sphere & Power -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">ESFERA E PODER</label>
+                        <div class="space-y-2">
+                            <select name="sphere" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                                <option value="">Todas Esferas</option>
+                                <option value="M">Municipal</option>
+                                <option value="E">Estadual</option>
+                                <option value="F">Federal</option>
+                            </select>
+                            <select name="power" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                                <option value="">Todos Poderes</option>
+                                <option value="E">Executivo</option>
+                                <option value="L">Legislativo</option>
+                                <option value="J">Judiciário</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Red Flag Category -->
+                    <div>
+                        <label class="block text-xs font-mono text-gray-400 mb-1">CATEGORIA DE RISCO</label>
+                        <select name="category" class="w-full bg-black/20 border border-white/10 rounded px-3 py-2 text-sm focus:border-primary focus:outline-none transition-colors">
+                            <option value="">Todas Categorias</option>
+                            <option value="SOBREPRECO">Sobrepreço</option>
+                            <option value="DIRECIONAMENTO">Direcionamento</option>
+                            <option value="FRAUDE">Fraude</option>
+                            <option value="DOCUMENTACAO_IRREGULAR">Doc. Irregular</option>
+                            <option value="RESTRICAO_COMPETITIVIDADE">Restrição Comp.</option>
+                        </select>
+                    </div>
+
+                    <div class="pt-4">
+                        <button type="submit" class="w-full bg-primary text-black font-bold py-2 rounded hover:bg-primary/80 transition-colors">
+                            Aplicar Filtros
+                        </button>
+                        <a href="/dashboard" class="block text-center text-xs text-gray-500 mt-2 hover:text-white transition-colors">Limpar Filtros</a>
+                    </div>
+                </form>
+            </div>
+        </aside>
+
+        <!-- Recent Analysis List -->
+        <div class="flex-1 bg-white/5 border border-white/10 rounded-xl overflow-hidden h-fit" id="activity-list">
+            <div class="px-6 py-4 border-b border-white/10 flex justify-between items-center">
+                <h2 class="font-bold">{{ strings.DASH_RECENT_ALERTS }}</h2>
+                <span class="text-xs font-mono text-primary animate-pulse">{{ strings.DASH_LIVE_FEED }}</span>
+            </div>
+            <div class="divide-y divide-white/5">
+                {% for item in recent_activity %}
+                <div class="p-6 hover:bg-white/5 transition-colors group cursor-pointer" onclick="window.location.href='/analysis/{{ item.analysis_id }}'">
+                    <div class="flex justify-between items-start">
+                        <div>
+                            <div class="flex items-center gap-3 mb-2">
+                                {% if item.risk_score >= 8 %}
+                                    <span class="px-2 py-1 rounded bg-red-500/20 text-red-500 text-xs font-bold border border-red-500/30">{{ strings.RISK_HIGH }}</span>
+                                {% elif item.risk_score >= 5 %}
+                                    <span class="px-2 py-1 rounded bg-yellow-500/20 text-yellow-500 text-xs font-bold border border-yellow-500/30">{{ strings.RISK_MEDIUM }}</span>
+                                {% else %}
+                                    <span class="px-2 py-1 rounded bg-green-500/20 text-green-500 text-xs font-bold border border-green-500/30">{{ strings.RISK_LOW }}</span>
+                                {% endif %}
+                                <span class="text-gray-400 text-sm font-mono">ID: {{ item.procurement_control_number }}</span>
+                            </div>
+                            <h3 class="text-lg font-medium mb-1 group-hover:text-primary transition-colors">{{ item.object_description[:100] }}...</h3>
+                            <p class="text-gray-400 text-sm">
+                                {{ item.agency_name }} 
+                                {% if item.city_name %} • {{ item.city_name }}{% endif %}
+                                {% if item.state_acronym %}/{{ item.state_acronym }}{% endif %}
+                                • R$ {{ "{:,.2f}".format(item.total_estimated_value).replace(",", "X").replace(".", ",").replace("X", ".") }}
+                            </p>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-2xl font-bold {% if item.risk_score >= 8 %}text-red-500{% elif item.risk_score >= 5 %}text-yellow-500{% else %}text-green-500{% endif %}">{{ item.risk_score }}/10</div>
+                            <div class="text-xs text-gray-500 uppercase tracking-wider">{{ strings.DASH_RISK_SCORE_LABEL }}</div>
+                        </div>
+                    </div>
+                </div>
+                {% else %}
+                <div class="p-12 text-center text-gray-500">
+                    <p>Nenhuma análise encontrada com os filtros selecionados.</p>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}{% endblock %}
