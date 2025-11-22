@@ -1,6 +1,7 @@
 import json
 import os
 import uuid
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
@@ -109,4 +110,15 @@ def test_ranked_analysis_e2e_flow(
             else:
                 serializable_records = [dict(record) for record in records]
                 print(json.dumps(serializable_records, indent=2, ensure_ascii=False, default=str))
+
+                if table_name == "procurement_analyses":
+                    # Save to file for inspection in tmp dir
+                    tmp_dir = Path("tests/.tmp")
+                    tmp_dir.mkdir(exist_ok=True)
+                    output_file = tmp_dir / "analysis_output.json"
+
+                    with open(output_file, "w") as f:
+                        json.dump(serializable_records, f, indent=2, ensure_ascii=False, default=str)
+
+                    print(f"\n--- Saved procurement_analyses to {output_file} ---")
     print("\n--- Data Dump Complete ---")

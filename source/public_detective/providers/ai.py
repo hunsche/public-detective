@@ -10,6 +10,7 @@ import json
 from mimetypes import guess_type
 from typing import Generic, TypeVar
 
+import json5
 from google import genai
 from google.genai import types
 from public_detective.providers.config import Config, ConfigProvider
@@ -49,7 +50,12 @@ class AiProvider(Generic[PydanticModel]):
         self.gcs_provider = GcsProvider()
         self.no_ai_tools = no_ai_tools
 
-        self.client = genai.Client(vertexai=True, project=self.config.GCP_PROJECT, location=self.config.GCP_LOCATION)
+        self.client = genai.Client(
+            vertexai=True,
+            project=self.config.GCP_PROJECT,
+            location=self.config.GCP_LOCATION,
+            http_options={"base_url": "https://aiplatform.googleapis.com", "api_version": "v1beta1"},
+        )
 
         self.logger.info(
             "Google Generative AI client configured successfully for schema "
@@ -109,30 +115,8 @@ class AiProvider(Generic[PydanticModel]):
             total_output_tokens += response.usage_metadata.candidates_token_count or 0
             total_thinking_tokens += response.usage_metadata.thoughts_token_count or 0
 
-        validated_response: PydanticModel
-        try:
-            validated_response = self._parse_and_validate_response(response)
-            self.logger.debug(f"Validated AI response (first attempt): {validated_response}")
-        except ValueError as e:
-            if self._should_retry_without_tools(response) and not self.no_ai_tools:
-                self.logger.warning(
-                    "AI returned a raw tool call string when a JSON object was expected. "
-                    "Retrying with tools disabled to force JSON output."
-                )
-                response = self._generate_content_response(request_contents, max_output_tokens, enable_tools=False)
-                self.logger.info(f"Full API Response (second attempt): {response}")
-
-                if response.usage_metadata:
-                    fallback_input_tokens = response.usage_metadata.prompt_token_count or 0
-                    fallback_output_tokens = response.usage_metadata.candidates_token_count or 0
-                    fallback_thinking_tokens = response.usage_metadata.thoughts_token_count or 0
-                    total_output_tokens += fallback_output_tokens
-                    total_thinking_tokens += fallback_thinking_tokens
-
-                validated_response = self._parse_and_validate_response(response)
-                self.logger.debug(f"Validated AI response (second attempt): {validated_response}")
-            else:
-                raise e
+        validated_response = self._parse_and_validate_response(response)
+        self.logger.debug(f"Validated AI response: {validated_response}")
 
         if response.candidates:
             for index, candidate in enumerate(response.candidates):
@@ -217,18 +201,29 @@ class AiProvider(Generic[PydanticModel]):
 
         try:
             response_text = response.text
-            self.logger.debug(f"Received text response from Generative AI: {response_text}")
-            if response_text.strip().startswith("```json"):
-                response_text = response_text.strip()[7:-3]
-            json_data = json.loads(response_text)
+            self.logger.info(f"Raw text response from Generative AI before parsing: {response_text}")
+
+            cleaned_text = response_text.strip()
+            if cleaned_text.startswith("```json"):
+                cleaned_text = cleaned_text[7:]
+            elif cleaned_text.startswith("```"):
+                cleaned_text = cleaned_text[3:]
+
+            if cleaned_text.endswith("```"):
+                cleaned_text = cleaned_text[:-3]
+
+            cleaned_text = cleaned_text.strip()
+
+            json_data = json5.loads(cleaned_text)
             self.logger.info("Successfully parsed JSON data from text response.")
             return self.output_schema.model_validate(json_data)
 
-        except (json.JSONDecodeError, ValidationError) as e:
+        except (json.JSONDecodeError, ValueError, ValidationError) as e:
             self.logger.error(f"Failed to parse or validate the AI's response: {e}")
             self.logger.error(f"Full API Response: {response}")
+
             raise ValueError(
-                "AI model returned a response that could not be parsed into the " "expected structure."
+                f"AI model returned a response that could not be parsed into the expected structure: {e}"
             ) from e
 
     def _generate_content_response(
@@ -245,8 +240,13 @@ class AiProvider(Generic[PydanticModel]):
             The raw GenerateContent response from the Gemini API.
         """
         tools: list[types.Tool] = []
+        tool_config: types.ToolConfig | None = None
+
         if enable_tools:
             tools.append(types.Tool(google_search=types.GoogleSearch()))
+            tool_config = types.ToolConfig(
+                function_calling_config=types.FunctionCallingConfig(mode=types.FunctionCallingConfigMode.AUTO)
+            )
 
         return self.client.models.generate_content(
             model=self.config.GCP_GEMINI_MODEL,
@@ -256,6 +256,8 @@ class AiProvider(Generic[PydanticModel]):
                 response_schema=self.output_schema,
                 max_output_tokens=max_output_tokens,
                 tools=tools,
+                tool_config=tool_config,
+                thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
             ),
         )
 

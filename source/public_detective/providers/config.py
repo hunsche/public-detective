@@ -55,7 +55,8 @@ class Config(BaseSettings):
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_GEMINI_HOST: str | None = None
-    GCP_GEMINI_MODEL: str = "gemini-2.5-pro"
+    GCP_GEMINI_MODEL: str = "gemini-3-pro-preview"
+    GCP_GEMINI_THINKING_LEVEL: str = "HIGH"
     GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 65535
     GCP_GEMINI_MAX_INPUT_TOKENS: int = 1048576
     GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("7.750969275")

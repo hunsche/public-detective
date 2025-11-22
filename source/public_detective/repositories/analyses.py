@@ -153,7 +153,7 @@ class AnalysisRepository:
             "procurement_summary": result.ai_analysis.procurement_summary if result.ai_analysis else "",
             "analysis_summary": result.ai_analysis.analysis_summary if result.ai_analysis else "",
             "red_flags": (
-                json.dumps([flag.model_dump() for flag in result.ai_analysis.red_flags], default=str)
+                json.dumps([flag.model_dump(by_alias=True) for flag in result.ai_analysis.red_flags], default=str)
                 if result.ai_analysis
                 else "[]"
             ),

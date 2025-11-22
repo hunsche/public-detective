@@ -1368,7 +1368,7 @@ def test_analyze_procurement_save_analysis_fails(
     with pytest.raises(Exception, match=error_message):
         analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert f"Analysis pipeline failed for PNCP-FAIL: {error_message}" in caplog.text
+    assert f"Analysis pipeline failed for PNCP-FAIL due to unexpected error: {error_message}" in caplog.text
 
 
 def test_ai_file_candidate_preserves_provided_ai_fields() -> None:

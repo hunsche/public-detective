@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class RedFlagCategory(StrEnum):
@@ -29,6 +29,15 @@ class RedFlagSeverity(StrEnum):
     SEVERE = "GRAVE"
 
 
+class SourceType(StrEnum):
+    """Enumeration for the types of external sources."""
+
+    OFFICIAL = "OFICIAL"
+    INDEXED = "TABELA"
+    B2B = "B2B"
+    B2C = "VAREJO"
+
+
 class Source(BaseModel):
     """Represents an external reference used to justify a red flag.
 
@@ -38,9 +47,16 @@ class Source(BaseModel):
     auditor to substantiate the finding.
     """
 
+    model_config = ConfigDict(populate_by_name=True)
+
     name: str = Field(
         ...,
         description=("The name or title of the external source, e.g., 'Painel de Preços " "do Governo Federal'."),
+    )
+    source_type: SourceType | None = Field(
+        None,
+        alias="type",
+        description="The classification of the source (OFFICIAL, INDEXED, B2B, B2C).",
     )
     url: str | None = Field(
         None,
@@ -109,6 +125,10 @@ class RedFlag(BaseModel):
             "perspective, explaining why the quote represents a risk."
         ),
     )
+    potential_savings: Decimal | None = Field(
+        None,
+        description="Estimated potential savings (unit difference * quantity) if the reference price were applied.",
+    )
     sources: list[Source] | None = Field(
         None,
         description=(
@@ -124,8 +144,8 @@ class Analysis(BaseModel):
     risk_score: int | None = Field(
         None,
         ge=0,
-        le=10,
-        description=("An integer from 0 to 10 representing the calculated risk level based on the findings."),
+        le=100,
+        description=("An integer from 0 to 100 representing the calculated risk level based on the findings."),
     )
     risk_score_rationale: str | None = Field(
         None,

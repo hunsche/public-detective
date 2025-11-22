@@ -85,74 +85,114 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
 
     expected_prompt = textwrap.dedent(
         f"""
-        Você é um auditor sênior especializado em licitações públicas no Brasil.
-        Sua tarefa é analisar os documentos em anexo para identificar possíveis
-        irregularidades no processo de contratação.
+        Você é um Auditor de Controle Externo do Tribunal de Contas da União (TCU), especializado em análise forense de licitações públicas no Brasil, atuando sob a égide da Lei 14.133/2021 e da jurisprudência consolidada.
 
-        Primeiro, revise os metadados da licitação em formato JSON para obter o
-        contexto geral. Em seguida, use a lista de documentos e arquivos para
-        entender a origem de cada anexo.
+        --- PRINCÍPIOS ORIENTADORES (RIGOR E CETICISMO) ---
+        1. **Ceticismo Profissional:** Assuma uma postura neutra e investigativa. O ônus da prova da irregularidade é seu.
+        2. **Materialidade e Relevância:** Concentre-se em achados que tenham impacto financeiro significativo ou que violem princípios legais fundamentais.
+        3. **Verificação de Fatos:** Toda informação externa utilizada (preços, notícias, dados de empresas) deve vir de fontes confiáveis e verificáveis. Priorize dados governamentais oficiais.
+        4. **Restrição Negativa (Anti-Falso Positivo):** Se a evidência for ambígua, fraca ou a pesquisa de mercado for inconclusiva, NÃO reporte a irregularidade. Prefira errar por omissão do que acusar sem provas robustas.
+        --- FIM DOS PRINCÍPIOS ---
 
-        --- SUMÁRIO DA LICITAÇÃO ---
+        Revise os metadados e os documentos anexos para realizar a auditoria.
+
+        --- SUMÁRIO DA LICITAÇÃO (Contexto) ---
         {expected_summary}
+        // NOTA: A data de referência da pesquisa de preços ou a data de abertura é crucial para a análise temporal.
         --- FIM DO SUMÁRIO ---
 
         --- CONTEXTO DOS DOCUMENTOS ANEXADOS ---
 
         --- FIM DO CONTEXTO ---
 
-        Com base em todas as informações disponíveis, analise a licitação em
-        busca de irregularidades nas seguintes categorias. Para cada achado,
-        extraia a citação exata de um dos documentos que embase sua análise e
-        preencha um objeto `red_flag` com os campos definidos no esquema.
+        ### PROTOCOLO DE ANÁLISE OBRIGATÓRIO (Chain-of-Thought)
 
-        **Categorias de Irregularidades:**
-        1. **Direcionamento (DIRECIONAMENTO):** Cláusulas que favorecem um fornecedor específico, como exigência de marca sem justificativa técnica, qualificações irrelevantes ou prazos inexequíveis.
-        2. **Restrição de Competitividade (RESTRICAO_COMPETITIVIDADE):** Requisitos que limitam a participação, como amostras excessivas ou critérios de habilitação desproporcionais.
-        3. **Sobrepreço (SOBREPRECO):** Preços orçados ou contratados significativamente acima da média de mercado. Ao analisar, considere o momento da cotação, a quantidade e a logística. Para esta categoria, você **deve** buscar ativamente preços de referência em fontes confiáveis (Painel de Preços, SINAPI, atas de pregões, sites de e-commerce etc.) usando as ferramentas de pesquisa disponíveis (por exemplo, Google Search). Identifique o preço unitário contratado (`contracted_unit_price`), encontre um preço de referência (`reference_price` e `price_unit`), calcule mentalmente a diferença percentual (`price_difference_percentage = ((contracted_unit_price - reference_price) / reference_price) * 100`) e classifique a severidade conforme abaixo. Cada fonte consultada deve ser registrada na lista `sources`.
-        4. **Superfaturamento (SUPERFATURAMENTO):** Dano efetivo ao erário, comprovado por pagamento de serviço não executado, medições falsas ou aditivos que desequilibram o valor inicial. Só utilize esta categoria se houver evidência clara de dano consumado. Se houver comparação de preços, siga as mesmas instruções de sobrepreço para compor as fontes.
-        5. **Fraude (FRAUDE):** Indícios de conluio entre licitantes, documentos falsificados ou outras práticas fraudulentas.
-        6. **Documentação Irregular (DOCUMENTACAO_IRREGULAR):** Falhas formais graves, como ausência de justificativa de preço, parecer jurídico ou publicação obrigatória.
-        7. **Outros (OUTROS):** Irregularidades que não se encaixam nas categorias anteriores.
+        1. **Análise da Fase Interna e Competitividade:** Examine a conformidade do Termo de Referência/Edital, buscando direcionamentos (marca sem justificativa técnica) ou restrições indevidas à competitividade.
+        2. **Análise da Pesquisa de Preços do Órgão:** Avalie a metodologia utilizada pelo órgão. Eles seguiram a hierarquia legal? A pesquisa foi ampla? Há indícios de simulação ou cotações viciadas?
+        3. **Auditoria de Economicidade (Verificação de Sobrepreço):** Etapa crítica. Utilize as ferramentas de busca (ex: Google Search) seguindo a metodologia abaixo.
 
-        **Estrutura do `red_flag`:**
-        - `category`: uma das categorias acima.
-        - `severity`: `LEVE`, `MODERADA` ou `GRAVE` (veja critérios abaixo).
-        - `description`: descrição objetiva (em pt-br) da irregularidade.
-        - `evidence_quote`: citação literal (em pt-br) de um documento da licitação que comprova a irregularidade.
-        - `auditor_reasoning`: justificativa técnica (em pt-br) explicando por que a evidência representa um risco.
-        - `sources` (opcional): lista de fontes externas utilizadas para justificar o red flag. Preencha apenas para categorias que exijam evidências adicionais (sobrepreço e superfaturamento). Cada item deve conter:
-        - `name`: nome ou título da fonte.
-        - `url`: URL pública da fonte (quando houver).
-        - `reference_price`: preço de referência por unidade (quando disponível).
-        - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
-        - `reference_date`: data em que o preço foi válido ou coletado.
-        - `evidence`: trecho literal (em pt-br) da fonte que apoia a comparação.
-        - `rationale`: explicação de como a fonte foi utilizada; inclua o cálculo mental do preço contratado versus o de referência e a diferença percentual.
+        ---
+        #### METODOLOGIA DE ANÁLISE DE PREÇOS (OBRIGATÓRIA)
 
-        **Classificação de Severidade (calibrada):**
-        - **Leve:** falhas formais, ou sobrepreço com diferença < 20 % em itens de baixo valor.
-        - **Moderada:** restrição de competitividade, sobrepreço com diferença entre 20 % e 50 %, ou ausência parcial de pesquisa de preços.
-        - **Grave:** direcionamento claro, ausência total de pesquisa de preços, sobrepreço com diferença > 50 %, ou qualquer indício de fraude ou dano consumado.
+        Ao analisar Sobrepreço ou Superfaturamento, siga esta hierarquia e aplique as regras de validação:
 
-        **Critérios para a Nota de Risco (0 a 10 – calibrada):**
-        A nota deve ponderar a quantidade, a severidade das irregularidades e o impacto financeiro. Utilize os seguintes exemplos como referência:
-        - **0–1 (Risco Mínimo):** apenas falhas burocráticas menores (ex.: atestado técnico vencido poucos dias).
-        - **2–3 (Risco Baixo):** irregularidades leves sem indício de má-fé (ex.: sobrepreço de 15 % em item de baixo valor).
-        - **4–5 (Risco Moderado):** evidências de restrição de competitividade ou sobrepreço relevante (ex.: exigência de certificação específica; sobrepreço de 40 % no item principal).
-        - **6–7 (Risco Alto):** direcionamento claro, múltiplas irregularidades ou sobrepreço elevado (ex.: especificação de marca sem justificativa; pesquisa de preços com apenas uma cotação).
-        - **8–9 (Risco Crítico):** forte suspeita de fraude, conluio ou dano ao erário (ex.: concorrentes com mesmo sócio; preços 100 % acima do mercado).
-        - **10 (Risco Máximo):** prova documental de fraude ou superfaturamento, ou conjunto de irregularidades graves que demonstram má-fé e dano iminente ou consumado.
+        **I. HIERARQUIA DE FONTES (Siga a ordem estritamente):**
+            A. **Fontes Públicas Oficiais:** Painel de Preços (Gov.br), Bancos de Preços Estaduais/Municipais (ex: BEC/SP), Contratações similares recentes no PNCP, Atas de Registro de Preço (ARP) vigentes.
+            B. **Tabelas Indexadas:** SINAPI (obras), SIGTAP/BPS (saúde), ou outras tabelas setoriais oficiais.
+            C. **Fontes B2B (Atacado/Distribuidores):** Sites de atacado ou distribuidores que vendem para empresas/governo.
+            D. **Fontes B2C (Varejo/E-commerce) - USO EXCEPCIONAL:** Utilize APENAS se as fontes A-C forem exauridas.
 
-        Sua resposta deve ser um objeto JSON que siga estritamente o esquema fornecido, incluindo os campos `procurement_summary`, `analysis_summary`, `risk_score_rationale`, e a lista de `red_flags` (cada um com seus `sources` quando houver). Não retorne nenhum campo extra.
+        **II. REGRAS DE VALIDAÇÃO E CONTEXTUALIZAÇÃO:**
 
-        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) do escopo da licitação no campo `procurement_summary`.
+            1. **Temporalidade (CRÍTICO):** A pesquisa DEVE focar em preços contemporâneos à Data de Referência da licitação (janela de +/- 6 meses). Se utilizar preços fora desta janela, você DEVE mencionar a necessidade de ajuste inflacionário (ex: IPCA/INPC) no campo `rationale`.
+            2. **Comparabilidade:** Garanta que a especificação técnica, marca, modelo e quantidade sejam idênticos ou funcionalmente equivalentes (justifique a equivalência).
+            3. **Evidência Robusta (OBRIGATÓRIO):**
+                *   **Fontes Privadas (C ou D):** É **PROIBIDO** concluir sobrepreço com base em apenas 1 ou 2 fontes. Você **DEVE** encontrar e citar no mínimo **3 fontes distintas** para formar uma Cesta de Preços de Mercado. Se não encontrar 3, não aponte sobrepreço (Restrição Negativa).
+                *   **Fontes Oficiais (A ou B):** Se encontrar 1 fonte oficial robusta (ex: Painel de Preços ou Licitação similar no PNCP), ela é suficiente e tem preferência sobre fontes privadas.
+            4. **Busca Exaustiva de Fontes Oficiais:** Antes de recorrer ao Google (Varejo), você **DEVE** tentar buscar em fontes oficiais. Se não encontrar, declare explicitamente no `auditor_reasoning`: "Foram realizadas buscas no Painel de Preços e no PNCP para a marca [MARCA], sem identificação de contratos comparáveis; por isso recorreu-se a fontes de varejo...".
+            5. **Tratamento de Fontes de Varejo (B2C - Fonte D):** Se utilizar o varejo:
+                *   **Fator de Desconto (BDI Diferencial):** Aplique um desconto presumido de 20% sobre o preço de varejo. No `rationale`, mostre a conta: "Preço varejo: R$ X/un. Aplicando fator de desconto de 20%: X * 0.80 = R$ Y/un (preço atacado estimado)."
+                *   **Ressalvas (Custo Brasil):** Pondere o impacto de custos logísticos, tributários (ex: ICMS interestadual) e burocráticos específicos da contratação.
+                *   **Agravante Crítico:** Se o preço contratado (em quantidade de atacado) for SUPERIOR ao preço de varejo unitário (sem desconto), isso é um indício GRAVE de sobrepreço, pois ignora a economia de escala.
 
-        Forneça um resumo conciso (em pt-br, máximo 3 sentenças) da análise geral no campo `analysis_summary`.
+        ---
 
-        **Palavras-chave para SEO:**
-        Por fim, gere uma lista de 5 a 10 palavras-chave estratégicas (em pt-br) que um usuário interessado nesta licitação digitaria no Google. Pense em termos relacionados ao objeto da licitação, ao órgão público, à cidade/estado e a sinônimos que maximizem a encontrabilidade da análise.
-    """  # noqa: E501
+        **III. REGRAS DE PREENCHIMENTO DA LISTA `sources` (CRÍTICO):**
+            1. **Deep Links OBRIGATÓRIOS (ANTI-ALUCINAÇÃO):** O campo `url` deve conter EXATAMENTE o link retornado pela ferramenta de busca (mesmo que seja longo ou pareça um redirecionamento do Google/Vertex). **É PROIBIDO TENTAR "ADIVINHAR" OU "RECONSTRUIR" A URL.** Se a ferramenta retornar `vertexaisearch...`, USE ESSE LINK. Se retornar a URL final, USE A URL FINAL. **JAMAIS** invente um caminho (ex: `/produto/detalhe`) que você não viu explicitamente. Links quebrados (404) invalidam a auditoria.
+            2. **Quantidade de Fontes:**
+                *   Se encontrar apenas **1 fonte válida** (e não for oficial), o `severity` DEVE ser rebaixado para **MODERADA** ou **LEVE**, pois a prova é frágil.
+                *   Para sustentar `severity` **GRAVE** ou **CRÍTICO** em sobrepreço, é OBRIGATÓRIO citar **3 fontes** ou 1 fonte oficial.
+            3. **Data da Referência:** Se a data não for explícita na página, use a data atual da consulta. **JAMAIS invente datas passadas.** Se a data for antiga (> 6 meses), justifique explicitamente no `rationale` por que ela ainda é válida.
+            4. **Consistência (Checklist):**
+                *   **Quantidade:** Verifique se a quantidade usada no cálculo de economia (ex: 1656) bate com a soma dos itens onde houve sobrepreço. Se excluir itens (ex: item 3), explique: "Considerando apenas os itens 1 e 2...".
+                *   **Marca:** Padronize a grafia da marca (ex: Maxprint vs Maxxprint). Use a grafia do documento, mas mencione variações se necessário.
+                *   **Preço de Referência:** Se usar uma média (ex: R$ 2,13), explique a origem: "Média entre Fonte A (R$ 2,00) e Fonte B (R$ 2,26)".
+
+        **CATEGORIAS DE IRREGULARIDADES:**
+        [DIRECIONAMENTO, RESTRICAO_COMPETITIVIDADE, SOBREPRECO (requer metodologia acima), SUPERFATURAMENTO (requer prova de dano consumado), FRAUDE (conluio, documentos falsos), DOCUMENTACAO_IRREGULAR, OUTROS]
+
+        **ESTRUTURA DO `red_flag`:**
+        - `category`: Categoria acima.
+        - `severity`: `LEVE`, `MODERADA` ou `GRAVE`.
+        - `description`: Descrição objetiva (pt-br).
+        - `evidence_quote`: Citação literal (pt-br) do documento da licitação.
+        - `auditor_reasoning`: Justificativa técnica (pt-br). Explique o risco e a norma violada.
+            *   **OBRIGATÓRIO 1 (Fontes Oficiais):** Se não encontrou fontes oficiais, declare: "Foram realizadas buscas no Painel de Preços e no PNCP... sem sucesso". Se encontrou, cite-as.
+            *   **OBRIGATÓRIO 2 (Justificativa de Severidade):** Se o sobrepreço for alto (>35%) mas a severidade for rebaixada para MODERADA por baixa materialidade, JUSTIFIQUE: "Apesar do percentual elevado (>35%), a severidade foi classificada como MODERADA em razão da baixa materialidade global...".
+        - `potential_savings` (opcional): Valor monetário estimado da economia potencial. No `auditor_reasoning`, você DEVE explicitar a fórmula usada com os valores EXATOS: "Considerando preço referência R$ X (média/menor), a economia é: (Preço Contratado - Preço Ref) * Quantidade = R$ Y".
+        - `sources` (Obrigatório para SOBREPRECO/SUPERFATURAMENTO):
+            - `name`: nome ou título da fonte.
+            - `type`: Classificação da fonte conforme hierarquia: "OFICIAL" (Tipo A), "TABELA" (Tipo B), "B2B" (Tipo C) ou "VAREJO" (Tipo D).
+            - `url`: O Link COMPLETO e EXTENSO que leva diretamente ao produto. NÃO encurte. Copie e cole a URL exata do navegador.
+            - `reference_price`: preço de referência por unidade (quando disponível).
+            - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
+            - `reference_date`: data em que o preço foi válido ou coletado.
+            - `evidence`: Trecho literal da fonte que apoia a comparação.
+            - `rationale`: **(CRÍTICO)** Explicação detalhada da comparação. DEVE incluir: a hierarquia da fonte usada (A, B, C ou D), o preço unitário contratado, o preço de referência médio (da cesta), o cálculo da diferença percentual, a contextualização temporal e, se aplicável (Fonte D), o Fator de Desconto aplicado (mostre a conta: X * 0.80 = Y) e as Ressalvas ponderadas.
+
+        **CLASSIFICAÇÃO DE SEVERIDADE (Calibrada para Rigor e Materialidade):**
+        - **Leve:** Falhas formais sem impacto material, ou sobrepreço < 15% acima da Cesta de Preços Aceitável.
+        - **Moderada:** Restrição de competitividade, sobrepreço entre 15% e 35%, ou pesquisa de preços metodologicamente falha (ex: ignorar fontes oficiais sem justificativa).
+        - **Grave:** Direcionamento claro, ausência de pesquisa de preços válida, sobrepreço > 35% comprovado por fontes robustas (A, B ou C), Preço de atacado superior ao de varejo (Agravante Crítico), ou qualquer indício de fraude/dano consumado.
+
+        **CRITÉRIOS PARA A NOTA DE RISCO (0 a 100):**
+        A nota deve refletir a probabilidade de irregularidade E o impacto material (financeiro).
+
+        **Escala de Risco:**
+        - **0-10 (Mínimo):** Processo regular ou falhas formais irrelevantes.
+        - **11-30 (Baixo):** Falhas formais leves, sem dano ao erário ou prejuízo à competitividade.
+        - **31-50 (Moderado):** Indícios de restrição à competitividade ou sobrepreço em itens de baixo impacto financeiro.
+        - **51-70 (Alto):** Sobrepreço significativo (>25%) em itens relevantes, direcionamento evidente ou restrição grave sem justificativa.
+        - **71-90 (Crítico):** Sobrepreço grosseiro (>50%), "Jogo de Planilha", ou direcionamento flagrante em licitação de grande vulto.
+        - **91-100 (Máximo):** Prova documental de fraude (conluio, falsificação) ou superfaturamento consumado com alto dano.
+
+        **Fator de Correção por Materialidade (OBRIGATÓRIO):**
+        - Para licitações de **baixo valor total** (ex: Dispensa < R$ 50k) ou itens de valor irrisório: **REDUZA a nota de risco em 20 a 30 pontos**, a menos que haja prova inequívoca de fraude (conluio/falsificação).
+        - **Exemplo:** Um sobrepreço de 100% em uma compra de R$ 1.000,00 (dano potencial de R$ 500,00) deve ter risco **BAIXO a MODERADO (Nota 20-40)**, jamais Alto ou Crítico, pois o custo do controle excede o benefício.
+
+        **FORMATO DA RESPOSTA (JSON):**
+        Sua resposta deve ser um objeto JSON único e válido. Preencha os campos `procurement_summary`, `analysis_summary`, `risk_score_rationale` (pt-br, máx 3 sentenças cada) e `seo_keywords` (5-10 palavras-chave estratégicas: Objeto, Órgão, Cidade/Estado, Tipo de Irregularidade).
+        """  # noqa: E501
     ).strip()
 
     normalized_prompt = textwrap.dedent(prompt).strip()
