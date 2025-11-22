@@ -177,8 +177,8 @@ def test_extract_from_7z(repo: ProcurementsRepository) -> None:
     """Tests extracting files from a 7z archive."""
     s_buffer = io.BytesIO()
     with py7zr.SevenZipFile(s_buffer, "w") as archive:
-        archive.writestr("content1", "file1.txt")
-        archive.writestr("content2", "file2.txt")
+        archive.writestr(b"content1", "file1.txt")
+        archive.writestr(b"content2", "file2.txt")
     s_content = s_buffer.getvalue()
     extracted_files = repo._extract_from_7z(s_content)
     assert len(extracted_files) == 2

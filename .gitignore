@@ -126,3 +126,6 @@ tox.ini
 
 # Generated test files
 tests/.tmp
+
+# Allow all test fixture samples despite global ignores
+!tests/fixtures/file_samples/*
