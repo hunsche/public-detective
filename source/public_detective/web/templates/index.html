@@ -1,0 +1,83 @@
+{% extends "base.html" %}
+
+{% block content %}
+<!-- Hero Section -->
+<section class="relative min-h-screen flex items-center justify-center overflow-hidden">
+    
+    <!-- Animated Grid Background -->
+    <div class="absolute inset-0 z-0 opacity-20" 
+         style="background-image: linear-gradient(#00f0ff 1px, transparent 1px), linear-gradient(90deg, #00f0ff 1px, transparent 1px); background-size: 40px 40px; transform: perspective(500px) rotateX(60deg) translateY(-100px) translateZ(-200px);">
+    </div>
+
+    <div class="container mx-auto px-6 relative z-10 text-center">
+        
+        <!-- Main Title with Glitch Effect (Simulated via CSS/JS) -->
+        <h1 class="text-6xl md:text-8xl font-bold mb-6 tracking-tighter animate-entry">
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-white to-gray-400">DETETIVE</span>
+            <span class="text-pd-accent text-neon">PÚBLICO</span>
+        </h1>
+
+        <p class="text-xl md:text-2xl text-gray-400 mb-6 max-w-3xl mx-auto animate-entry font-mono">
+            > INICIANDO SISTEMA DE INTELIGÊNCIA...<br>
+            > RASTREANDO DADOS PÚBLICOS...
+        </p>
+        
+        <div class="flex gap-4 justify-center mb-8">
+            <a href="/sobre" class="glass-card px-6 py-2 text-pd-accent hover:border-pd-accent/50 transition-colors font-mono">
+                [SOBRE O PROJETO] →
+            </a>
+            <a href="/demo/search" class="bg-pd-secondary/20 border border-pd-secondary px-6 py-2 rounded text-pd-secondary hover:bg-pd-secondary/30 transition-colors font-mono font-bold">
+                🎭 VER DEMONSTRAÇÃO
+            </a>
+        </div>
+
+        <!-- Search Bar / Command Input with Filters -->
+        <div class="max-w-2xl mx-auto animate-entry">
+            <div class="flex gap-3 mb-4">
+                <form class="glass-card p-2 flex items-center flex-1" 
+                      hx-post="/search" 
+                      hx-trigger="submit, keyup delay:500ms from:find input[name='q']"
+                      hx-target="#search-results">
+                    <span class="text-pd-accent px-4 font-mono text-xl">></span>
+                    <input type="text" 
+                           placeholder="Digite um CNPJ, Nome ou Número de Licitação..." 
+                           class="w-full bg-transparent border-none text-white text-lg focus:ring-0 placeholder-gray-600 font-mono h-12"
+                           name="q"
+                           autocomplete="off">
+                    <button type="submit" class="bg-pd-accent/10 hover:bg-pd-accent/20 text-pd-accent px-6 py-2 rounded-lg font-medium transition-colors border border-pd-accent/30">
+                        SCAN
+                    </button>
+                </form>
+                <!-- Filters Sidebar Component -->
+                {% include "partials/filters_sidebar.html" %}
+            </div>
+            
+            <!-- Search Results Container -->
+            <div id="search-results" class="mt-6"></div>
+        </div>
+
+        <!-- Stats Preview -->
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mt-20 max-w-5xl mx-auto">
+            <div class="glass-card p-6 animate-entry">
+                <h3 class="text-gray-400 text-sm font-mono mb-2">LICITAÇÕES ANALISADAS</h3>
+                <div class="text-4xl font-bold text-white" x-data="{ count: 0 }" x-init="setTimeout(() => { let i = 0; const target = {{ stats.total_analyzed }}; const timer = setInterval(() => { count += Math.ceil(target/50); if(count >= target) { count = target; clearInterval(timer); } }, 20); }, 1000)">
+                    <span x-text="count.toLocaleString()">0</span>
+                </div>
+            </div>
+            <div class="glass-card p-6 animate-entry">
+                <h3 class="text-gray-400 text-sm font-mono mb-2">IRREGULARIDADES</h3>
+                <div class="text-4xl font-bold text-pd-secondary text-neon-secondary" x-data="{ count: 0 }" x-init="setTimeout(() => { let i = 0; const target = {{ stats.total_irregularities }}; const timer = setInterval(() => { count += Math.ceil(target/50); if(count >= target) { count = target; clearInterval(timer); } }, 30); }, 1500)">
+                    <span x-text="count">0</span>
+                </div>
+            </div>
+            <div class="glass-card p-6 animate-entry">
+                <h3 class="text-gray-400 text-sm font-mono mb-2">ECONOMIA POTENCIAL</h3>
+                <div class="text-4xl font-bold text-pd-accent text-neon" x-data="{ count: 0 }" x-init="setTimeout(() => { let i = 0; const target = {{ stats.potential_savings }}; const timer = setInterval(() => { count += Math.ceil(target/100); if(count >= target) { count = target; clearInterval(timer); } }, 10); }, 2000)">
+                    R$ <span x-text="(count/1000000).toFixed(1) + 'M'">0</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</section>
+{% endblock %}

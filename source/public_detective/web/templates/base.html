@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="pt-BR" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Detetive Público{% endblock %}</title>
+    
+    <!-- SEO & Meta Tags -->
+    <meta name="description" content="{% block description %}Inteligência para análise de dados públicos.{% endblock %}">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        'pd-dark': '#0a0a0a',
+                        'pd-panel': '#1a1a1a',
+                        'pd-accent': '#00f0ff',
+                        'pd-secondary': '#7000ff',
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        mono: ['Fira Code', 'monospace'],
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Custom Styles -->
+    <link rel="stylesheet" href="/static/css/styles.css">
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@300;400;500&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
+    <!-- HTMX -->
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    
+    <!-- Alpine.js -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.13.3/dist/cdn.min.js"></script>
+
+    <!-- GSAP -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.5/ScrollTrigger.min.js"></script>
+</head>
+<body class="bg-pd-dark text-white font-sans antialiased overflow-x-hidden selection:bg-pd-accent selection:text-pd-dark">
+
+    <!-- Background Effects -->
+    <div class="fixed inset-0 z-[-1] pointer-events-none">
+        <div class="absolute top-0 left-0 w-full h-full bg-[radial-gradient(ellipse_at_top,_var(--tw-gradient-stops))] from-pd-panel via-pd-dark to-pd-dark opacity-80"></div>
+        <div class="absolute top-0 left-1/4 w-96 h-96 bg-pd-accent/10 rounded-full blur-3xl filter mix-blend-screen animate-pulse-slow"></div>
+        <div class="absolute bottom-0 right-1/4 w-96 h-96 bg-pd-secondary/10 rounded-full blur-3xl filter mix-blend-screen animate-pulse-slow" style="animation-delay: 2s;"></div>
+    </div>
+
+    <!-- Main Content Wrapper for Swup/HTMX transitions -->
+    <main id="main-content" class="min-h-screen flex flex-col" hx-boost="true">
+        {% block content %}{% endblock %}
+    </main>
+
+    <!-- Global Scripts -->
+    <script src="/static/js/animations.js"></script>
+    {% block scripts %}{% endblock %}
+</body>
+</html>

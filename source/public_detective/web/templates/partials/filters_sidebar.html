@@ -1,0 +1,120 @@
+<div x-data="{ open: false }" class="relative">
+    <!-- Filter Toggle Button -->
+    <button @click="open = true" class="glass-card px-4 py-2 flex items-center gap-2 hover:border-pd-accent/50 transition-colors">
+        <svg class="w-5 h-5 text-pd-accent" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+        </svg>
+        <span class="text-white font-medium">FILTROS</span>
+    </button>
+
+    <!-- Sidebar Overlay -->
+    <div x-show="open" @click="open = false" class="fixed inset-0 bg-black/50 z-40 backdrop-blur-sm" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="opacity-0" x-transition:enter-end="opacity-100" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="opacity-100" x-transition:leave-end="opacity-0"></div>
+
+    <!-- Filters Sidebar -->
+    <div x-show="open" @click.outside="open = false" class="fixed right-0 top-0 h-full w-full md:w-96 bg-pd-dark border-l border-white/10 shadow-2xl z-50 overflow-y-auto" x-transition:enter="transition ease-out duration-300" x-transition:enter-start="translate-x-full" x-transition:enter-end="translate-x-0" x-transition:leave="transition ease-in duration-200" x-transition:leave-start="translate-x-0" x-transition:leave-end="translate-x-full">
+        
+        <!-- Header -->
+        <div class="glass-card m-4 p-4 flex justify-between items-center sticky top-0 z-10">
+            <h3 class="text-xl font-bold text-pd-accent">FILTROS AVANÇADOS</h3>
+            <button @click="open = false" class="text-gray-400 hover:text-white transition-colors">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <form id="filterForm" hx-post="/search" hx-target="#search-results" hx-swap="innerHTML" class="p-4 space-y-6">
+            <!-- Hidden search query field -->
+            <input type="hidden" name="q" x-bind:value="document.querySelector('input[name=q]')?.value || ''">
+            
+            <!-- Date Range Filter -->
+            <div class="glass-card p-4">
+                <label class="text-gray-400 text-sm font-bold block mb-3">📅 PERÍODO</label>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-gray-500 text-xs block mb-1">Data Início</label>
+                        <input type="date" name="date_from" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-gray-500 text-xs block mb-1">Data Fim</label>
+                        <input type="date" name="date_to" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- State Filter -->
+            <div class="glass-card p-4">
+                <label class="text-gray-400 text-sm font-bold block mb-3">📍 ESTADO</label>
+                <select name="state" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    <option value="">Todos os Estados</option>
+                    <option value="AC">Acre</option>
+                    <option value="AL">Alagoas</option>
+                    <option value="AP">Amapá</option>
+                    <option value="AM">Amazonas</option>
+                    <option value="BA">Bahia</option>
+                    <option value="CE">Ceará</option>
+                    <option value="DF">Distrito Federal</option>
+                    <option value="ES">Espírito Santo</option>
+                    <option value="GO">Goiás</option>
+                    <option value="MA">Maranhão</option>
+                    <option value="MT">Mato Grosso</option>
+                    <option value="MS">Mato Grosso do Sul</option>
+                    <option value="MG">Minas Gerais</option>
+                    <option value="PA">Pará</option>
+                    <option value="PB">Paraíba</option>
+                    <option value="PR">Paraná</option>
+                    <option value="PE">Pernambuco</option>
+                    <option value="PI">Piauí</option>
+                    <option value="RJ">Rio de Janeiro</option>
+                    <option value="RN">Rio Grande do Norte</option>
+                    <option value="RS">Rio Grande do Sul</option>
+                    <option value="RO">Rondônia</option>
+                    <option value="RR">Roraima</option>
+                    <option value="SC">Santa Catarina</option>
+                    <option value="SP">São Paulo</option>
+                    <option value="SE">Sergipe</option>
+                    <option value="TO">Tocantins</option>
+                </select>
+            </div>
+
+            <!-- Modality Filter -->
+            <div class="glass-card p-4">
+                <label class="text-gray-400 text-sm font-bold block mb-3">📋 MODALIDADE</label>
+                <select name="modality" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    <option value="">Todas as Modalidades</option>
+                    <option value="Pregão">Pregão</option>
+                    <option value="Concorrência">Concorrência</option>
+                    <option value="Dispensa">Dispensa de Licitação</option>
+                    <option value="Inexigibilidade">Inexigibilidade</option>
+                    <option value="Convite">Convite</option>
+                    <option value="Leilão">Leilão</option>
+                </select>
+            </div>
+
+            <!-- Value Range Filter -->
+            <div class="glass-card p-4">
+                <label class="text-gray-400 text-sm font-bold block mb-3">💰 VALOR ESTIMADO</label>
+                <div class="space-y-3">
+                    <div>
+                        <label class="text-gray-500 text-xs block mb-1">Valor Mínimo (R$)</label>
+                        <input type="number" name="min_value" step="0.01" placeholder="0,00" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    </div>
+                    <div>
+                        <label class="text-gray-500 text-xs block mb-1">Valor Máximo (R$)</label>
+                        <input type="number" name="max_value" step="0.01" placeholder="Sem limite" class="w-full bg-pd-dark/50 border border-white/10 rounded px-3 py-2 text-white text-sm focus:border-pd-accent focus:outline-none">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Action Buttons -->
+            <div class="flex gap-3 pt-4">
+                <button type="button" @click="document.getElementById('filterForm').reset()" class="flex-1 bg-gray-700 hover:bg-gray-600 text-white px-4 py-3 rounded font-bold transition-colors">
+                    LIMPAR
+                </button>
+                <button type="submit" @click="open = false" class="flex-1 bg-pd-accent hover:bg-white text-pd-dark px-4 py-3 rounded font-bold transition-colors shadow-[0_0_15px_rgba(0,240,255,0.3)]">
+                    APLICAR
+                </button>
+            </div>
+        </form>
+    </div>
+</div>

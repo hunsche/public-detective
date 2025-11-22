@@ -737,3 +737,107 @@ class AnalysisRepository:
             return None
 
         return dict(result._mapping)
+
+    def get_dashboard_stats(self) -> dict[str, Any]:
+        """Aggregates statistics for the dashboard.
+
+        Returns:
+            A dictionary containing:
+            - total_analyzed: Number of successful analyses.
+            - total_irregularities: Total number of red flags found.
+            - potential_savings: Sum of estimated value for high-risk procurements.
+        """
+        self.logger.info("Fetching dashboard statistics...")
+        sql = text(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = :success_status) as total_analyzed,
+                COALESCE(SUM(jsonb_array_length(red_flags::jsonb)), 0) as total_irregularities,
+                COALESCE(SUM(
+                    CASE WHEN risk_score >= 70 THEN
+                        (SELECT total_estimated_value FROM procurements p 
+                         WHERE p.pncp_control_number = pa.procurement_control_number 
+                         AND p.version_number = pa.version_number)
+                    ELSE 0 END
+                ), 0) as potential_savings
+            FROM procurement_analyses pa
+            WHERE status = :success_status;
+            """
+        )
+        
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql, 
+                {"success_status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}
+            ).fetchone()
+            
+        if not result:
+            return {
+                "total_analyzed": 0,
+                "total_irregularities": 0,
+                "potential_savings": 0
+            }
+            
+        return dict(result._mapping)
+
+    def get_analysis_by_procurement(self, control_number: str) -> AnalysisResult | None:
+        """Gets the most recent successful analysis for a procurement.
+
+        Args:
+            control_number: The PNCP control number.
+
+        Returns:
+            The most recent successful analysis or None if not found.
+        """
+        self.logger.info(f"Fetching analysis for procurement {control_number}")
+        sql = text(
+            """
+            SELECT
+                analysis_id,
+                procurement_control_number,
+                version_number,
+                document_hash,
+                risk_score,
+                summary,
+                red_flags,
+                recommendations,
+                evidence,
+                cost_analysis,
+                legal_compliance,
+                procedural_compliance,
+                contract_analysis,
+                original_documents_gcs_path,
+                processed_documents_gcs_path,
+                analysis_prompt,
+                input_tokens_used,
+                output_tokens_used,
+                thinking_tokens_used,
+                input_cost,
+                output_cost,
+                thinking_cost,
+                total_cost,
+                fallback_analysis_cost,
+                status,
+                created_at,
+                updated_at
+            FROM procurement_analyses
+            WHERE procurement_control_number = :control_number
+              AND status = :success_status
+            ORDER BY created_at DESC
+            LIMIT 1;
+            """
+        )
+        
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql, 
+                {
+                    "control_number": control_number,
+                    "success_status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value
+                }
+            ).fetchone()
+            
+        if not result:
+            return None
+            
+        return self._parse_row_to_model(result, result.keys())

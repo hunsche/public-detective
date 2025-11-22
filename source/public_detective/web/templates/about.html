@@ -1,0 +1,46 @@
+{% extends "base.html" %}
+
+{% block title %}Sobre | Detetive Público{% endblock %}
+
+{% block content %}
+<div class="min-h-screen py-12 px-4">
+    <div class="max-w-4xl mx-auto">
+        <div class="glass-card p-8">
+            <h1 class="text-4xl font-bold text-pd-accent mb-6">SOBRE O DETETIVE PÚBLICO</h1>
+            
+            <div class="space-y-6 text-gray-300">
+                <p class="text-xl">
+                    Sistema de inteligência artificial para análise de licitações públicas.
+                </p>
+                
+                <div class="border-l-4 border-pd-accent pl-4">
+                    <h2 class="text-2xl font-bold text-white mb-3">🎯 Objetivo</h2>
+                    <p>
+                        Aumentar a transparência e detectar irregularidades em processos licitatórios usando IA.
+                    </p>
+                </div>
+                
+                <div class="border-l-4 border-pd-secondary pl-4">
+                    <h2 class="text-2xl font-bold text-white mb-3">🚀 Funcionalidades</h2>
+                    <ul class="space-y-2">
+                        <li>✅ Busca inteligente de licitações</li>
+                        <li>✅ Análise automática com IA</li>
+                        <li>✅ Detecção de bandeiras vermelhas</li>
+                        <li>✅ Filtros avançados</li>
+                        <li>✅ Dashboard de estatísticas</li>
+                    </ul>
+                </div>
+                
+                <div class="mt-8 flex gap-4">
+                    <a href="/" class="bg-pd-accent hover:bg-white text-pd-dark px-6 py-3 rounded font-bold transition-colors shadow-[0_0_15px_rgba(0,240,255,0.3)]">
+                        ← VOLTAR PARA HOME
+                    </a>
+                    <a href="/sobre" class="glass-card px-6 py-3 rounded font-bold hover:border-pd-accent/50 transition-colors">
+                        RECARREGAR ESTA PÁGINA
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,54 @@
+<div id="search-results" class="mt-8 grid grid-cols-1 gap-6 animate-entry">
+    {% if results %}
+        <div class="text-gray-400 text-sm font-mono mb-4">ENCONTRADOS {{ results|length }} RESULTADOS PARA "{{ query }}"</div>
+        
+        {% for procurement in results %}
+        <div class="glass-card p-6 hover:border-pd-accent/50 group relative overflow-hidden">
+            <!-- Decorative line -->
+            <div class="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-pd-accent to-transparent opacity-50"></div>
+
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+                <div class="flex-1">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="text-xs font-mono text-pd-accent border border-pd-accent/30 px-2 py-0.5 rounded">
+                            {{ procurement.modality.name if procurement.modality else 'N/A' }}
+                        </span>
+                        <span class="text-xs text-gray-500">{{ procurement.pncp_publication_date.strftime('%d/%m/%Y') }}</span>
+                    </div>
+                    
+                    <h3 class="text-lg font-bold text-white mb-1 group-hover:text-pd-accent transition-colors">
+                        {{ procurement.government_entity.name }}
+                    </h3>
+                    
+                    <p class="text-gray-400 text-sm line-clamp-2 mb-3">
+                        {{ procurement.object_description }}
+                    </p>
+
+                    <div class="flex items-center gap-4 text-sm">
+                        <div class="text-gray-300">
+                            <span class="text-gray-500">Valor:</span> 
+                            R$ {{ "{:,.2f}".format(procurement.total_estimated_value).replace(",", "X").replace(".", ",").replace("X", ".") }}
+                        </div>
+                        <div class="text-gray-300">
+                            <span class="text-gray-500">UASG:</span> {{ procurement.entity_unit.unit_name }}
+                        </div>
+                    </div>
+                </div>
+
+                <div class="flex flex-col items-end gap-2">
+                    <a href="/analysis/{{ procurement.pncp_control_number }}" class="bg-pd-accent text-pd-dark px-4 py-2 rounded font-bold text-sm hover:bg-white transition-colors shadow-[0_0_15px_rgba(0,240,255,0.3)]">
+                        ANALISAR
+                    </a>
+                    <span class="text-xs font-mono text-gray-500">{{ procurement.pncp_control_number }}</span>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    {% else %}
+        <div class="glass-card p-8 text-center">
+            <div class="text-6xl mb-4">🔍</div>
+            <h3 class="text-xl font-bold text-white mb-2">NENHUM RESULTADO ENCONTRADO</h3>
+            <p class="text-gray-400">Tente buscar por outro termo ou verifique o número do CNPJ.</p>
+        </div>
+    {% endif %}
+</div>
