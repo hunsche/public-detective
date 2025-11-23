@@ -74,7 +74,7 @@ class AiProvider(Generic[PydanticModel]):
 
     def get_structured_analysis(
         self, prompt: str, file_uris: list[str], max_output_tokens: int | None = None
-    ) -> tuple[PydanticModel, int, int, int, dict]:
+    ) -> tuple[PydanticModel, int, int, int, dict, str | None]:
         """Send files for analysis and parse the response.
 
         This method is designed to be highly robust. It includes a retry mechanism
@@ -98,7 +98,7 @@ class AiProvider(Generic[PydanticModel]):
             - The number of output tokens used.
             - The number of thinking tokens used.
             - A dict containing grounding metadata (search_queries, sources).
-            - A dict containing grounding metadata (search_queries, sources).
+            - The raw thoughts from the AI (if available).
         """
         file_parts: list[types.Part] = []
         for gcs_uri in file_uris:
@@ -161,12 +161,21 @@ class AiProvider(Generic[PydanticModel]):
             "sources": list(unique_sources),
         }
 
+        thoughts = []
+        if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
+            for part in response.candidates[0].content.parts:
+                if getattr(part, "thought", False):
+                    thoughts.append(part.text)
+
+        full_thoughts = "\n\n".join(thoughts) if thoughts else None
+
         return (
             validated_response,
             total_input_tokens,
             total_output_tokens,
             total_thinking_tokens,
             grounding_metadata,
+            full_thoughts,
         )
 
     def count_tokens_for_analysis(self, prompt: str, file_uris: list[str]) -> tuple[int, int, int]:
@@ -277,7 +286,7 @@ class AiProvider(Generic[PydanticModel]):
                 max_output_tokens=max_output_tokens,
                 tools=tools,
                 tool_config=tool_config,
-                thinking_config=types.ThinkingConfig(thinking_level=self.thinking_level),
+                thinking_config=types.ThinkingConfig(thinking_level=self.thinking_level, include_thoughts=True),
             ),
         )
 

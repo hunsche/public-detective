@@ -127,6 +127,7 @@ def upgrade() -> None:
             search_queries_used INTEGER,
             total_cost DECIMAL(32, 18),
             grounding_metadata JSONB,
+            thoughts TEXT,
             analysis_prompt TEXT,
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)

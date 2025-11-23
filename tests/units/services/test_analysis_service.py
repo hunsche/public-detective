@@ -457,7 +457,22 @@ def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, 
 
     # Mock AI provider response
     mock_valid_analysis = MagicMock(spec=Analysis)
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+    analysis_service.ai_provider.get_structured_analysis.return_value = (
+        mock_valid_analysis,
+        100,
+        50,
+        10,
+        {},
+        "thoughts",
+    )
+    analysis_service.ai_provider.get_structured_analysis.return_value = (
+        mock_valid_analysis,
+        100,
+        50,
+        10,
+        {},
+        "thoughts",
+    )
 
     # Mock pricing service
     analysis_service.pricing_service.calculate_total_cost.return_value = (
@@ -502,7 +517,14 @@ def test_analyze_procurement_no_included_files(analysis_service: AnalysisService
 
     # Mock AI provider response
     mock_valid_analysis = MagicMock(spec=Analysis)
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+    analysis_service.ai_provider.get_structured_analysis.return_value = (
+        mock_valid_analysis,
+        100,
+        50,
+        10,
+        {},
+        "thoughts",
+    )
 
     # Mock pricing service
     analysis_service.pricing_service.calculate_total_cost.return_value = (
@@ -551,7 +573,14 @@ def test_analyze_procurement_happy_path(
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = mock_file_records
     analysis_service.procurement_repo.get_procurement_uuid.return_value = procurement_id
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+    analysis_service.ai_provider.get_structured_analysis.return_value = (
+        mock_valid_analysis,
+        100,
+        50,
+        10,
+        {},
+        "thoughts",
+    )
     analysis_service.pricing_service.calculate_total_cost.return_value = (
         Decimal(0),
         Decimal(0),
@@ -1419,7 +1448,14 @@ def test_analyze_procurement_no_procurement_id(
 
     # Mock AI provider response
     mock_valid_analysis = MagicMock(spec=Analysis)
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+    analysis_service.ai_provider.get_structured_analysis.return_value = (
+        mock_valid_analysis,
+        100,
+        50,
+        10,
+        {},
+        "thoughts",
+    )
 
     # Mock pricing service
     analysis_service.pricing_service.calculate_total_cost.return_value = (
@@ -1460,7 +1496,7 @@ def test_analyze_procurement_save_analysis_fails(
         {"included_in_analysis": True, "prepared_content_gcs_uris": ["uri"]}
     ]
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1, {})
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1, {}, "thoughts")
     analysis_service.pricing_service.calculate_total_cost.return_value = (
         Decimal("0.1"),
         Decimal("0.2"),

@@ -82,6 +82,7 @@ class AnalysisRepository:
             row_dict["grounding_metadata"] = row_dict.get("grounding_metadata")
             row_dict["cost_search_queries"] = row_dict.get("cost_search_queries")
             row_dict["search_queries_used"] = row_dict.get("search_queries_used") or 0
+            row_dict["thoughts"] = row_dict.get("thoughts")
 
             return AnalysisResult.model_validate(row_dict)
         except ValidationError as e:
@@ -152,7 +153,8 @@ class AnalysisRepository:
                 search_queries_used = :search_queries_used,
                 total_cost = :total_cost,
                 analysis_prompt = :analysis_prompt,
-                grounding_metadata = :grounding_metadata
+                grounding_metadata = :grounding_metadata,
+                thoughts = :thoughts
         WHERE analysis_id = :analysis_id;
         """
         )
@@ -183,6 +185,7 @@ class AnalysisRepository:
             "search_queries_used": search_queries_used,
             "total_cost": total_cost,
             "grounding_metadata": (result.grounding_metadata.model_dump_json() if result.grounding_metadata else None),
+            "thoughts": result.thoughts,
         }
 
         with self.engine.connect() as conn:
@@ -235,7 +238,8 @@ class AnalysisRepository:
                 cost_search_queries,
                 search_queries_used,
                 total_cost,
-                analysis_prompt
+                analysis_prompt,
+                thoughts
             FROM procurement_analyses
             WHERE document_hash = :document_hash AND status = :status
             LIMIT 1;
@@ -410,7 +414,8 @@ class AnalysisRepository:
                 cost_search_queries,
                 search_queries_used,
                 total_cost,
-                analysis_prompt
+                analysis_prompt,
+                thoughts
             FROM procurement_analyses
             WHERE analysis_id = :analysis_id
             LIMIT 1;
@@ -495,7 +500,8 @@ class AnalysisRepository:
                 cost_search_queries,
                 search_queries_used,
                 total_cost,
-                analysis_prompt
+                analysis_prompt,
+                thoughts
             FROM procurement_analyses
             WHERE
                 (
@@ -639,6 +645,7 @@ class AnalysisRepository:
                 procurement_analyses.cost_search_queries,
                 procurement_analyses.search_queries_used,
                 procurement_analyses.total_cost,
+                procurement_analyses.thoughts,
                 COUNT(votes.vote_id) AS votes_count
             FROM
                 procurement_analyses

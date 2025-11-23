@@ -370,6 +370,7 @@ class AnalysisService:
                 output_tokens,
                 thinking_tokens,
                 raw_grounding_metadata,
+                thoughts,
             ) = self.ai_provider.get_structured_analysis(
                 prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
             )
@@ -390,6 +391,7 @@ class AnalysisService:
                 processed_documents_gcs_path=None,
                 analysis_prompt=prompt,
                 grounding_metadata=grounding_metadata,
+                thoughts=thoughts,
             )
 
             exts = [rec.get("extension") for rec in included_records]

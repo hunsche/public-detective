@@ -60,14 +60,26 @@ def create_mock_response(
     prompt_token_count: int,
     candidates_token_count: int,
     thoughts_token_count: int | None = 0,
+    thoughts: list[str] | None = None,
 ) -> MagicMock:
     mock_response = MagicMock()
     mock_candidate = MagicMock()
     mock_content = MagicMock()
 
+    parts = []
+    if thoughts:
+        for thought_text in thoughts:
+            mock_thought_part = MagicMock()
+            mock_thought_part.text = thought_text
+            mock_thought_part.thought = True
+            parts.append(mock_thought_part)
+
     mock_part = MagicMock()
     mock_part.text = text
-    mock_content.parts = [mock_part]
+    mock_part.thought = False
+    parts.append(mock_part)
+
+    mock_content.parts = parts
     mock_candidate.content = mock_content
     mock_response.candidates = [mock_candidate]
 
@@ -102,6 +114,7 @@ def test_get_structured_analysis(
         output_tokens,
         thinking_tokens,
         grounding_metadata,
+        thoughts,
     ) = ai_provider.get_structured_analysis(prompt="test prompt", file_uris=["gs://test-bucket/file1.pdf"])
 
     assert isinstance(result, MockOutputSchema)
@@ -109,6 +122,7 @@ def test_get_structured_analysis(
     assert input_tokens == 10
     assert output_tokens == 20
     assert thinking_tokens == 5
+    assert thoughts is None
     mock_models_api.generate_content.assert_called_once()
 
 
@@ -319,13 +333,19 @@ def test_get_structured_analysis_with_grounding_metadata(
     mock_models_api.generate_content.return_value = mock_response
 
     ai_provider = AiProvider(output_schema=MockOutputSchema)
-    result, input_tokens, output_tokens, thinking_tokens, grounding_metadata = ai_provider.get_structured_analysis(
-        prompt="test", file_uris=[]
-    )
+    (
+        result,
+        input_tokens,
+        output_tokens,
+        thinking_tokens,
+        grounding_metadata,
+        thoughts,
+    ) = ai_provider.get_structured_analysis(prompt="test", file_uris=[])
 
     assert input_tokens == 15
     assert output_tokens == 25
     assert thinking_tokens == 3
+    assert thoughts is None
     assert "query1" in grounding_metadata["search_queries"]
     assert "query2" in grounding_metadata["search_queries"]
     assert len(grounding_metadata["sources"]) == 2
@@ -351,7 +371,7 @@ def test_get_structured_analysis_candidate_without_grounding_metadata(
     mock_models_api.generate_content.return_value = mock_response
 
     ai_provider = AiProvider(output_schema=MockOutputSchema)
-    _, _, _, _, grounding_metadata = ai_provider.get_structured_analysis(prompt="test", file_uris=[])
+    _, _, _, _, grounding_metadata, _ = ai_provider.get_structured_analysis(prompt="test", file_uris=[])
 
     assert grounding_metadata["search_queries"] == []
     assert grounding_metadata["sources"] == []
@@ -547,3 +567,29 @@ def test_should_retry_without_tools_no_tool_call(
     result = ai_provider._should_retry_without_tools(mock_response)
 
     assert result is False
+
+def test_get_structured_analysis_with_thoughts(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    mock_models_api, _, _, _ = mock_ai_provider
+
+    mock_response = create_mock_response(
+        text="""{"risk_score": 8, "summary": "Test summary"}""",
+        prompt_token_count=10,
+        candidates_token_count=20,
+        thoughts_token_count=5,
+        thoughts=["I am thinking about risk...", "Risk seems high."],
+    )
+    mock_models_api.generate_content.return_value = mock_response
+
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+    (
+        _,
+        _,
+        _,
+        _,
+        _,
+        thoughts,
+    ) = ai_provider.get_structured_analysis(prompt="test prompt", file_uris=[])
+
+    assert thoughts == "I am thinking about risk...\n\nRisk seems high."
