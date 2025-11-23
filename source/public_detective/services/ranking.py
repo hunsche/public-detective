@@ -79,10 +79,10 @@ class RankingService:
             - (self.config.RANKING_WEIGHT_COST * float(estimated_cost))
         )
 
-        procurement.quality_score = quality_score
-        procurement.estimated_cost = estimated_cost
-        procurement.potential_impact_score = potential_impact_score
-        procurement.priority_score = int(priority_score)
+        procurement.current_quality_score = quality_score
+        procurement.current_estimated_cost = estimated_cost
+        procurement.current_potential_impact_score = potential_impact_score
+        procurement.current_priority_score = int(priority_score)
         procurement.is_stable = is_stable
         procurement.last_changed_at = procurement.last_update_date
         procurement.temporal_score = temporal_score

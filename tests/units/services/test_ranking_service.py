@@ -58,10 +58,11 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
             Decimal("0"),
             Decimal("0"),
             Decimal("0"),
-            Decimal("0.01"),
+            Decimal("0.17"),
         )
+        ranking_service._calculate_quality_score = MagicMock(return_value=100)
 
-        result = ranking_service.calculate_priority(procurement, candidates, analysis_id)
+        ranking_service.calculate_priority(procurement, candidates, analysis_id)
 
         mock_calculate_total_cost.assert_called_with(
             1000,
@@ -70,14 +71,14 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
             modality=Modality.TEXT,
             search_queries_count=10,
         )
-    assert result.quality_score is not None
-    assert result.estimated_cost is not None
-    assert result.potential_impact_score is not None
-    assert result.priority_score is not None
-    assert result.is_stable is not None
-    assert result.last_changed_at is not None
-    assert result.temporal_score is not None
-    assert result.federal_bonus_score is not None
+    assert procurement.current_quality_score == 100
+    assert procurement.current_estimated_cost == Decimal("0.17")
+    assert procurement.current_potential_impact_score == 55
+    assert procurement.current_priority_score == 330
+    assert procurement.is_stable is True
+    assert procurement.last_changed_at is not None
+    assert procurement.temporal_score == 30
+    assert procurement.federal_bonus_score == 0
 
 
 def test_calculate_temporal_score(ranking_service: RankingService) -> None:

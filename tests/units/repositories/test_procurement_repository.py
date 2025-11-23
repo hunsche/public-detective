@@ -594,10 +594,10 @@ def mock_procurement() -> MagicMock:
     procurement.modality = 5
     procurement.procurement_status = 1
     procurement.total_estimated_value = 1200.0
-    procurement.quality_score = 80
-    procurement.estimated_cost = 15.50
-    procurement.potential_impact_score = 60
-    procurement.priority_score = 120
+    procurement.current_quality_score = 80
+    procurement.current_estimated_cost = 15.50
+    procurement.current_potential_impact_score = 60
+    procurement.current_priority_score = 120
     procurement.is_stable = True
     procurement.last_changed_at = date(2023, 1, 1)
     procurement.votes_count = 5
@@ -1092,10 +1092,10 @@ def test_get_procurement_by_id_and_version_found(repo: ProcurementsRepository) -
         "raw_data": json.dumps(raw_data),
         "procurement_id": uuid4(),
         "votes_count": 0,
-        "quality_score": 75,
-        "estimated_cost": Decimal("0"),
-        "potential_impact_score": 10,
-        "priority_score": 20,
+        "current_quality_score": 75,
+        "current_estimated_cost": Decimal("0"),
+        "current_potential_impact_score": 10,
+        "current_priority_score": 20,
         "is_stable": True,
         "last_changed_at": "2025-01-01T12:00:00",
         "temporal_score": 5,

@@ -37,8 +37,9 @@ def test_ranked_priority_flow(
         procurements = (
             connection.execute(
                 text(
-                    "SELECT pncp_control_number, version_number, priority_score, quality_score, estimated_cost, "
-                    "potential_impact_score, is_stable, temporal_score, federal_bonus_score "
+                    "SELECT pncp_control_number, version_number, current_priority_score, "
+                    "current_quality_score, current_estimated_cost, current_potential_impact_score, "
+                    "is_stable, temporal_score, federal_bonus_score "
                     "FROM procurements ORDER BY created_at DESC"
                 )
             )
@@ -48,22 +49,23 @@ def test_ranked_priority_flow(
         assert procurements, "Expected procurements to be saved during pre-analysis."
         assert len(procurements) == max_items_to_process
 
-        for record in procurements:
-            print(
-                "Loaded procurement",
-                record["pncp_control_number"],
-                "priority=",
-                record["priority_score"],
-                "quality=",
-                record["quality_score"],
-            )
-            assert record["priority_score"] is not None
-            assert record["quality_score"] is not None
-            assert record["estimated_cost"] is not None
-            assert record["potential_impact_score"] is not None
-            assert record["is_stable"] is True
-            assert record["temporal_score"] is not None
-            assert record["federal_bonus_score"] is not None
+        # Assuming max_items_to_process is 1, we can assert on the single procurement record
+        procurement = procurements[0]
+        print(
+            "Loaded procurement",
+            procurement["pncp_control_number"],
+            "priority=",
+            procurement["current_priority_score"],
+            "quality=",
+            procurement["current_quality_score"],
+        )
+        assert procurement["current_priority_score"] is not None
+        assert procurement["current_quality_score"] is not None
+        assert procurement["current_estimated_cost"] is not None
+        assert procurement["current_potential_impact_score"] is not None
+        assert procurement["is_stable"] is True
+        assert procurement["temporal_score"] is not None
+        assert procurement["federal_bonus_score"] is not None
 
         analyses = (
             connection.execute(

@@ -112,19 +112,20 @@ def test_ranked_analysis_e2e_flow(
                 print(json.dumps(serializable_records, indent=2, ensure_ascii=False, default=str))
 
                 if table_name == "procurement_analyses":
-                    # Enrich with estimated_cost from procurements
+                    # Enrich with current_estimated_cost from procurements (as a cache check)
                     enriched_records = []
                     procurements_query = text(
-                        "SELECT pncp_control_number, version_number, estimated_cost FROM procurements"
+                        "SELECT pncp_control_number, version_number, current_estimated_cost FROM procurements"
                     )
                     procurements = {
-                        (p.pncp_control_number, p.version_number): p.estimated_cost
+                        (p.pncp_control_number, p.version_number): p.current_estimated_cost
                         for p in connection.execute(procurements_query).mappings().all()
                     }
 
                     for record in serializable_records:
                         key = (record.get("procurement_control_number"), record.get("version_number"))
-                        record["estimated_cost_from_procurement"] = procurements.get(key)
+                        # We include this to verify the cache (procurement table) matches the source (analysis table)
+                        record["cached_estimated_cost_from_procurement"] = procurements.get(key)
                         enriched_records.append(record)
 
                     # Save to file for inspection in tmp dir

@@ -159,16 +159,16 @@ class ProcurementsRepository:
                 object_description, total_awarded_value, is_srp, procurement_year,
                 procurement_sequence, pncp_publication_date, last_update_date,
                 modality_id, procurement_status_id, total_estimated_value,
-                version_number, raw_data, content_hash, quality_score,
-                estimated_cost, potential_impact_score, priority_score, is_stable,
+                version_number, raw_data, content_hash, current_quality_score,
+                current_estimated_cost, current_potential_impact_score, current_priority_score, is_stable,
                 last_changed_at, temporal_score, federal_bonus_score
             ) VALUES (
                 :pncp_control_number, :proposal_opening_date, :proposal_closing_date,
                 :object_description, :total_awarded_value, :is_srp, :procurement_year,
                 :procurement_sequence, :pncp_publication_date, :last_update_date,
                 :modality_id, :procurement_status_id, :total_estimated_value,
-                :version_number, :raw_data, :content_hash, :quality_score,
-                :estimated_cost, :potential_impact_score, :priority_score, :is_stable,
+                :version_number, :raw_data, :content_hash, :current_quality_score,
+                :current_estimated_cost, :current_potential_impact_score, :current_priority_score, :is_stable,
                 :last_changed_at, :temporal_score, :federal_bonus_score
             );
         """
@@ -190,10 +190,10 @@ class ProcurementsRepository:
             "version_number": version_number,
             "raw_data": raw_data,
             "content_hash": content_hash,
-            "quality_score": procurement.quality_score,
-            "estimated_cost": procurement.estimated_cost,
-            "potential_impact_score": procurement.potential_impact_score,
-            "priority_score": procurement.priority_score,
+            "current_quality_score": procurement.current_quality_score,
+            "current_estimated_cost": procurement.current_estimated_cost,
+            "current_potential_impact_score": procurement.current_potential_impact_score,
+            "current_priority_score": procurement.current_priority_score,
             "is_stable": procurement.is_stable,
             "last_changed_at": procurement.last_changed_at,
             "temporal_score": procurement.temporal_score,
@@ -220,10 +220,11 @@ class ProcurementsRepository:
                 raw_data,
                 procurement_id,
                 votes_count,
-                quality_score,
-                estimated_cost,
-                potential_impact_score,
-                priority_score,
+                votes_count,
+                current_quality_score,
+                current_estimated_cost,
+                current_potential_impact_score,
+                current_priority_score,
                 is_stable,
                 last_changed_at,
                 temporal_score,
@@ -259,10 +260,10 @@ class ProcurementsRepository:
 
         raw_data["procurement_id"] = row["procurement_id"]
         raw_data["votes_count"] = row["votes_count"]
-        raw_data["quality_score"] = row["quality_score"]
-        raw_data["estimated_cost"] = row["estimated_cost"]
-        raw_data["potential_impact_score"] = row["potential_impact_score"]
-        raw_data["priority_score"] = row["priority_score"]
+        raw_data["current_quality_score"] = row["current_quality_score"]
+        raw_data["current_estimated_cost"] = row["current_estimated_cost"]
+        raw_data["current_potential_impact_score"] = row["current_potential_impact_score"]
+        raw_data["current_priority_score"] = row["current_priority_score"]
         raw_data["is_stable"] = row["is_stable"]
         raw_data["last_changed_at"] = row["last_changed_at"]
         raw_data["temporal_score"] = row["temporal_score"]
@@ -302,10 +303,10 @@ class ProcurementsRepository:
             """
             UPDATE procurements
             SET
-                quality_score = :quality_score,
-                estimated_cost = :estimated_cost,
-                potential_impact_score = :potential_impact_score,
-                priority_score = :priority_score,
+                current_quality_score = :current_quality_score,
+                current_estimated_cost = :current_estimated_cost,
+                current_potential_impact_score = :current_potential_impact_score,
+                current_priority_score = :current_priority_score,
                 is_stable = :is_stable,
                 last_changed_at = :last_changed_at,
                 temporal_score = :temporal_score,
@@ -318,10 +319,10 @@ class ProcurementsRepository:
         params = {
             "pncp_control_number": procurement.pncp_control_number,
             "version_number": version_number,
-            "quality_score": procurement.quality_score,
-            "estimated_cost": procurement.estimated_cost,
-            "potential_impact_score": procurement.potential_impact_score,
-            "priority_score": procurement.priority_score,
+            "current_quality_score": procurement.current_quality_score,
+            "current_estimated_cost": procurement.current_estimated_cost,
+            "current_potential_impact_score": procurement.current_potential_impact_score,
+            "current_priority_score": procurement.current_priority_score,
             "is_stable": procurement.is_stable,
             "last_changed_at": procurement.last_changed_at,
             "temporal_score": procurement.temporal_score,

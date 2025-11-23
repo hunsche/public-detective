@@ -198,8 +198,8 @@ def _expected_priority(
 
 def _extract_scores(procurement: Procurement) -> tuple[int, int, int, int, bool]:
     return (
-        procurement.quality_score or 0,
-        procurement.potential_impact_score or 0,
+        procurement.current_quality_score or 0,
+        procurement.current_potential_impact_score or 0,
         procurement.temporal_score or 0,
         procurement.federal_bonus_score or 0,
         procurement.is_stable or False,
@@ -225,7 +225,7 @@ def test_calculate_priority_combines_scores(ranking_service: RankingService) -> 
 
     result = ranking_service.calculate_priority(procurement, candidates, analysis_id)
 
-    total_cost = result.estimated_cost
+    total_cost = result.current_estimated_cost
     assert total_cost is not None
     quality_score, potential_impact, temporal_score, federal_bonus, is_stable = _extract_scores(result)
 
@@ -235,7 +235,7 @@ def test_calculate_priority_combines_scores(ranking_service: RankingService) -> 
     assert federal_bonus == 20
     assert potential_impact == 100
     assert is_stable is True
-    assert result.estimated_cost == total_cost
+    assert result.current_estimated_cost == total_cost
     assert result.last_changed_at == result.last_update_date
 
     expected_priority = _expected_priority(
@@ -245,7 +245,7 @@ def test_calculate_priority_combines_scores(ranking_service: RankingService) -> 
         votes_count=procurement.votes_count or 0,
         estimated_cost=total_cost,
     )
-    assert result.priority_score == expected_priority
+    assert result.current_priority_score == expected_priority
 
 
 def test_calculate_priority_recent_update_is_not_stable(ranking_service: RankingService) -> None:
@@ -321,9 +321,9 @@ def test_calculate_priority_quality_penalties_applied(ranking_service: RankingSe
 
     ranking_service.calculate_priority(procurement, candidates, None)
 
-    assert procurement.quality_score == 35
-    assert procurement.potential_impact_score == 0
-    assert procurement.priority_score == int(ranking_service.config.RANKING_WEIGHT_QUALITY * 35)
+    assert procurement.current_quality_score == 35
+    assert procurement.current_potential_impact_score == 0
+    assert procurement.current_priority_score == int(ranking_service.config.RANKING_WEIGHT_QUALITY * 35)
 
 
 def test_calculate_priority_no_candidates_results_in_zero_quality(ranking_service: RankingService) -> None:
@@ -341,8 +341,8 @@ def test_calculate_priority_no_candidates_results_in_zero_quality(ranking_servic
 
     ranking_service.calculate_priority(procurement, [], None)
 
-    assert procurement.quality_score == 0
-    assert procurement.priority_score == 0
+    assert procurement.current_quality_score == 0
+    assert procurement.current_priority_score == 0
 
 
 def test_calculate_priority_potential_impact_is_capped(ranking_service: RankingService) -> None:
@@ -361,7 +361,7 @@ def test_calculate_priority_potential_impact_is_capped(ranking_service: RankingS
 
     ranking_service.calculate_priority(procurement, [_build_candidate()], None)
 
-    assert procurement.potential_impact_score == 100
+    assert procurement.current_potential_impact_score == 100
 
 
 def test_calculate_priority_non_federal_has_no_bonus(ranking_service: RankingService) -> None:
@@ -400,7 +400,7 @@ def test_calculate_priority_cost_penalizes_priority(ranking_service: RankingServ
 
     ranking_service.calculate_priority(procurement, [_build_candidate()], analysis_id)
 
-    total_cost = procurement.estimated_cost
+    total_cost = procurement.current_estimated_cost
     assert total_cost is not None
     expected_priority = _expected_priority(
         config=ranking_service.config,
@@ -410,9 +410,9 @@ def test_calculate_priority_cost_penalizes_priority(ranking_service: RankingServ
         estimated_cost=total_cost,
     )
 
-    assert procurement.estimated_cost == total_cost
-    assert procurement.priority_score == expected_priority
-    assert procurement.priority_score < 0
+    assert procurement.current_estimated_cost == total_cost
+    assert procurement.current_priority_score == expected_priority
+    assert procurement.current_priority_score < 0
 
 
 def test_calculate_priority_missing_analysis_falls_back_to_zero_cost(ranking_service: RankingService) -> None:
@@ -430,4 +430,4 @@ def test_calculate_priority_missing_analysis_falls_back_to_zero_cost(ranking_ser
 
     ranking_service.calculate_priority(procurement, [_build_candidate()], uuid4())
 
-    assert procurement.estimated_cost == Decimal("0.0")
+    assert procurement.current_estimated_cost == Decimal("0.0")
