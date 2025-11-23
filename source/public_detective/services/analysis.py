@@ -923,7 +923,7 @@ class AnalysisService:
                 *   **Fontes Oficiais (A ou B):** Se encontrar 1 fonte oficial robusta (ex: Painel de Preços ou Licitação similar no PNCP), ela é suficiente e tem preferência sobre fontes privadas.
             4. **Busca Exaustiva de Fontes Oficiais:** Antes de recorrer ao Google (Varejo), você **DEVE** tentar buscar em fontes oficiais. Se não encontrar, declare explicitamente no `auditor_reasoning`: "Foram realizadas buscas no Painel de Preços e no PNCP para a marca [MARCA], sem identificação de contratos comparáveis; por isso recorreu-se a fontes de varejo...".
             5. **Tratamento de Fontes de Varejo (B2C - Fonte D):** Se utilizar o varejo:
-                *   **Fator de Desconto (BDI Diferencial):** Aplique um desconto presumido de 20% sobre o preço de varejo. No `rationale`, mostre a conta: "Preço varejo: R$ X/un. Aplicando fator de desconto de 20%: X * 0.80 = R$ Y/un (preço atacado estimado)."
+                *   **Fator de Desconto (BDI Diferencial):** Aplique um desconto presumido de 20% sobre o preço de varejo. No `rationale`, você **DEVE** escrever a conta: "Preço varejo: R$ X/un. Aplicando fator de desconto de 20%: X * 0.80 = R$ Y/un (preço atacado estimado)."
                 *   **Ressalvas (Custo Brasil):** Pondere o impacto de custos logísticos, tributários (ex: ICMS interestadual) e burocráticos específicos da contratação.
                 *   **Agravante Crítico:** Se o preço contratado (em quantidade de atacado) for SUPERIOR ao preço de varejo unitário (sem desconto), isso é um indício GRAVE de sobrepreço, pois ignora a economia de escala.
 
@@ -939,20 +939,21 @@ class AnalysisService:
             4. **Consistência (Checklist):**
                 *   **Quantidade:** Verifique se a quantidade usada no cálculo de economia (ex: 1656) bate com a soma dos itens onde houve sobrepreço. Se excluir itens (ex: item 3), explique: "Considerando apenas os itens 1 e 2...".
                 *   **Marca:** Padronize a grafia da marca (ex: Maxprint vs Maxxprint). Use a grafia do documento, mas mencione variações se necessário.
-                *   **Preço de Referência:** Se usar uma média (ex: R$ 2,13), explique a origem: "Média entre Fonte A (R$ 2,00) e Fonte B (R$ 2,26)".
+                *   **Preço de Referência:** Se usar uma média (ex: R$ 2,13), explique a origem: "Média entre Fonte A (R$ 2,00) e Fonte B (R$ 2,26)". **ATENÇÃO:** Se você estiver usando o maior preço da cesta para ser conservador, NÃO chame de "Média". Chame de "Referência Conservadora".
 
         **CATEGORIAS DE IRREGULARIDADES:**
         [DIRECIONAMENTO, RESTRICAO_COMPETITIVIDADE, SOBREPRECO (requer metodologia acima), SUPERFATURAMENTO (requer prova de dano consumado), FRAUDE (conluio, documentos falsos), DOCUMENTACAO_IRREGULAR, OUTROS]
 
         **ESTRUTURA DO `red_flag`:**
-        - `category`: Categoria acima.
+        - `category`: Categoria acima. Se a falha for metodológica (ex: ignorar fontes oficiais), use RESTRICAO_COMPETITIVIDADE.
         - `severity`: `LEVE`, `MODERADA` ou `GRAVE`.
-        - `description`: Descrição objetiva (pt-br).
+        - `description`: Descrição objetiva (pt-br). Se você citar fontes para itens diferentes (ex: Pilha AA e Pilha C), mencione TODOS os itens na descrição.
         - `evidence_quote`: Citação literal (pt-br) do documento da licitação.
         - `auditor_reasoning`: Justificativa técnica (pt-br). Explique o risco e a norma violada.
-            *   **OBRIGATÓRIO 1 (Fontes Oficiais):** Se não encontrou fontes oficiais, declare: "Foram realizadas buscas no Painel de Preços e no PNCP... sem sucesso". Se encontrou, cite-as.
-            *   **OBRIGATÓRIO 2 (Justificativa de Severidade):** Se o sobrepreço for alto (>35%) mas a severidade for rebaixada para MODERADA por baixa materialidade, JUSTIFIQUE: "Apesar do percentual elevado (>35%), a severidade foi classificada como MODERADA em razão da baixa materialidade global...".
-        - `potential_savings` (opcional): Valor monetário estimado da economia potencial. No `auditor_reasoning`, você DEVE explicitar a fórmula usada com os valores EXATOS: "Considerando preço referência R$ X (média/menor), a economia é: (Preço Contratado - Preço Ref) * Quantidade = R$ Y".
+            *   **OBRIGATÓRIO 1 (Fontes Oficiais):** No início do texto, declare explicitamente: "Foram realizadas buscas no Painel de Preços, PNCP e BEC/SP... sem sucesso" (se for o caso).
+            *   **OBRIGATÓRIO 2 (Justificativa de Severidade):** Se o sobrepreço for alto (>35%) mas a severidade for rebaixada para MODERADA por baixa materialidade OU por insuficiência de fontes (menos de 3 fontes fortes), JUSTIFIQUE: "Apesar do percentual elevado (>35%), a severidade foi classificada como MODERADA em razão da baixa materialidade global/insuficiência de 3 fontes robustas...".
+            *   **OBRIGATÓRIO 3 (Cálculo Global):** Ao final do texto, você **DEVE** escrever a fórmula completa: "Considerando preço referência R$ X (média/menor/conservador), a economia potencial global é: (Preço Contratado - Preço Ref) * Quantidade = R$ Y".
+        - `potential_savings` (opcional): Valor monetário estimado da economia potencial. Deve bater com o cálculo do `auditor_reasoning`.
         - `sources` (Obrigatório para SOBREPRECO/SUPERFATURAMENTO):
             - `name`: nome ou título da fonte.
             - `type`: Classificação da fonte conforme hierarquia: "OFICIAL", "TABELA", "B2B" ou "VAREJO".
@@ -960,20 +961,20 @@ class AnalysisService:
             - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
             - `reference_date`: data em que o preço foi válido ou coletado.
             - `evidence`: Trecho literal da fonte que apoia a comparação.
-            - `rationale`: **(CRÍTICO)** Explicação detalhada da comparação. DEVE incluir: o tipo da fonte usada (ex: Oficial, Varejo), o preço unitário contratado, o preço de referência médio (da cesta), o cálculo da diferença percentual, a contextualização temporal e, se aplicável (Fonte Varejo), o Fator de Desconto aplicado (mostre a conta: X * 0.80 = Y) e as Ressalvas ponderadas.
+            - `rationale`: **(CRÍTICO)** Explicação detalhada da comparação. DEVE incluir: o tipo da fonte usada (ex: Oficial, Varejo), o preço unitário contratado, o preço de referência médio (da cesta), o cálculo da diferença percentual, a contextualização temporal. **SE A FONTE FOR VAREJO, É OBRIGATÓRIO MOSTRAR A CONTA DO DESCONTO:** "X * 0.80 = Y".
 
         **CLASSIFICAÇÃO DE SEVERIDADE (Calibrada para Rigor e Materialidade):**
         - **Leve:** Falhas formais sem impacto material, ou sobrepreço < 15% acima da Cesta de Preços Aceitável.
-        - **Moderada:** Restrição de competitividade, sobrepreço entre 15% e 35%, ou pesquisa de preços metodologicamente falha (ex: ignorar fontes oficiais sem justificativa).
-        - **Grave:** Direcionamento claro, ausência de pesquisa de preços válida, sobrepreço > 35% comprovado por fontes robustas (A, B ou C), Preço de atacado superior ao de varejo (Agravante Crítico), ou qualquer indício de fraude/dano consumado.
+        - **Moderada:** Restrição de competitividade, sobrepreço entre 15% e 35%, ou pesquisa de preços metodologicamente falha (ex: ignorar fontes oficiais sem justificativa). **ATENÇÃO:** Se você encontrar menos de 3 fontes robustas para o item principal, a severidade DEVE ser MODERADA, mesmo que o sobrepreço seja alto.
+        - **Grave:** Direcionamento claro, ausência de pesquisa de preços válida, sobrepreço > 35% comprovado por fontes robustas (A, B ou C), Preço de atacado superior ao de varejo (Agravante Crítico), ou qualquer indício de fraude/dano consumado. **REQUISITO:** Mínimo de 3 fontes distintas ou 1 fonte oficial para classificar como GRAVE.
 
         **CRITÉRIOS PARA A NOTA DE RISCO (0 a 100):**
         A nota deve refletir a probabilidade de irregularidade E o impacto material (financeiro).
 
         **Escala de Risco:**
         - **0-10 (Mínimo):** Processo regular ou falhas formais irrelevantes.
-        - **11-30 (Baixo):** Falhas formais leves, sem dano ao erário ou prejuízo à competitividade.
-        - **31-50 (Moderado):** Indícios de restrição à competitividade ou sobrepreço em itens de baixo impacto financeiro.
+        - **11-30 (Baixo):** Falhas formais leves sem dano ao erário comprovado.
+        - **31-50 (Moderado):** Indícios de restrição à competitividade (ex: ignorar fontes oficiais) ou sobrepreço em itens de baixo impacto financeiro.
         - **51-70 (Alto):** Sobrepreço significativo (>25%) em itens relevantes, direcionamento evidente ou restrição grave sem justificativa.
         - **71-90 (Crítico):** Sobrepreço grosseiro (>50%), "Jogo de Planilha", ou direcionamento flagrante em licitação de grande vulto.
         - **91-100 (Máximo):** Prova documental de fraude (conluio, falsificação) ou superfaturamento consumado com alto dano.
@@ -984,6 +985,11 @@ class AnalysisService:
 
         **FORMATO DA RESPOSTA (JSON):**
         Sua resposta deve ser um objeto JSON único e válido. Preencha os campos `procurement_summary`, `analysis_summary`, `risk_score_rationale` (pt-br, máx 3 sentenças cada) e `seo_keywords` (5-10 palavras-chave estratégicas: Objeto, Órgão, Cidade/Estado, Tipo de Irregularidade).
+        No `analysis_summary`:
+        - Use linguagem neutra se o sobrepreço não for comprovado. Prefira "não foi possível demonstrar, com robustez metodológica, a existência de sobrepreço relevante" em vez de "preços alinhados".
+        No `risk_score_rationale`:
+        - Seja preciso com percentuais (ex: "11% a 29%" em vez de "aproximadamente 28%").
+        - Use terminologia coerente com a severidade (ex: se severidade é MODERADA, use "irregularidade relevante" ou "gravidade moderada", evite "irregularidade grave").
         """  # noqa: E501
 
     def _calculate_hash(self, files: list[tuple[str, bytes | list[bytes]]]) -> str:
