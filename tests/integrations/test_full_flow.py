@@ -119,6 +119,7 @@ def test_pre_analysis_flow_integration(db_session: Engine, mock_procurement: Pro
         budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        http_provider=http_provider,
         pubsub_provider=pubsub_provider,
     )
 

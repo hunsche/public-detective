@@ -148,14 +148,11 @@ class RankingService:
         if tokens_to_use is None:
             return Decimal("0.0")
 
-        _, _, _, total_cost_decimal, _ = self.pricing_service.calculate_total_cost(
+        _, _, _, total_cost_decimal = self.pricing_service.calculate_total_cost(
             tokens_to_use,
             0,
             0,
             modality=Modality.TEXT,
-            fallback_input_tokens=0,
-            fallback_output_tokens=0,
-            fallback_thinking_tokens=0,
         )
         return Decimal(total_cost_decimal)
 

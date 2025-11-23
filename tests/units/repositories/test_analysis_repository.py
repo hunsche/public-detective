@@ -229,7 +229,6 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         output_cost=Decimal("0.2"),
         thinking_cost=Decimal("0.05"),
         total_cost=Decimal("0.35"),
-        fallback_analysis_cost=Decimal("0.0"),
     )
 
     # Assert
@@ -542,7 +541,6 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         output_cost=Decimal("0.3"),
         thinking_cost=Decimal("0.1"),
         total_cost=Decimal("0.6"),
-        fallback_analysis_cost=Decimal("0.0"),
         retry_count=1,
         analysis_prompt="Test prompt",
     )
@@ -566,7 +564,6 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
     assert update_tokens_params["analysis_id"] == returned_id
     assert update_tokens_params["input_tokens_used"] == 200
     assert update_tokens_params["total_cost"] == Decimal("0.6")
-    assert update_tokens_params["fallback_analysis_cost"] == Decimal("0.0")
     assert "UPDATE procurement_analyses" in str(update_tokens_call_args[0])
 
     # Assert call for update_analysis_status

@@ -88,6 +88,12 @@ def mock_pubsub_provider() -> MagicMock:
 
 
 @pytest.fixture
+def mock_http_provider() -> MagicMock:
+    """Provides a mock HttpProvider."""
+    return MagicMock()
+
+
+@pytest.fixture
 def mock_procurement() -> MagicMock:
     """Provides a mock Procurement object for testing."""
     procurement = MagicMock(spec=Procurement)
@@ -142,6 +148,7 @@ def analysis_service(
     mock_budget_ledger_repo: MagicMock,
     mock_ai_provider: MagicMock,
     mock_gcs_provider: MagicMock,
+    mock_http_provider: MagicMock,
     mock_pubsub_provider: MagicMock,
 ) -> AnalysisService:
     """Provides an AnalysisService instance with mocked dependencies."""
@@ -154,6 +161,7 @@ def analysis_service(
         budget_ledger_repo=mock_budget_ledger_repo,
         ai_provider=mock_ai_provider,
         gcs_provider=mock_gcs_provider,
+        http_provider=mock_http_provider,
         pubsub_provider=mock_pubsub_provider,
     )
     service.pricing_service = MagicMock()
@@ -428,48 +436,101 @@ def test_select_files_by_token_limit_prioritization(
 
 
 def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, caplog: Any) -> None:
-    """Tests that analysis is aborted if no file records are found."""
-    mock_procurement = MagicMock(spec=Procurement)
-    mock_procurement.pncp_control_number = "123"
+    """Tests that analysis proceeds if no file records are found."""
     analysis_id = uuid.uuid4()
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
+    mock_procurement = MagicMock(spec=Procurement)
+    mock_procurement.pncp_control_number = "PNCP-123"
+    mock_procurement.object_description = "desc"
+    mock_procurement.modality = "mod"
+    mock_procurement.government_entity = MagicMock()
+    mock_procurement.government_entity.name = "entity"
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.unit_name = "unit"
+    mock_procurement.total_estimated_value = Decimal("1000")
+    mock_procurement.proposal_opening_date = datetime.now()
+    mock_procurement.proposal_closing_date = datetime.now()
+    mock_procurement.procurement_id = uuid.uuid4()
+
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock(document_hash="h", analysis_prompt="p")
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = []
+
+    # Mock AI provider response
+    mock_valid_analysis = MagicMock(spec=Analysis)
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+
+    # Mock pricing service
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal("0.1"),
+        Decimal("0.2"),
+        Decimal("0.3"),
+        Decimal("0.6"),
+    )
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert f"No file records found for analysis {analysis_id}. Aborting." in caplog.text
-    analysis_service.status_history_repo.create_record.assert_called_with(
-        analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, "No file records found for analysis."
+    assert (
+        f"No file records found for analysis {analysis_id}. Proceeding with analysis without documents." in caplog.text
     )
 
 
 def test_analyze_procurement_no_included_files(analysis_service: AnalysisService, caplog: Any) -> None:
-    """Tests that analysis is aborted if no files were marked for inclusion."""
+    """Tests that analysis proceeds if files exist but none are included."""
+    analysis_id = uuid.uuid4()
     mock_procurement = MagicMock(spec=Procurement)
     mock_procurement.pncp_control_number = "PNCP-123"
-    analysis_id = uuid.uuid4()
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
+    mock_procurement.procurement_id = uuid.uuid4()
+
+    mock_procurement.object_description = "desc"
+    mock_procurement.modality = "mod"
+    mock_procurement.government_entity = MagicMock()
+    mock_procurement.government_entity.name = "entity"
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.unit_name = "unit"
+    mock_procurement.total_estimated_value = Decimal("1000")
+    mock_procurement.proposal_opening_date = datetime.now()
+    mock_procurement.proposal_closing_date = datetime.now()
+
+    analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock(document_hash="h", analysis_prompt="p")
+
+    # Mock file records that are NOT included
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [
         {"included_in_analysis": False}
     ]
 
+    # Mock AI provider response
+    mock_valid_analysis = MagicMock(spec=Analysis)
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+
+    # Mock pricing service
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal("0.1"),
+        Decimal("0.2"),
+        Decimal("0.3"),
+        Decimal("0.6"),
+    )
+
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert "No files were selected for analysis for PNCP-123. Aborting." in caplog.text
-    analysis_service.status_history_repo.create_record.assert_called_with(
-        analysis_id,
-        ProcurementAnalysisStatus.ANALYSIS_FAILED,
-        "No files were selected for analysis during pre-analysis.",
+    assert (
+        "No files were selected for analysis for PNCP-123. Proceeding with analysis without documents." in caplog.text
     )
 
 
-def test_analyze_procurement_happy_path(analysis_service: AnalysisService, mock_valid_analysis: Analysis) -> None:
+@patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
+def test_analyze_procurement_happy_path(
+    mock_build_prompt: MagicMock,
+    analysis_service: AnalysisService,
+    mock_valid_analysis: Analysis,
+    mock_procurement: MagicMock,
+) -> None:
     """Tests the full, successful execution of the analyze_procurement method."""
     analysis_id = uuid.uuid4()
     procurement_id = uuid.uuid4()
-    mock_procurement = MagicMock(spec=Procurement)
     mock_procurement.pncp_control_number = "PNCP123"
     mock_procurement.procurement_id = procurement_id
+    mock_build_prompt.return_value = "prompt"
 
     mock_analysis_record = MagicMock(
         spec=AnalysisResult,
@@ -488,9 +549,8 @@ def test_analyze_procurement_happy_path(analysis_service: AnalysisService, mock_
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = mock_file_records
     analysis_service.procurement_repo.get_procurement_uuid.return_value = procurement_id
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, 0, 0, 0)
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
     analysis_service.pricing_service.calculate_total_cost.return_value = (
-        Decimal(0),
         Decimal(0),
         Decimal(0),
         Decimal(0),
@@ -907,7 +967,6 @@ def test_retry_analyses_triggers_run(analysis_service: AnalysisService) -> None:
     analysis_service.analysis_repo.save_retry_analysis.return_value = uuid.uuid4()
     analysis_service.run_specific_analysis = MagicMock()
     analysis_service.pricing_service.calculate_total_cost.return_value = (
-        Decimal("0"),
         Decimal("0"),
         Decimal("0"),
         Decimal("0"),
@@ -1329,14 +1388,45 @@ def test_run_pre_analysis_no_procurements_found(
     assert "Pre-analysis job for the entire date range has been completed." in caplog.text
 
 
-def test_analyze_procurement_no_procurement_id(analysis_service: AnalysisService, mock_procurement: MagicMock) -> None:
+def test_analyze_procurement_no_procurement_id(
+    analysis_service: AnalysisService, mock_procurement: MagicMock, caplog: pytest.LogCaptureFixture
+) -> None:
     """Tests that an AnalysisError is raised if the procurement UUID is not found."""
+    mock_procurement.object_description = "desc"
+    mock_procurement.modality = "mod"
+    mock_procurement.government_entity = MagicMock()
+    mock_procurement.government_entity.name = "entity"
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.unit_name = "unit"
+    mock_procurement.total_estimated_value = Decimal("1000")
+    mock_procurement.proposal_opening_date = datetime.now()
+    mock_procurement.proposal_closing_date = datetime.now()
     analysis_service.procurement_repo.get_procurement_uuid.return_value = None
-    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock()
-    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [MagicMock()]
+    analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock(document_hash="h", analysis_prompt="p")
 
-    with pytest.raises(AnalysisError, match="Could not find procurement UUID"):
-        analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
+    # Mock file records
+    mock_file_record = MagicMock()
+    mock_file_record.get.return_value = {}  # Default get behavior
+    mock_file_record.__getitem__.side_effect = lambda k: [] if k == "prepared_content_gcs_uris" else None
+
+    analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [mock_file_record]
+
+    # Mock AI provider response
+    mock_valid_analysis = MagicMock(spec=Analysis)
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
+
+    # Mock pricing service
+    analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal("0.1"),
+        Decimal("0.2"),
+        Decimal("0.3"),
+        Decimal("0.6"),
+    )
+
+    analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
+
+    assert "Could not find procurement UUID" in caplog.text
+    assert "Proceeding with analysis without documents" in caplog.text
 
 
 def test_analyze_procurement_save_analysis_fails(
@@ -1348,19 +1438,27 @@ def test_analyze_procurement_save_analysis_fails(
     analysis_id = uuid.uuid4()
     mock_procurement = MagicMock(spec=Procurement)
     mock_procurement.pncp_control_number = "PNCP-FAIL"
+    mock_procurement.object_description = "desc"
+    mock_procurement.modality = "mod"
+    mock_procurement.government_entity = MagicMock()
+    mock_procurement.government_entity.name = "entity"
+    mock_procurement.entity_unit = MagicMock()
+    mock_procurement.entity_unit.unit_name = "unit"
+    mock_procurement.total_estimated_value = Decimal("1000")
+    mock_procurement.proposal_opening_date = datetime.now()
+    mock_procurement.proposal_closing_date = datetime.now()
     analysis_service.procurement_repo.get_procurement_uuid.return_value = uuid.uuid4()
     analysis_service.analysis_repo.get_analysis_by_id.return_value = MagicMock(document_hash="h", analysis_prompt="p")
     analysis_service.file_record_repo.get_all_file_records_by_analysis_id.return_value = [
         {"included_in_analysis": True, "prepared_content_gcs_uris": ["uri"]}
     ]
 
-    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1, 0, 0, 0)
+    analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 1, 1, 1, {})
     analysis_service.pricing_service.calculate_total_cost.return_value = (
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
         Decimal("0.6"),
-        Decimal("0"),
     )
     error_message = "Database save failed"
     analysis_service.analysis_repo.save_analysis.side_effect = Exception(error_message)

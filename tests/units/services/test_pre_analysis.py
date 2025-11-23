@@ -32,6 +32,7 @@ def mock_dependencies() -> dict:
         "budget_ledger_repo": MagicMock(spec=BudgetLedgerRepository),
         "ai_provider": MagicMock(spec=AiProvider),
         "gcs_provider": MagicMock(spec=GcsProvider),
+        "http_provider": MagicMock(),
         "pubsub_provider": MagicMock(spec=PubSubProvider),
     }
 

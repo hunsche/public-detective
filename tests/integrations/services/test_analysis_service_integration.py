@@ -43,6 +43,7 @@ def analysis_service(db_session: Any) -> AnalysisService:  # noqa: F841
     budget_ledger_repo = Mock()
     ai_provider = Mock()
     gcs_provider = Mock()
+    http_provider = Mock()
 
     return AnalysisService(
         procurement_repo=procurement_repo,
@@ -53,6 +54,7 @@ def analysis_service(db_session: Any) -> AnalysisService:  # noqa: F841
         budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        http_provider=http_provider,
     )
 
 
@@ -61,7 +63,8 @@ def integrated_analysis_service(
     db_session: Engine,
 ) -> AnalysisService:
     """Returns an AnalysisService instance with real repositories and mocked providers."""
-    procurement_repo = ProcurementsRepository(engine=db_session, pubsub_provider=Mock(), http_provider=Mock())
+    http_provider = Mock()
+    procurement_repo = ProcurementsRepository(engine=db_session, pubsub_provider=Mock(), http_provider=http_provider)
     analysis_repo = AnalysisRepository(engine=db_session)
     source_document_repo = SourceDocumentsRepository(engine=db_session)
     file_record_repo = FileRecordsRepository(engine=db_session)
@@ -80,6 +83,7 @@ def integrated_analysis_service(
         budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        http_provider=http_provider,
         pubsub_provider=pubsub_provider,
     )
 

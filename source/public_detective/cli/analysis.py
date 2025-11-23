@@ -103,6 +103,7 @@ def run(ctx: click.Context, analysis_id: UUID) -> None:
             budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
+            http_provider=http_provider,
             pubsub_provider=pubsub_provider,
             gcs_path_prefix=gcs_path_prefix,
         )
@@ -200,6 +201,7 @@ def prepare(
         budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        http_provider=http_provider,
         pubsub_provider=pubsub_provider,
         gcs_path_prefix=gcs_path_prefix,
     )
@@ -350,6 +352,7 @@ def retry(ctx: click.Context, initial_backoff_hours: int, max_retries: int, time
             budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
+            http_provider=http_provider,
             pubsub_provider=pubsub_provider,
             gcs_path_prefix=gcs_path_prefix,
         )
@@ -446,6 +449,7 @@ def rank(
             budget_ledger_repo=budget_ledger_repo,
             ai_provider=ai_provider,
             gcs_provider=gcs_provider,
+            http_provider=http_provider,
             pubsub_provider=pubsub_provider,
             gcs_path_prefix=gcs_path_prefix,
         )

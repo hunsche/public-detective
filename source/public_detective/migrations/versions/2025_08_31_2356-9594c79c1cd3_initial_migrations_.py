@@ -124,7 +124,7 @@ def upgrade() -> None:
             cost_output_tokens DECIMAL(32, 18),
             cost_thinking_tokens DECIMAL(32, 18),
             total_cost DECIMAL(32, 18),
-            fallback_analysis_cost DECIMAL(32, 18) DEFAULT 0,
+            grounding_metadata JSONB,
             analysis_prompt TEXT,
             FOREIGN KEY (procurement_control_number, version_number)
                 REFERENCES {procurements_table}(pncp_control_number, version_number)

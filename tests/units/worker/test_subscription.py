@@ -226,3 +226,96 @@ def test_message_callback_no_max_messages(subscription: Subscription, mock_messa
 
     assert not subscription._stop_event.is_set()
     subscription.streaming_pull_future.cancel.assert_not_called()
+
+
+@patch("public_detective.worker.subscription.AiProvider")
+@patch("public_detective.worker.subscription.DatabaseManager")
+@patch("public_detective.worker.subscription.GcsProvider")
+@patch("public_detective.worker.subscription.HttpProvider")
+@patch("public_detective.worker.subscription.AnalysisRepository")
+@patch("public_detective.worker.subscription.SourceDocumentsRepository")
+@patch("public_detective.worker.subscription.FileRecordsRepository")
+@patch("public_detective.worker.subscription.ProcurementsRepository")
+@patch("public_detective.worker.subscription.StatusHistoryRepository")
+@patch("public_detective.worker.subscription.BudgetLedgerRepository")
+@patch("public_detective.worker.subscription.AnalysisService")
+def test_subscription_init_with_low_thinking_level(
+    mock_analysis_service: MagicMock,
+    mock_budget_ledger_repo: MagicMock,
+    mock_status_history_repo: MagicMock,
+    _mock_procurements_repo: MagicMock,
+    _mock_file_records_repo: MagicMock,
+    _mock_source_documents_repo: MagicMock,
+    mock_analysis_repo: MagicMock,
+    mock_http_provider: MagicMock,
+    mock_gcs_provider: MagicMock,
+    mock_db_manager: MagicMock,
+    mock_ai_provider: MagicMock,
+) -> None:
+    """Tests that Subscription correctly initializes with LOW thinking level."""
+    from google.genai import types
+
+    _ = Subscription(thinking_level="LOW")
+
+    # Verify AiProvider was called with LOW thinking level
+    mock_ai_provider.assert_called_once()
+    call_kwargs = mock_ai_provider.call_args[1]
+    assert call_kwargs["thinking_level"] == types.ThinkingLevel.LOW
+
+
+def test_process_message_with_processing_complete_event(mock_analysis_service: MagicMock) -> None:
+    """Tests that processing_complete_event is set after message processing."""
+    import threading
+
+    complete_event = threading.Event()
+    sub = Subscription(analysis_service=mock_analysis_service, processing_complete_event=complete_event)
+    sub.pubsub_provider = MagicMock()
+
+    mock_message = MagicMock()
+    mock_message.data = json.dumps({"analysis_id": "123"}).encode("utf-8")
+    mock_message.message_id = "test-message-id"
+
+    sub._process_message(mock_message)
+
+    assert complete_event.is_set()
+
+
+def test_message_callback_with_cancellation_on_max_messages(subscription: Subscription) -> None:
+    """Tests that streaming_pull_future is cancelled when max_messages is reached."""
+    subscription.processed_messages_count = 0
+    subscription.streaming_pull_future = MagicMock()
+    subscription._process_message = MagicMock()
+
+    mock_message = MagicMock()
+
+    subscription._message_callback(mock_message, max_messages=1, max_output_tokens=100)
+
+    assert subscription.processed_messages_count == 1
+    assert subscription._stop_event.is_set()
+    subscription.streaming_pull_future.cancel.assert_called_once()
+    subscription._process_message.assert_called_once_with(mock_message, 100)
+
+
+def test_run_worker_handles_cancelled_exception(subscription: Subscription, caplog: Any) -> None:
+    """Tests that a cancelled exception is not logged as critical."""
+    future = MagicMock()
+    future.result.side_effect = Exception("operation was cancelled")
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    subscription.run()
+
+    assert "A critical error stopped the worker" not in caplog.text
+
+
+def test_run_worker_cleanup_on_exception_during_result_wait(subscription: Subscription) -> None:
+    """Tests that worker cleans up even when result() throws during cleanup."""
+    future = MagicMock()
+    future.result.side_effect = [TimeoutError("Test timeout"), Exception("Cleanup failed")]
+    future.cancelled.return_value = False
+    subscription.pubsub_provider.subscribe.return_value = future
+
+    subscription.run()
+
+    assert future.cancel.call_count == 1
+    assert future.result.call_count == 2

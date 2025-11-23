@@ -58,7 +58,6 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
             Decimal("0"),
             Decimal("0"),
             Decimal("0.01"),
-            Decimal("0"),  # Add fallback_cost
         )
 
         result = ranking_service.calculate_priority(procurement, candidates, analysis_id)

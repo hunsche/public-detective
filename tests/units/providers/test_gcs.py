@@ -116,3 +116,67 @@ def test_get_client_real_credentials(mock_config_provider: MagicMock) -> None:
         client = provider.get_client()
         mock_gcs_client.assert_called_once_with(project=mock_config.GCP_PROJECT)
         assert client is not None
+
+
+@patch("public_detective.providers.gcs.ConfigProvider")
+@patch("public_detective.providers.gcs.Client")
+@patch("public_detective.providers.gcs.AnonymousCredentials")
+def test_get_client_with_custom_host(
+    mock_anon_creds: MagicMock, mock_storage_client: MagicMock, mock_config_provider: MagicMock
+) -> None:
+    """Tests that a GCS client is created with custom host when configured."""
+    mock_config = MagicMock()
+    mock_config.GCP_GCS_HOST = "http://localhost:4443"
+    mock_config.GCP_PROJECT = "test-project"
+    mock_config_provider.get_config.return_value = mock_config
+
+    GcsProvider._client = None
+
+    provider = GcsProvider()
+    client = provider.get_client()
+
+    mock_storage_client.assert_called_once_with(
+        credentials=mock_anon_creds.return_value,
+        project="test-project",
+        client_options={"api_endpoint": "http://localhost:4443"},
+    )
+    assert client is not None
+
+
+def test_upload_file_with_metadata() -> None:
+    """Tests uploading a file with custom metadata."""
+    gcs_provider = GcsProvider()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob = MagicMock()
+
+    gcs_provider._client = mock_client
+    mock_client.bucket.return_value = mock_bucket
+    mock_bucket.blob.return_value = mock_blob
+
+    metadata = {"source": "test", "version": "1.0"}
+
+    gcs_provider.upload_file("test-bucket", "file.pdf", b"content", "application/pdf", metadata=metadata)
+
+    assert mock_blob.metadata == metadata
+    mock_blob.upload_from_string.assert_called_once_with(b"content", content_type="application/pdf")
+
+
+def test_list_blobs() -> None:
+    """Tests listing blobs with a prefix."""
+    gcs_provider = GcsProvider()
+    mock_client = MagicMock()
+    mock_bucket = MagicMock()
+    mock_blob1 = MagicMock()
+    mock_blob2 = MagicMock()
+    mock_bucket.list_blobs.return_value = [mock_blob1, mock_blob2]
+
+    gcs_provider._client = mock_client
+    mock_client.bucket.return_value = mock_bucket
+
+    blobs = gcs_provider.list_blobs("test-bucket", prefix="documents/")
+
+    mock_client.bucket.assert_called_once_with("test-bucket")
+    mock_bucket.list_blobs.assert_called_once_with(prefix="documents/")
+    assert len(blobs) == 2
+    assert blobs == [mock_blob1, mock_blob2]

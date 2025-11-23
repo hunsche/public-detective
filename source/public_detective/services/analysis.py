@@ -13,7 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from public_detective.exceptions.analysis import AnalysisError
-from public_detective.models.analyses import AnalysisResult
+from public_detective.models.analyses import AnalysisResult, GroundingMetadata, GroundingSource
 from public_detective.models.candidates import AIFileCandidate
 from public_detective.models.file_records import ExclusionReason, NewFileRecord, PrioritizationLogic
 from public_detective.models.procurement_analysis_status import ProcurementAnalysisStatus
@@ -23,6 +23,7 @@ from public_detective.providers.ai import AiProvider
 from public_detective.providers.config import Config, ConfigProvider
 from public_detective.providers.file_type import SPECIALIZED_IMAGE, FileTypeProvider
 from public_detective.providers.gcs import GcsProvider
+from public_detective.providers.http import HttpProvider
 from public_detective.providers.image_converter import ImageConverterProvider
 from public_detective.providers.logging import Logger, LoggingProvider
 from public_detective.providers.pubsub import PubSubProvider
@@ -48,6 +49,7 @@ class AnalysisService:
     budget_ledger_repo: BudgetLedgerRepository
     ai_provider: AiProvider
     gcs_provider: GcsProvider
+    http_provider: HttpProvider
     converter_service: ConverterService
     pubsub_provider: PubSubProvider | None
     logger: Logger
@@ -118,6 +120,7 @@ class AnalysisService:
         budget_ledger_repo: BudgetLedgerRepository,
         ai_provider: AiProvider,
         gcs_provider: GcsProvider,
+        http_provider: HttpProvider,
         pubsub_provider: PubSubProvider | None = None,
         gcs_path_prefix: str | None = None,
     ) -> None:
@@ -132,6 +135,7 @@ class AnalysisService:
             budget_ledger_repo: The repository for budget ledger data.
             ai_provider: The provider for AI services.
             gcs_provider: The provider for Google Cloud Storage services.
+            http_provider: The provider for HTTP requests.
             pubsub_provider: The provider for Pub/Sub services.
             gcs_path_prefix: Overwrites the base GCS path for uploads.
         """
@@ -143,6 +147,7 @@ class AnalysisService:
         self.budget_ledger_repo = budget_ledger_repo
         self.ai_provider = ai_provider
         self.gcs_provider = gcs_provider
+        self.http_provider = http_provider
         self.converter_service = ConverterService()
         self.file_type_provider = FileTypeProvider()
         self.image_converter_provider = ImageConverterProvider()
@@ -205,6 +210,10 @@ class AnalysisService:
                 self.logger.error(f"Analysis with ID {analysis_id} not found.")
                 return
 
+            analysis_record = self.analysis_repo.get_analysis_by_id(analysis_id)
+            if not analysis_record:
+                raise AnalysisError(f"Analysis record {analysis_id} not found.")
+
             procurement = self.procurement_repo.get_procurement_by_id_and_version(
                 analysis.procurement_control_number, analysis.version_number
             )
@@ -226,6 +235,68 @@ class AnalysisService:
         except Exception as e:
             raise AnalysisError(f"Failed to process analysis from message: {e}") from e
 
+    def _resolve_redirects(self, url: str) -> str:
+        """Resolves redirects for a given URL to find the final destination.
+
+        Uses a simple heuristic to avoid unnecessary requests by only resolving
+        URLs that appear to be tracking or redirect URLs. First attempts an
+        efficient HEAD request, then falls back to GET if HEAD fails (some
+        servers block HEAD requests).
+
+        Args:
+            url: The URL to resolve.
+
+        Returns:
+            The final URL after following redirects, or the original URL if
+            resolution fails.
+        """
+        if "vertexaisearch" not in url and "google.com/url" not in url:
+            return url
+
+        try:
+            self.logger.info(f"Resolving redirect for URL: {url}")
+            response = self.http_provider.head(url, allow_redirects=True)
+            if response.status_code < 400:
+                self.logger.info(f"Resolved to: {response.url}")
+                return str(response.url)
+
+            response = self.http_provider.get(url, allow_redirects=True, stream=True)
+            self.logger.info(f"Resolved (fallback GET) to: {response.url}")
+            return str(response.url)
+        except Exception as e:
+            self.logger.warning(f"Failed to resolve URL {url}: {e}")
+            return url
+
+    def _process_grounding_metadata(self, raw_metadata: dict) -> GroundingMetadata:
+        """Processes raw grounding metadata, resolving redirects in sources.
+
+        Args:
+            raw_metadata: Dict with 'search_queries' and 'sources' (list of dicts).
+
+        Returns:
+            GroundingMetadata object with resolved URLs.
+        """
+        raw_sources = raw_metadata.get("sources", [])
+        processed_sources = []
+        for source in raw_sources:
+            original_url = source.get("original_url")
+            if not original_url:
+                continue
+
+            resolved_url = self._resolve_redirects(original_url)
+            processed_sources.append(
+                GroundingSource(
+                    original_url=original_url,
+                    resolved_url=resolved_url if resolved_url != original_url else None,
+                    title=source.get("title"),
+                )
+            )
+
+        return GroundingMetadata(
+            search_queries=raw_metadata.get("search_queries", []),
+            sources=processed_sources,
+        )
+
     def analyze_procurement(
         self,
         procurement: Procurement,
@@ -233,51 +304,39 @@ class AnalysisService:
         analysis_id: UUID,
         max_output_tokens: int | None = None,
     ) -> None:
-        """Executes the full analysis pipeline for a single procurement.
-
-        This method orchestrates the main analysis phase. It retrieves the
-        necessary data, calls the AI provider to perform the analysis, calculates
-        the final costs based on token usage (including potential fallbacks), and
-        saves the complete analysis result to the database.
+        """Orchestrates the analysis of a procurement.
 
         Args:
-            procurement: The procurement record to analyze.
-            version_number: The version number associated with the procurement.
-            analysis_id: The persistent identifier of the analysis execution.
-            max_output_tokens: The optional maximum number of output tokens for the AI model.
+            procurement: The procurement object to analyze.
+            version_number: The version number of the procurement data.
+            analysis_id: The unique identifier for this analysis.
+            max_output_tokens: Optional token limit for the AI response.
+
+        Raises:
+            AnalysisError: If any step of the analysis pipeline fails.
         """
-        procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, version_number)
-        if not procurement_id:
-            raise AnalysisError(
-                f"Could not find procurement UUID for {procurement.pncp_control_number} v{version_number}"
-            )
+        control_number = procurement.pncp_control_number
+        self.logger.info(f"Starting analysis for procurement {control_number} (v{version_number})...")
 
-        correlation_id = f"{procurement_id}:{analysis_id}:{uuid.uuid4().hex[:8]}"
-        with LoggingProvider().set_correlation_id(correlation_id):
-            control_number = procurement.pncp_control_number
-            self.logger.info(f"Starting analysis for procurement {control_number} version {version_number}...")
-
-            analysis_record = self.analysis_repo.get_analysis_by_id(analysis_id)
-            if not analysis_record:
-                raise AnalysisError(f"Analysis record {analysis_id} not found.")
-
+        try:
+            procurement_id = self.procurement_repo.get_procurement_uuid(procurement.pncp_control_number, version_number)
+            if not procurement_id:
+                self.logger.warning(
+                    f"Could not find procurement UUID for {control_number} "
+                    f"v{version_number}. Proceeding with analysis without documents."
+                )
             file_records = self.file_record_repo.get_all_file_records_by_analysis_id(str(analysis_id))
             if not file_records:
-                self.logger.warning(f"No file records found for analysis {analysis_id}. Aborting.")
-                self._update_status_with_history(
-                    analysis_id, ProcurementAnalysisStatus.ANALYSIS_FAILED, "No file records found for analysis."
+                self.logger.warning(
+                    f"No file records found for analysis {analysis_id}. Proceeding with analysis without documents."
                 )
-                return
 
             included_records = [rec for rec in file_records if rec.get("included_in_analysis")]
             if not included_records:
-                self.logger.error(f"No files were selected for analysis for {control_number}. Aborting.")
-                self._update_status_with_history(
-                    analysis_id,
-                    ProcurementAnalysisStatus.ANALYSIS_FAILED,
-                    "No files were selected for analysis during pre-analysis.",
+                self.logger.warning(
+                    f"No files were selected for analysis for {control_number}. "
+                    f"Proceeding with analysis without documents."
                 )
-                return
 
             files_for_ai_uris = [
                 uri
@@ -285,89 +344,98 @@ class AnalysisService:
                 if rec.get("prepared_content_gcs_uris")
                 for uri in rec["prepared_content_gcs_uris"]
             ]
-            if not files_for_ai_uris:
-                files_for_ai_uris = [
-                    f"gs://{self.config.GCP_GCS_BUCKET_PROCUREMENTS}/{rec['gcs_path']}" for rec in included_records
-                ]
+            if not files_for_ai_uris and included_records:
+                self.logger.warning(
+                    f"No prepared content URIs found for {control_number} " f"despite having included records."
+                )
 
-            document_hash = analysis_record.document_hash
+            candidates = []
+            for rec in included_records:
+                cand = AIFileCandidate(
+                    synthetic_id=str(rec.get("source_document_id", "")),
+                    raw_document_metadata=rec.get("raw_document_metadata") or {},
+                    original_path=rec.get("original_filename", ""),
+                    original_content=b"",
+                    extraction_failed=False,
+                )
+                cand.ai_path = rec.get("ai_path") or rec.get("original_filename", "unknown_file")
+                cand.prepared_content_gcs_uris = rec.get("prepared_content_gcs_uris")
+                candidates.append(cand)
+
+            prompt = self._build_analysis_prompt(procurement, candidates)
+
+            (
+                ai_analysis,
+                input_tokens,
+                output_tokens,
+                thinking_tokens,
+                raw_grounding_metadata,
+            ) = self.ai_provider.get_structured_analysis(
+                prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
+            )
+
+            grounding_metadata = self._process_grounding_metadata(raw_grounding_metadata)
+
+            gcs_base_path = f"{procurement_id}/{analysis_id}"
+
+            analysis_record = self.analysis_repo.get_analysis_by_id(analysis_id)
+            document_hash = analysis_record.document_hash if analysis_record else None
+
+            final_result = AnalysisResult(
+                procurement_control_number=control_number,
+                version_number=version_number,
+                ai_analysis=ai_analysis,
+                document_hash=document_hash,
+                original_documents_gcs_path=gcs_base_path,
+                processed_documents_gcs_path=None,
+                analysis_prompt=prompt,
+                grounding_metadata=grounding_metadata,
+            )
+
             exts = [rec.get("extension") for rec in included_records]
             modality = self._get_modality_from_exts(exts)
-            prompt = analysis_record.analysis_prompt
 
-            try:
-                (
-                    ai_analysis,
-                    input_tokens,
-                    output_tokens,
-                    thinking_tokens,
-                    fallback_input_tokens,
-                    fallback_output_tokens,
-                    fallback_thinking_tokens,
-                ) = self.ai_provider.get_structured_analysis(
-                    prompt=prompt, file_uris=files_for_ai_uris, max_output_tokens=max_output_tokens
-                )
+            (
+                input_cost,
+                output_cost,
+                thinking_cost,
+                total_cost,
+            ) = self.pricing_service.calculate_total_cost(
+                input_tokens,
+                output_tokens,
+                thinking_tokens,
+                modality=modality,
+            )
+            self.analysis_repo.save_analysis(
+                analysis_id=analysis_id,
+                result=final_result,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                thinking_tokens=thinking_tokens,
+                input_cost=input_cost,
+                output_cost=output_cost,
+                thinking_cost=thinking_cost,
+                total_cost=total_cost,
+            )
 
-                procurement_id = self.procurement_repo.get_procurement_uuid(
-                    procurement.pncp_control_number, version_number
-                )
-                gcs_base_path = f"{procurement_id}/{analysis_id}"
+            self.budget_ledger_repo.save_expense(
+                analysis_id,
+                total_cost,
+                f"Análise da licitação {procurement.pncp_control_number} (v{version_number}).",
+            )
 
-                final_result = AnalysisResult(
-                    procurement_control_number=control_number,
-                    version_number=version_number,
-                    ai_analysis=ai_analysis,
-                    document_hash=document_hash,
-                    original_documents_gcs_path=gcs_base_path,
-                    processed_documents_gcs_path=None,
-                    analysis_prompt=prompt,
-                )
-                (
-                    input_cost,
-                    output_cost,
-                    thinking_cost,
-                    total_cost,
-                    fallback_cost,
-                ) = self.pricing_service.calculate_total_cost(
-                    input_tokens,
-                    output_tokens,
-                    thinking_tokens,
-                    modality=modality,
-                    fallback_input_tokens=fallback_input_tokens,
-                    fallback_output_tokens=fallback_output_tokens,
-                    fallback_thinking_tokens=fallback_thinking_tokens,
-                )
-                self.analysis_repo.save_analysis(
-                    analysis_id=analysis_id,
-                    result=final_result,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    thinking_tokens=thinking_tokens,
-                    input_cost=input_cost,
-                    output_cost=output_cost,
-                    thinking_cost=thinking_cost,
-                    total_cost=total_cost,
-                    fallback_analysis_cost=fallback_cost,
-                )
+            self.logger.info(f"Successfully completed analysis for {control_number}.")
 
-                self.budget_ledger_repo.save_expense(
-                    analysis_id,
-                    total_cost,
-                    f"Análise da licitação {procurement.pncp_control_number} (v{version_number}).",
-                )
-
-                self.logger.info(f"Successfully completed analysis for {control_number}.")
-
-            except ValueError as e:
-                self.logger.error(
-                    f"Analysis pipeline failed for {control_number} due to AI model error: {e}", exc_info=True
-                )
-                raise AnalysisError(f"AI Model Error: {e}") from e
-            except Exception as e:
-                self.logger.error(
-                    f"Analysis pipeline failed for {control_number} due to unexpected error: {e}", exc_info=True
-                )
-                raise AnalysisError(f"Unexpected Error: {e}") from e
+        except ValueError as e:
+            self.logger.error(
+                f"Analysis pipeline failed for {control_number} due to AI model error: {e}", exc_info=True
+            )
+            raise AnalysisError(f"AI Model Error: {e}") from e
+        except Exception as e:
+            self.logger.error(
+                f"Analysis pipeline failed for {control_number} due to unexpected error: {e}", exc_info=True
+            )
+            raise AnalysisError(f"Unexpected Error: {e}") from e
 
     def _prepare_ai_candidates(self, all_files: list[ProcessedFile]) -> list[AIFileCandidate]:
         """Prepares a list of AIFileCandidate objects from raw file data.
@@ -792,7 +860,13 @@ class AnalysisService:
             )
             document_context_parts.append(context_part)
 
-        document_context_section = "\n\n---\n\n".join(document_context_parts)
+        if not candidates:
+            document_context_section = (
+                "ATENÇÃO: NENHUM DOCUMENTO FOI ENCONTRADO PARA ESTA LICITAÇÃO. "
+                "A ANÁLISE DEVE SER FEITA APENAS COM BASE NO SUMÁRIO ACIMA."
+            )
+        else:
+            document_context_section = "\n\n---\n\n".join(document_context_parts)
 
         return f"""
         Você é um Auditor de Controle Externo do Tribunal de Contas da União (TCU), especializado em análise forense de licitações públicas no Brasil, atuando sob a égide da Lei 14.133/2021 e da jurisprudência consolidada.
@@ -848,7 +922,7 @@ class AnalysisService:
         ---
 
         **III. REGRAS DE PREENCHIMENTO DA LISTA `sources` (CRÍTICO):**
-            1. **Deep Links OBRIGATÓRIOS (ANTI-ALUCINAÇÃO):** O campo `url` deve conter EXATAMENTE o link retornado pela ferramenta de busca (mesmo que seja longo ou pareça um redirecionamento do Google/Vertex). **É PROIBIDO TENTAR "ADIVINHAR" OU "RECONSTRUIR" A URL.** Se a ferramenta retornar `vertexaisearch...`, USE ESSE LINK. Se retornar a URL final, USE A URL FINAL. **JAMAIS** invente um caminho (ex: `/produto/detalhe`) que você não viu explicitamente. Links quebrados (404) invalidam a auditoria.
+            1. **Identificação da Fonte (ANTI-ALUCINAÇÃO):** Priorize o preenchimento do campo `name` com o nome da loja ou entidade (ex: "Kalunga", "Mercado Livre", "Painel de Preços"). As URLs de busca (Grounding) serão capturadas automaticamente pelo sistema e vinculadas à análise, portanto, concentre-se em identificar corretamente a origem do preço.
             2. **Quantidade de Fontes:**
                 *   Se encontrar apenas **1 fonte válida** (e não for oficial), o `severity` DEVE ser rebaixado para **MODERADA** ou **LEVE**, pois a prova é frágil.
                 *   Para sustentar `severity` **GRAVE** ou **CRÍTICO** em sobrepreço, é OBRIGATÓRIO citar **3 fontes** ou 1 fonte oficial.
@@ -873,7 +947,6 @@ class AnalysisService:
         - `sources` (Obrigatório para SOBREPRECO/SUPERFATURAMENTO):
             - `name`: nome ou título da fonte.
             - `type`: Classificação da fonte conforme hierarquia: "OFICIAL" (Tipo A), "TABELA" (Tipo B), "B2B" (Tipo C) ou "VAREJO" (Tipo D).
-            - `url`: O Link COMPLETO e EXTENSO que leva diretamente ao produto. NÃO encurte. Copie e cole a URL exata do navegador.
             - `reference_price`: preço de referência por unidade (quando disponível).
             - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
             - `reference_date`: data em que o preço foi válido ou coletado.
@@ -1172,15 +1245,11 @@ class AnalysisService:
                 output_cost,
                 thinking_cost,
                 total_cost,
-                fallback_cost,
             ) = self.pricing_service.calculate_total_cost(
                 input_tokens,
                 output_tokens,
                 thinking_tokens,
                 modality=modality,
-                fallback_input_tokens=0,
-                fallback_output_tokens=0,
-                fallback_thinking_tokens=0,
             )
 
             self.analysis_repo.update_pre_analysis_with_tokens(
@@ -1192,7 +1261,6 @@ class AnalysisService:
                 output_cost=output_cost,
                 thinking_cost=thinking_cost,
                 total_cost=total_cost,
-                fallback_analysis_cost=fallback_cost,
                 analysis_prompt=prompt,
             )
 
@@ -1386,15 +1454,11 @@ class AnalysisService:
                         output_cost,
                         thinking_cost,
                         total_cost,
-                        fallback_cost,
                     ) = self.pricing_service.calculate_total_cost(
                         analysis.input_tokens_used,
                         analysis.output_tokens_used,
                         analysis.thinking_tokens_used,
                         modality=modality,
-                        fallback_input_tokens=0,
-                        fallback_output_tokens=0,
-                        fallback_thinking_tokens=0,
                     )
                     new_analysis_id = self.analysis_repo.save_retry_analysis(
                         procurement_control_number=analysis.procurement_control_number,
@@ -1407,7 +1471,6 @@ class AnalysisService:
                         output_cost=output_cost,
                         thinking_cost=thinking_cost,
                         total_cost=total_cost,
-                        fallback_analysis_cost=fallback_cost,
                         retry_count=analysis.retry_count + 1,
                         analysis_prompt=analysis.analysis_prompt,
                     )
@@ -1491,15 +1554,11 @@ class AnalysisService:
             output_cost,
             thinking_cost,
             total_cost,
-            fallback_cost,
         ) = self.pricing_service.calculate_total_cost(
             input_tokens,
             output_tokens,
             thinking_tokens,
             modality=modality,
-            fallback_input_tokens=0,
-            fallback_output_tokens=0,
-            fallback_thinking_tokens=0,
         )
 
         self.analysis_repo.update_pre_analysis_with_tokens(
@@ -1511,7 +1570,6 @@ class AnalysisService:
             output_cost=output_cost,
             thinking_cost=thinking_cost,
             total_cost=total_cost,
-            fallback_analysis_cost=fallback_cost,
             analysis_prompt=prompt,
         )
 

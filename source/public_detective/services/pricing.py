@@ -102,10 +102,7 @@ class PricingService:
         output_tokens: int,
         thinking_tokens: int,
         modality: Modality,
-        fallback_input_tokens: int,
-        fallback_output_tokens: int,
-        fallback_thinking_tokens: int,
-    ) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal]:
+    ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
         """Calculates the cost of an analysis based on token counts and pricing.
 
         Args:
@@ -113,13 +110,10 @@ class PricingService:
             output_tokens: The number of output tokens used.
             thinking_tokens: The number of thinking tokens used.
             modality: The modality of the analysis.
-            fallback_input_tokens: The number of input tokens used in a fallback.
-            fallback_output_tokens: The number of output tokens used in a fallback.
-            fallback_thinking_tokens: The number of thinking tokens used in a fallback.
 
         Returns:
             A tuple containing the input cost, output cost, thinking cost,
-            total cost, and fallback cost.
+            and total cost.
         """
         is_long_context = input_tokens > 200_000
 
@@ -134,9 +128,4 @@ class PricingService:
 
         total_cost = input_cost + output_cost + thinking_cost
 
-        fallback_input_cost = self._calculate_cost(fallback_input_tokens, input_cost_per_million)
-        fallback_output_cost = self._calculate_cost(fallback_output_tokens, output_cost_per_million)
-        fallback_thinking_cost = self._calculate_cost(fallback_thinking_tokens, thinking_cost_per_million)
-        fallback_cost = fallback_input_cost + fallback_output_cost + fallback_thinking_cost
-
-        return input_cost, output_cost, thinking_cost, total_cost, fallback_cost
+        return input_cost, output_cost, thinking_cost, total_cost

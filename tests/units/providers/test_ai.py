@@ -101,9 +101,7 @@ def test_get_structured_analysis(
         input_tokens,
         output_tokens,
         thinking_tokens,
-        fallback_input_tokens,
-        fallback_output_tokens,
-        fallback_thinking_tokens,
+        grounding_metadata,
     ) = ai_provider.get_structured_analysis(prompt="test prompt", file_uris=["gs://test-bucket/file1.pdf"])
 
     assert isinstance(result, MockOutputSchema)
@@ -111,9 +109,6 @@ def test_get_structured_analysis(
     assert input_tokens == 10
     assert output_tokens == 20
     assert thinking_tokens == 5
-    assert fallback_input_tokens == 0
-    assert fallback_output_tokens == 0
-    assert fallback_thinking_tokens == 0
     mock_models_api.generate_content.assert_called_once()
 
 
@@ -282,3 +277,240 @@ def test_get_structured_analysis_raises_when_retry_not_allowed(
 
     with pytest.raises(ValueError, match="could not be parsed"):
         ai_provider.get_structured_analysis(prompt="prompt", file_uris=[])
+
+
+def test_get_structured_analysis_with_grounding_metadata(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test get_structured_analysis with complete grounding metadata."""
+    mock_models_api, _, _, _ = mock_ai_provider
+
+    # Create response with grounding metadata
+    mock_response = create_mock_response(
+        text='{"risk_score": 7, "summary": "Test"}',
+        prompt_token_count=15,
+        candidates_token_count=25,
+        thoughts_token_count=3,
+    )
+
+    # Add grounding metadata to the first candidate
+    mock_candidate = mock_response.candidates[0]
+    mock_metadata = MagicMock()
+
+    # Add web search queries
+    mock_metadata.web_search_queries = ["query1", "query2"]
+
+    # Add grounding chunks with web sources
+    mock_chunk1 = MagicMock()
+    mock_web1 = MagicMock()
+    mock_web1.uri = "https://example.com/source1"
+    mock_web1.title = "Source 1"
+    mock_chunk1.web = mock_web1
+
+    mock_chunk2 = MagicMock()
+    mock_web2 = MagicMock()
+    mock_web2.uri = "https://example.com/source2"
+    mock_web2.title = None  # Test with no title
+    mock_chunk2.web = mock_web2
+
+    mock_metadata.grounding_chunks = [mock_chunk1, mock_chunk2]
+    mock_candidate.grounding_metadata = mock_metadata
+
+    mock_models_api.generate_content.return_value = mock_response
+
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+    result, input_tokens, output_tokens, thinking_tokens, grounding_metadata = ai_provider.get_structured_analysis(
+        prompt="test", file_uris=[]
+    )
+
+    assert input_tokens == 15
+    assert output_tokens == 25
+    assert thinking_tokens == 3
+    assert "query1" in grounding_metadata["search_queries"]
+    assert "query2" in grounding_metadata["search_queries"]
+    assert len(grounding_metadata["sources"]) == 2
+    assert any(s["original_url"] == "https://example.com/source1" for s in grounding_metadata["sources"])
+
+
+def test_get_structured_analysis_candidate_without_grounding_metadata(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test when candidate has no grounding_metadata attribute."""
+    mock_models_api, _, _, _ = mock_ai_provider
+
+    mock_response = create_mock_response(
+        text='{"risk_score": 5, "summary": "Test"}',
+        prompt_token_count=10,
+        candidates_token_count=20,
+    )
+
+    # Remove grounding_metadata attribute
+    mock_candidate = mock_response.candidates[0]
+    delattr(mock_candidate, "grounding_metadata")
+
+    mock_models_api.generate_content.return_value = mock_response
+
+    ai_provider = AiProvider(output_schema=MockOutputSchema)
+    _, _, _, _, grounding_metadata = ai_provider.get_structured_analysis(prompt="test", file_uris=[])
+
+    assert grounding_metadata["search_queries"] == []
+    assert grounding_metadata["sources"] == []
+
+
+def test_count_tokens_with_unknown_mime_type(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test count_tokens when mime type cannot be guessed."""
+    mock_models_api, _, _, _ = mock_ai_provider
+
+    mock_models_api.count_tokens.return_value = types.CountTokensResponse(total_tokens=50)
+
+    ai_provider = AiProvider(MockOutputSchema)
+
+    # Use a file without a recognized extension
+    file_uris = ["gs://bucket/file.unknown"]
+
+    input_tokens, _, _ = ai_provider.count_tokens_for_analysis("test prompt", file_uris)
+
+    assert input_tokens == 50
+    # Verify that application/octet-stream was used as fallback
+    _, kwargs = mock_models_api.count_tokens.call_args
+    request_contents = kwargs["contents"]
+    assert request_contents.parts[1].file_data.mime_type == "application/octet-stream"
+
+
+def test_parse_response_with_plain_markdown_fence(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test parsing response with plain markdown fence (``` without json)."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = create_mock_response(
+        text="""```
+{"risk_score": 6, "summary": "Test"}
+```""",
+        prompt_token_count=0,
+        candidates_token_count=0,
+    )
+
+    result = ai_provider._parse_and_validate_response(mock_response)
+
+    assert isinstance(result, MockOutputSchema)
+    assert result.risk_score == 6
+
+
+def test_generate_content_with_tools_enabled(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _generate_content_response with tools enabled."""
+    mock_models_api, _, _, _ = mock_ai_provider
+
+    ai_provider = AiProvider(output_schema=MockOutputSchema, no_ai_tools=False)
+
+    request_contents = types.Content(role="user", parts=[types.Part(text="test")])
+    ai_provider._generate_content_response(request_contents, max_output_tokens=100, enable_tools=True)
+
+    _, kwargs = mock_models_api.generate_content.call_args
+    config = kwargs["config"]
+
+    # Verify tools were added
+    assert len(config.tools) == 1
+    assert config.tool_config is not None
+    assert config.max_output_tokens == 100
+
+
+def test_should_retry_without_tools_when_tool_call_detected(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _should_retry_without_tools returns True when tool call is detected."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_content = MagicMock()
+    mock_part = MagicMock()
+
+    # Simulate a tool call in the text
+    mock_part.text = "call:google_search.search({query: 'test'})"
+    mock_content.parts = [mock_part]
+    mock_candidate.content = mock_content
+    mock_response.candidates = [mock_candidate]
+
+    result = ai_provider._should_retry_without_tools(mock_response)
+
+    assert result is True
+
+
+def test_should_retry_without_tools_no_candidates(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _should_retry_without_tools returns False when no candidates."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = MagicMock()
+    mock_response.candidates = []
+
+    result = ai_provider._should_retry_without_tools(mock_response)
+
+    assert result is False
+
+
+def test_should_retry_without_tools_no_content(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _should_retry_without_tools returns False when candidate has no content."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_candidate.content = None
+    mock_response.candidates = [mock_candidate]
+
+    result = ai_provider._should_retry_without_tools(mock_response)
+
+    assert result is False
+
+
+def test_should_retry_without_tools_no_parts(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _should_retry_without_tools returns False when content has no parts."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_content = MagicMock()
+    mock_content.parts = None
+    mock_candidate.content = mock_content
+    mock_response.candidates = [mock_candidate]
+
+    result = ai_provider._should_retry_without_tools(mock_response)
+
+    assert result is False
+
+
+def test_should_retry_without_tools_no_tool_call(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test _should_retry_without_tools returns False when no tool call detected."""
+    _, _, _, _ = mock_ai_provider
+    ai_provider = AiProvider(MockOutputSchema)
+
+    mock_response = MagicMock()
+    mock_candidate = MagicMock()
+    mock_content = MagicMock()
+    mock_part = MagicMock()
+
+    mock_part.text = '{"risk_score": 5, "summary": "Normal response"}'
+    mock_content.parts = [mock_part]
+    mock_candidate.content = mock_content
+    mock_response.candidates = [mock_candidate]
+
+    result = ai_provider._should_retry_without_tools(mock_response)
+
+    assert result is False

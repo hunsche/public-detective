@@ -33,8 +33,14 @@ class AiProvider(Generic[PydanticModel]):
     gcs_provider: GcsProvider
     output_schema: type[PydanticModel]
     no_ai_tools: bool
+    thinking_level: types.ThinkingLevel
 
-    def __init__(self, output_schema: type[PydanticModel], no_ai_tools: bool = False):
+    def __init__(
+        self,
+        output_schema: type[PydanticModel],
+        no_ai_tools: bool = False,
+        thinking_level: types.ThinkingLevel = types.ThinkingLevel.HIGH,
+    ):
         """Initialize the AiProvider.
 
         This method configures the Gemini client for a specific output schema.
@@ -43,12 +49,14 @@ class AiProvider(Generic[PydanticModel]):
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
             no_ai_tools: If True, the AI model will not use any tools.
+            thinking_level: The thinking level to use for the AI model.
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
         self.no_ai_tools = no_ai_tools
+        self.thinking_level = thinking_level
 
         self.client = genai.Client(
             vertexai=True,
@@ -64,7 +72,7 @@ class AiProvider(Generic[PydanticModel]):
 
     def get_structured_analysis(
         self, prompt: str, file_uris: list[str], max_output_tokens: int | None = None
-    ) -> tuple[PydanticModel, int, int, int, int, int, int]:
+    ) -> tuple[PydanticModel, int, int, int, dict]:
         """Send files for analysis and parse the response.
 
         This method is designed to be highly robust. It includes a retry mechanism
@@ -87,9 +95,8 @@ class AiProvider(Generic[PydanticModel]):
             - The number of input tokens used.
             - The number of output tokens used.
             - The number of thinking tokens used.
-            - The number of input tokens used in a fallback scenario.
-            - The number of output tokens used in a fallback scenario.
-            - The number of thinking tokens used in a fallback scenario.
+            - A dict containing grounding metadata (search_queries, sources).
+            - A dict containing grounding metadata (search_queries, sources).
         """
         file_parts: list[types.Part] = []
         for gcs_uri in file_uris:
@@ -102,9 +109,8 @@ class AiProvider(Generic[PydanticModel]):
         total_input_tokens = 0
         total_output_tokens = 0
         total_thinking_tokens = 0
-        fallback_input_tokens = 0
-        fallback_output_tokens = 0
-        fallback_thinking_tokens = 0
+        grounding_sources: list[dict] = []
+        search_queries: list[str] = []
 
         enable_tools = not self.no_ai_tools
         response = self._generate_content_response(request_contents, max_output_tokens, enable_tools=enable_tools)
@@ -124,29 +130,41 @@ class AiProvider(Generic[PydanticModel]):
                 if metadata is None:
                     continue
 
-                queries = getattr(metadata, "web_search_queries", None)
+                chunks = getattr(metadata, "grounding_chunks", [])
+                if chunks:
+                    for chunk in chunks:
+                        web = getattr(chunk, "web", None)
+                        if web:
+                            uri = getattr(web, "uri", None)
+                            title = getattr(web, "title", None)
+                            if uri:
+                                grounding_sources.append({"original_url": uri, "title": title})
+
+                queries = getattr(metadata, "web_search_queries", [])
+                if queries:
+                    search_queries.extend(queries)
+
                 self.logger.info(
                     "Grounding metadata web_search_queries (candidate %s): %s",
                     index,
                     queries,
                 )
-
-                references = getattr(metadata, "grounded_content", None)
-                self.logger.info(
-                    "Grounding metadata grounded_content (candidate %s): %s",
-                    index,
-                    references,
-                )
         self.logger.debug("Successfully received response from Generative AI API.")
+
+        unique_sources = {s["original_url"]: s for s in grounding_sources}.values()
+        unique_queries = list(set(search_queries))
+
+        grounding_metadata = {
+            "search_queries": unique_queries,
+            "sources": list(unique_sources),
+        }
 
         return (
             validated_response,
             total_input_tokens,
             total_output_tokens,
             total_thinking_tokens,
-            fallback_input_tokens,
-            fallback_output_tokens,
-            fallback_thinking_tokens,
+            grounding_metadata,
         )
 
     def count_tokens_for_analysis(self, prompt: str, file_uris: list[str]) -> tuple[int, int, int]:
@@ -257,7 +275,7 @@ class AiProvider(Generic[PydanticModel]):
                 max_output_tokens=max_output_tokens,
                 tools=tools,
                 tool_config=tool_config,
-                thinking_config=types.ThinkingConfig(thinking_level=types.ThinkingLevel.HIGH),
+                thinking_config=types.ThinkingConfig(thinking_level=self.thinking_level),
             ),
         )
 

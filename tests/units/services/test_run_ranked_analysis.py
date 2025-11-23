@@ -64,6 +64,12 @@ def mock_pubsub_provider() -> MagicMock:
 
 
 @pytest.fixture
+def mock_http_provider() -> MagicMock:
+    """Provides a mock HttpProvider."""
+    return MagicMock()
+
+
+@pytest.fixture
 def analysis_service(
     mock_procurement_repo: MagicMock,
     mock_analysis_repo: MagicMock,
@@ -73,6 +79,7 @@ def analysis_service(
     mock_budget_ledger_repo: MagicMock,
     mock_ai_provider: MagicMock,
     mock_gcs_provider: MagicMock,
+    mock_http_provider: MagicMock,
     mock_pubsub_provider: MagicMock,
 ) -> AnalysisService:
     """Provides an AnalysisService instance with mocked dependencies."""
@@ -85,6 +92,7 @@ def analysis_service(
         budget_ledger_repo=mock_budget_ledger_repo,
         ai_provider=mock_ai_provider,
         gcs_provider=mock_gcs_provider,
+        http_provider=mock_http_provider,
         pubsub_provider=mock_pubsub_provider,
     )
     service.pricing_service = MagicMock()

@@ -20,6 +20,7 @@ def test_supported_extensions_are_processed(extension: str) -> None:
         "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
+        "http_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
     }
     service = AnalysisService(**mock_dependencies)
@@ -67,6 +68,7 @@ def test_unsupported_extension_is_excluded() -> None:
         "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
+        "http_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
     }
     service = AnalysisService(**mock_dependencies)
@@ -102,6 +104,7 @@ def test_no_conversion_extension_is_processed_correctly() -> None:
         "budget_ledger_repo": MagicMock(),
         "ai_provider": MagicMock(),
         "gcs_provider": MagicMock(),
+        "http_provider": MagicMock(),
         "pubsub_provider": MagicMock(),
     }
     service = AnalysisService(**mock_dependencies)

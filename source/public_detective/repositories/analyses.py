@@ -79,6 +79,7 @@ class AnalysisRepository:
             row_dict["retry_count"] = row_dict.get("retry_count", 0)
             row_dict["updated_at"] = row_dict.get("updated_at")
             row_dict["votes_count"] = row_dict.get("votes_count", 0)
+            row_dict["grounding_metadata"] = row_dict.get("grounding_metadata")
 
             return AnalysisResult.model_validate(row_dict)
         except ValidationError as e:
@@ -96,7 +97,6 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
-        fallback_analysis_cost: Decimal,
     ) -> None:
         """Updates an existing analysis record with the full analysis results.
 
@@ -116,7 +116,6 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
-            fallback_analysis_cost: The cost of the fallback analysis.
         """
         self.logger.info(f"Updating analysis for analysis_id {analysis_id}.")
 
@@ -141,8 +140,8 @@ class AnalysisRepository:
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
                 total_cost = :total_cost,
-                fallback_analysis_cost = :fallback_analysis_cost,
-                analysis_prompt = :analysis_prompt
+                analysis_prompt = :analysis_prompt,
+                grounding_metadata = :grounding_metadata
         WHERE analysis_id = :analysis_id;
         """
         )
@@ -170,7 +169,7 @@ class AnalysisRepository:
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
-            "fallback_analysis_cost": fallback_analysis_cost,
+            "grounding_metadata": (result.grounding_metadata.model_dump_json() if result.grounding_metadata else None),
         }
 
         with self.engine.connect() as conn:
@@ -302,7 +301,6 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
-        fallback_analysis_cost: Decimal,
         analysis_prompt: str = "",
     ) -> None:
         """Updates an existing analysis record with token counts and costs.
@@ -316,7 +314,6 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
-            fallback_analysis_cost: The cost of the fallback analysis.
             analysis_prompt: The prompt used for the analysis.
         """
         self.logger.info(f"Updating pre-analysis record {analysis_id} with token counts.")
@@ -331,7 +328,6 @@ class AnalysisRepository:
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
                 total_cost = :total_cost,
-                fallback_analysis_cost = :fallback_analysis_cost,
                 analysis_prompt = :analysis_prompt
             WHERE analysis_id = :analysis_id;
             """
@@ -345,7 +341,6 @@ class AnalysisRepository:
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
             "total_cost": total_cost,
-            "fallback_analysis_cost": fallback_analysis_cost,
             "analysis_prompt": analysis_prompt,
         }
         with self.engine.connect() as conn:
@@ -518,7 +513,6 @@ class AnalysisRepository:
         output_cost: Decimal,
         thinking_cost: Decimal,
         total_cost: Decimal,
-        fallback_analysis_cost: Decimal,
         retry_count: int,
         analysis_prompt: str,
     ) -> UUID:
@@ -539,7 +533,6 @@ class AnalysisRepository:
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
             total_cost: The total calculated cost of the analysis.
-            fallback_analysis_cost: The cost of the fallback analysis.
             retry_count: The new retry count for this analysis attempt.
             analysis_prompt: The prompt from the original analysis.
 
@@ -565,7 +558,6 @@ class AnalysisRepository:
             output_cost=output_cost,
             thinking_cost=thinking_cost,
             total_cost=total_cost,
-            fallback_analysis_cost=fallback_analysis_cost,
             analysis_prompt=analysis_prompt,
         )
         self.update_analysis_status(analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS)

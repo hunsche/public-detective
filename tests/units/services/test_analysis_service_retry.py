@@ -21,6 +21,7 @@ def analysis_service_fixture() -> dict:
     mock_status_history_repo = MagicMock()
     mock_ai_provider = MagicMock()
     mock_gcs_provider = MagicMock()
+    mock_http_provider = MagicMock()
     mock_pubsub_provider = MagicMock()
     mock_budget_ledger_repo = MagicMock()
 
@@ -33,6 +34,7 @@ def analysis_service_fixture() -> dict:
         budget_ledger_repo=mock_budget_ledger_repo,
         ai_provider=mock_ai_provider,
         gcs_provider=mock_gcs_provider,
+        http_provider=mock_http_provider,
         pubsub_provider=mock_pubsub_provider,
     )
     return {

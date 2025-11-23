@@ -171,7 +171,6 @@ def _save_analysis(
         output_cost=Decimal("0"),
         thinking_cost=Decimal("0"),
         total_cost=Decimal("0"),
-        fallback_analysis_cost=Decimal("0"),
         analysis_prompt="",
     )
     return analysis_id

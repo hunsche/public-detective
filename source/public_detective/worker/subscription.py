@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from google.api_core.exceptions import GoogleAPICallError
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture
 from google.cloud.pubsub_v1.types import FlowControl
+from google.genai import types
 from public_detective.exceptions.analysis import AnalysisError
 from public_detective.models.analyses import Analysis
 from public_detective.providers.ai import AiProvider
@@ -62,6 +63,7 @@ class Subscription:
         processing_complete_event: threading.Event | None = None,
         gcs_path_prefix: str | None = None,
         no_ai_tools: bool = False,
+        thinking_level: str = "HIGH",
     ):
         """Initializes the worker, loading configuration and services.
 
@@ -75,6 +77,7 @@ class Subscription:
                 message has been fully processed.
             gcs_path_prefix: Overwrites the base GCS path for uploads.
             no_ai_tools: Use the direct Gemini API without tools.
+            thinking_level: The thinking level (LOW or HIGH).
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -87,7 +90,12 @@ class Subscription:
         else:
             db_engine = DatabaseManager.get_engine()
             gcs_provider = GcsProvider()
-            ai_provider = AiProvider(Analysis, no_ai_tools=no_ai_tools)
+
+            level = types.ThinkingLevel.HIGH
+            if thinking_level.upper() == "LOW":
+                level = types.ThinkingLevel.LOW
+
+            ai_provider = AiProvider(Analysis, no_ai_tools=no_ai_tools, thinking_level=level)
 
             http_provider = HttpProvider()
             analysis_repo = AnalysisRepository(engine=db_engine)
@@ -108,6 +116,7 @@ class Subscription:
                 budget_ledger_repo=budget_ledger_repo,
                 ai_provider=ai_provider,
                 gcs_provider=gcs_provider,
+                http_provider=http_provider,
                 gcs_path_prefix=gcs_path_prefix,
             )
 

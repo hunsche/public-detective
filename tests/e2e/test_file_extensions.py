@@ -560,6 +560,7 @@ def test_file_extension_processing(
         budget_ledger_repo=budget_ledger_repo,
         ai_provider=ai_provider,
         gcs_provider=gcs_provider,
+        http_provider=http_provider,
         pubsub_provider=pubsub_provider,
         gcs_path_prefix=gcs_cleanup_manager.prefix,
     )
@@ -595,7 +596,8 @@ def test_file_extension_processing(
     # 7. Run the worker as a subprocess
     gcs_prefix = gcs_cleanup_manager.prefix
     worker_command = (
-        f"poetry run pd worker start --max-messages 1 --timeout 15 --gcs-path-prefix {gcs_prefix} --no-ai-tools"
+        f"poetry run pd worker start --max-messages 1 --timeout 15 "
+        f"--gcs-path-prefix {gcs_prefix} --no-ai-tools --thinking-level LOW"
     )
     run_command(worker_command)
 

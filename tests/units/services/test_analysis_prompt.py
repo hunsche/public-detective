@@ -19,6 +19,7 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
     mock_budget_ledger_repo = MagicMock()
     mock_ai_provider = MagicMock()
     mock_gcs_provider = MagicMock()
+    mock_http_provider = MagicMock()
 
     service = AnalysisService(
         procurement_repo=mock_procurement_repo,
@@ -29,6 +30,7 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
         budget_ledger_repo=mock_budget_ledger_repo,
         ai_provider=mock_ai_provider,
         gcs_provider=mock_gcs_provider,
+        http_provider=mock_http_provider,
     )
 
     procurement_data = {
@@ -102,7 +104,7 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
         --- FIM DO SUMÁRIO ---
 
         --- CONTEXTO DOS DOCUMENTOS ANEXADOS ---
-
+        ATENÇÃO: NENHUM DOCUMENTO FOI ENCONTRADO PARA ESTA LICITAÇÃO. A ANÁLISE DEVE SER FEITA APENAS COM BASE NO SUMÁRIO ACIMA.
         --- FIM DO CONTEXTO ---
 
         ### PROTOCOLO DE ANÁLISE OBRIGATÓRIO (Chain-of-Thought)
@@ -138,7 +140,7 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
         ---
 
         **III. REGRAS DE PREENCHIMENTO DA LISTA `sources` (CRÍTICO):**
-            1. **Deep Links OBRIGATÓRIOS (ANTI-ALUCINAÇÃO):** O campo `url` deve conter EXATAMENTE o link retornado pela ferramenta de busca (mesmo que seja longo ou pareça um redirecionamento do Google/Vertex). **É PROIBIDO TENTAR "ADIVINHAR" OU "RECONSTRUIR" A URL.** Se a ferramenta retornar `vertexaisearch...`, USE ESSE LINK. Se retornar a URL final, USE A URL FINAL. **JAMAIS** invente um caminho (ex: `/produto/detalhe`) que você não viu explicitamente. Links quebrados (404) invalidam a auditoria.
+            1. **Identificação da Fonte (ANTI-ALUCINAÇÃO):** Priorize o preenchimento do campo `name` com o nome da loja ou entidade (ex: "Kalunga", "Mercado Livre", "Painel de Preços"). As URLs de busca (Grounding) serão capturadas automaticamente pelo sistema e vinculadas à análise, portanto, concentre-se em identificar corretamente a origem do preço.
             2. **Quantidade de Fontes:**
                 *   Se encontrar apenas **1 fonte válida** (e não for oficial), o `severity` DEVE ser rebaixado para **MODERADA** ou **LEVE**, pois a prova é frágil.
                 *   Para sustentar `severity` **GRAVE** ou **CRÍTICO** em sobrepreço, é OBRIGATÓRIO citar **3 fontes** ou 1 fonte oficial.
@@ -163,7 +165,6 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
         - `sources` (Obrigatório para SOBREPRECO/SUPERFATURAMENTO):
             - `name`: nome ou título da fonte.
             - `type`: Classificação da fonte conforme hierarquia: "OFICIAL" (Tipo A), "TABELA" (Tipo B), "B2B" (Tipo C) ou "VAREJO" (Tipo D).
-            - `url`: O Link COMPLETO e EXTENSO que leva diretamente ao produto. NÃO encurte. Copie e cole a URL exata do navegador.
             - `reference_price`: preço de referência por unidade (quando disponível).
             - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
             - `reference_date`: data em que o preço foi válido ou coletado.
