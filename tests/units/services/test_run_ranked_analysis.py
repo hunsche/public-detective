@@ -122,7 +122,7 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
         spec=Procurement,
         is_stable=True,
         temporal_score=30,
-        priority_score=100,
+        current_priority_score=100,
         entity_unit=MagicMock(ibge_code="A"),
     )
     mock_proc1.pncp_control_number = "PCN1"
@@ -130,7 +130,7 @@ def test_run_ranked_analysis_temporal_filter(analysis_service: AnalysisService) 
         spec=Procurement,
         is_stable=True,
         temporal_score=15,
-        priority_score=90,
+        current_priority_score=90,
         entity_unit=MagicMock(ibge_code="B"),
     )
     mock_proc2.pncp_control_number = "PCN2"
@@ -185,7 +185,7 @@ def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisS
         spec=Procurement,
         is_stable=True,
         temporal_score=30,
-        priority_score=100,
+        current_priority_score=100,
         entity_unit=MagicMock(ibge_code="A"),
     )
     mock_proc1.pncp_control_number = "PCN1"
@@ -193,7 +193,7 @@ def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisS
         spec=Procurement,
         is_stable=True,
         temporal_score=30,
-        priority_score=90,
+        current_priority_score=90,
         entity_unit=MagicMock(ibge_code="A"),
     )
     mock_proc2.pncp_control_number = "PCN2"
@@ -201,7 +201,7 @@ def test_run_ranked_analysis_proportional_allocation(analysis_service: AnalysisS
         spec=Procurement,
         is_stable=True,
         temporal_score=30,
-        priority_score=95,
+        current_priority_score=95,
         entity_unit=MagicMock(ibge_code="B"),
     )
     mock_proc3.pncp_control_number = "PCN3"
