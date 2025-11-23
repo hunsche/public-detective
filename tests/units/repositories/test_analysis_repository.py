@@ -229,6 +229,8 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
         output_cost=Decimal("0.2"),
         thinking_cost=Decimal("0.05"),
         total_cost=Decimal("0.35"),
+        search_cost=Decimal("0.0"),
+        search_queries_used=0,
     )
 
     # Assert
@@ -243,6 +245,8 @@ def test_save_analysis_updates_record(analysis_repository: AnalysisRepository) -
     assert params["thinking_tokens_used"] == 10
     assert params["cost_thinking_tokens"] == Decimal("0.05")
     assert params["total_cost"] == Decimal("0.35")
+    assert params["cost_search_queries"] == Decimal("0.0")
+    assert params["search_queries_used"] == 0
 
 
 def test_parse_row_to_model_empty_row(analysis_repository: AnalysisRepository) -> None:
@@ -541,6 +545,8 @@ def test_save_retry_analysis_returns_id(analysis_repository: AnalysisRepository)
         output_cost=Decimal("0.3"),
         thinking_cost=Decimal("0.1"),
         total_cost=Decimal("0.6"),
+        search_cost=Decimal("0.0"),
+        search_queries_used=0,
         retry_count=1,
         analysis_prompt="Test prompt",
     )

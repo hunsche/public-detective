@@ -70,9 +70,6 @@ class Config(BaseSettings):
     GCP_GEMINI_TEXT_OUTPUT_COST: Decimal = Decimal("72.931336319")
     GCP_GEMINI_TEXT_OUTPUT_LONG_COST: Decimal = Decimal("109.397004479")
 
-    GCP_GEMINI_THINKING_OUTPUT_COST: Decimal = Decimal("72.931336319")
-    GCP_GEMINI_THINKING_OUTPUT_LONG_COST: Decimal = Decimal("109.397004479")
-
     GCP_GEMINI_AUDIO_INPUT_COST: Decimal = Decimal("12.155222719")
     GCP_GEMINI_AUDIO_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
 
@@ -81,6 +78,8 @@ class Config(BaseSettings):
 
     GCP_GEMINI_VIDEO_INPUT_COST: Decimal = Decimal("12.155222719")
     GCP_GEMINI_VIDEO_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
+
+    GCP_GEMINI_SEARCH_QUERY_COST: Decimal = Decimal("14.00")
 
     WORKER_MAX_CONCURRENCY: int = 4
 

@@ -93,8 +93,8 @@ class PricingService:
             The cost per million tokens for thinking.
         """
         if is_long_context:
-            return cast(Decimal, self.config.GCP_GEMINI_THINKING_OUTPUT_LONG_COST)
-        return cast(Decimal, self.config.GCP_GEMINI_THINKING_OUTPUT_COST)
+            return cast(Decimal, self.config.GCP_GEMINI_TEXT_OUTPUT_LONG_COST)
+        return cast(Decimal, self.config.GCP_GEMINI_TEXT_OUTPUT_COST)
 
     def calculate_total_cost(
         self,
@@ -102,7 +102,8 @@ class PricingService:
         output_tokens: int,
         thinking_tokens: int,
         modality: Modality,
-    ) -> tuple[Decimal, Decimal, Decimal, Decimal]:
+        search_queries_count: int = 0,
+    ) -> tuple[Decimal, Decimal, Decimal, Decimal, Decimal]:
         """Calculates the cost of an analysis based on token counts and pricing.
 
         Args:
@@ -110,10 +111,11 @@ class PricingService:
             output_tokens: The number of output tokens used.
             thinking_tokens: The number of thinking tokens used.
             modality: The modality of the analysis.
+            search_queries_count: The number of search queries performed.
 
         Returns:
             A tuple containing the input cost, output cost, thinking cost,
-            and total cost.
+            search cost, and total cost.
         """
         is_long_context = input_tokens > 200_000
 
@@ -126,6 +128,8 @@ class PricingService:
         thinking_cost_per_million = self._get_thinking_cost_per_million(is_long_context)
         thinking_cost = self._calculate_cost(thinking_tokens, thinking_cost_per_million)
 
-        total_cost = input_cost + output_cost + thinking_cost
+        search_cost = (Decimal(search_queries_count) / 1000) * self.config.GCP_GEMINI_SEARCH_QUERY_COST
 
-        return input_cost, output_cost, thinking_cost, total_cost
+        total_cost = input_cost + output_cost + thinking_cost + search_cost
+
+        return input_cost, output_cost, thinking_cost, search_cost, total_cost

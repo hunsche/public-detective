@@ -57,7 +57,7 @@ def test_ranked_analysis_e2e_flow(
                 {
                     "id": str(uuid.uuid4()),
                     "donor_identifier": "E2E_TEST_DONOR",
-                    "amount": 15.00,
+                    "amount": 150.00,
                     "transaction_id": "E2E_TEST_TX_ID",
                 }
             ],
@@ -112,13 +112,28 @@ def test_ranked_analysis_e2e_flow(
                 print(json.dumps(serializable_records, indent=2, ensure_ascii=False, default=str))
 
                 if table_name == "procurement_analyses":
+                    # Enrich with estimated_cost from procurements
+                    enriched_records = []
+                    procurements_query = text(
+                        "SELECT pncp_control_number, version_number, estimated_cost FROM procurements"
+                    )
+                    procurements = {
+                        (p.pncp_control_number, p.version_number): p.estimated_cost
+                        for p in connection.execute(procurements_query).mappings().all()
+                    }
+
+                    for record in serializable_records:
+                        key = (record.get("procurement_control_number"), record.get("version_number"))
+                        record["estimated_cost_from_procurement"] = procurements.get(key)
+                        enriched_records.append(record)
+
                     # Save to file for inspection in tmp dir
                     tmp_dir = Path("tests/.tmp")
                     tmp_dir.mkdir(exist_ok=True)
                     output_file = tmp_dir / "analysis_output.json"
 
                     with open(output_file, "w") as f:
-                        json.dump(serializable_records, f, indent=2, ensure_ascii=False, default=str)
+                        json.dump(enriched_records, f, indent=2, ensure_ascii=False, default=str)
 
                     print(f"\n--- Saved procurement_analyses to {output_file} ---")
     print("\n--- Data Dump Complete ---")

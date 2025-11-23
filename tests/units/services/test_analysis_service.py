@@ -464,6 +464,7 @@ def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, 
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
+        Decimal("0.0"),
         Decimal("0.6"),
     )
 
@@ -508,6 +509,7 @@ def test_analyze_procurement_no_included_files(analysis_service: AnalysisService
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
+        Decimal("0.0"),
         Decimal("0.6"),
     )
 
@@ -551,6 +553,7 @@ def test_analyze_procurement_happy_path(
 
     analysis_service.ai_provider.get_structured_analysis.return_value = (mock_valid_analysis, 100, 50, 10, {})
     analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal(0),
         Decimal(0),
         Decimal(0),
         Decimal(0),
@@ -967,6 +970,7 @@ def test_retry_analyses_triggers_run(analysis_service: AnalysisService) -> None:
     analysis_service.analysis_repo.save_retry_analysis.return_value = uuid.uuid4()
     analysis_service.run_specific_analysis = MagicMock()
     analysis_service.pricing_service.calculate_total_cost.return_value = (
+        Decimal("0"),
         Decimal("0"),
         Decimal("0"),
         Decimal("0"),
@@ -1422,6 +1426,7 @@ def test_analyze_procurement_no_procurement_id(
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
+        Decimal("0.0"),
         Decimal("0.6"),
     )
 
@@ -1460,6 +1465,7 @@ def test_analyze_procurement_save_analysis_fails(
         Decimal("0.1"),
         Decimal("0.2"),
         Decimal("0.3"),
+        Decimal("0.0"),
         Decimal("0.6"),
     )
     error_message = "Database save failed"

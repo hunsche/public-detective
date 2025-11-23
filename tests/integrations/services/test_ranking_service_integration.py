@@ -170,7 +170,9 @@ def _save_analysis(
         input_cost=Decimal("0"),
         output_cost=Decimal("0"),
         thinking_cost=Decimal("0"),
+        search_cost=Decimal("0"),
         total_cost=Decimal("0"),
+        search_queries_used=0,
         analysis_prompt="",
     )
     return analysis_id

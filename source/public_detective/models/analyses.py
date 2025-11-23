@@ -237,4 +237,6 @@ class AnalysisResult(BaseModel):
     cost_input_tokens: Decimal | None = None
     cost_output_tokens: Decimal | None = None
     cost_thinking_tokens: Decimal | None = None
+    cost_search_queries: Decimal | None = None
+    search_queries_used: int | None = 0
     total_cost: Decimal | None = None

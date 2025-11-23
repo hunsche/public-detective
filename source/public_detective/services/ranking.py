@@ -148,11 +148,12 @@ class RankingService:
         if tokens_to_use is None:
             return Decimal("0.0")
 
-        _, _, _, total_cost_decimal = self.pricing_service.calculate_total_cost(
+        _, _, _, _, total_cost_decimal = self.pricing_service.calculate_total_cost(
             tokens_to_use,
-            0,
+            self.config.GCP_GEMINI_MAX_OUTPUT_TOKENS,
             0,
             modality=Modality.TEXT,
+            search_queries_count=10,
         )
         return Decimal(total_cost_decimal)
 

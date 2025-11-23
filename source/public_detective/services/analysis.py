@@ -395,16 +395,19 @@ class AnalysisService:
             exts = [rec.get("extension") for rec in included_records]
             modality = self._get_modality_from_exts(exts)
 
+            search_queries_count = len(grounding_metadata.search_queries)
             (
                 input_cost,
                 output_cost,
                 thinking_cost,
+                search_cost,
                 total_cost,
             ) = self.pricing_service.calculate_total_cost(
                 input_tokens,
                 output_tokens,
                 thinking_tokens,
                 modality=modality,
+                search_queries_count=search_queries_count,
             )
             self.analysis_repo.save_analysis(
                 analysis_id=analysis_id,
@@ -415,7 +418,9 @@ class AnalysisService:
                 input_cost=input_cost,
                 output_cost=output_cost,
                 thinking_cost=thinking_cost,
+                search_cost=search_cost,
                 total_cost=total_cost,
+                search_queries_used=search_queries_count,
             )
 
             self.budget_ledger_repo.save_expense(
@@ -1239,19 +1244,21 @@ class AnalysisService:
             uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
             input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
 
-            output_tokens = 0
+            output_tokens = self.config.GCP_GEMINI_MAX_OUTPUT_TOKENS
             thinking_tokens = 0
             modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
             (
                 input_cost,
                 output_cost,
                 thinking_cost,
+                search_cost,
                 total_cost,
             ) = self.pricing_service.calculate_total_cost(
                 input_tokens,
                 output_tokens,
                 thinking_tokens,
                 modality=modality,
+                search_queries_count=10,
             )
 
             self.analysis_repo.update_pre_analysis_with_tokens(
@@ -1262,7 +1269,9 @@ class AnalysisService:
                 input_cost=input_cost,
                 output_cost=output_cost,
                 thinking_cost=thinking_cost,
+                search_cost=search_cost,
                 total_cost=total_cost,
+                search_queries_used=10,
                 analysis_prompt=prompt,
             )
 
@@ -1455,12 +1464,14 @@ class AnalysisService:
                         input_cost,
                         output_cost,
                         thinking_cost,
+                        search_cost,
                         total_cost,
                     ) = self.pricing_service.calculate_total_cost(
                         analysis.input_tokens_used,
                         analysis.output_tokens_used,
                         analysis.thinking_tokens_used,
                         modality=modality,
+                        search_queries_count=analysis.search_queries_used or 0,
                     )
                     new_analysis_id = self.analysis_repo.save_retry_analysis(
                         procurement_control_number=analysis.procurement_control_number,
@@ -1472,7 +1483,9 @@ class AnalysisService:
                         input_cost=input_cost,
                         output_cost=output_cost,
                         thinking_cost=thinking_cost,
+                        search_cost=search_cost,
                         total_cost=total_cost,
+                        search_queries_used=analysis.search_queries_used or 0,
                         retry_count=analysis.retry_count + 1,
                         analysis_prompt=analysis.analysis_prompt,
                     )
@@ -1548,19 +1561,21 @@ class AnalysisService:
         uris_for_token_count = [uri for c in final_candidates if c.is_included for uri in c.ai_gcs_uris]
         input_tokens, _, _ = self.ai_provider.count_tokens_for_analysis(prompt, uris_for_token_count)
 
-        output_tokens = 0
+        output_tokens = self.config.GCP_GEMINI_MAX_OUTPUT_TOKENS
         thinking_tokens = 0
         modality = self._get_modality_from_exts([os.path.splitext(c.ai_path)[1] for c in final_candidates])
         (
             input_cost,
             output_cost,
             thinking_cost,
+            search_cost,
             total_cost,
         ) = self.pricing_service.calculate_total_cost(
             input_tokens,
             output_tokens,
             thinking_tokens,
             modality=modality,
+            search_queries_count=10,
         )
 
         self.analysis_repo.update_pre_analysis_with_tokens(
@@ -1571,7 +1586,9 @@ class AnalysisService:
             input_cost=input_cost,
             output_cost=output_cost,
             thinking_cost=thinking_cost,
+            search_cost=search_cost,
             total_cost=total_cost,
+            search_queries_used=10,
             analysis_prompt=prompt,
         )
 

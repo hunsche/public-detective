@@ -285,6 +285,8 @@ This project enforces a strict set of code style and quality rules to ensure con
     poetry run pre-commit run --all-files
     ```
 
+    **CRITICAL:** You MUST run `poetry run pre-commit run -a` before finalizing any task to ensure all checks pass.
+
 ### B. Key Tools and Standards
 
 The pre-commit pipeline enforces the following standards:

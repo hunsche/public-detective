@@ -80,6 +80,8 @@ class AnalysisRepository:
             row_dict["updated_at"] = row_dict.get("updated_at")
             row_dict["votes_count"] = row_dict.get("votes_count", 0)
             row_dict["grounding_metadata"] = row_dict.get("grounding_metadata")
+            row_dict["cost_search_queries"] = row_dict.get("cost_search_queries")
+            row_dict["search_queries_used"] = row_dict.get("search_queries_used") or 0
 
             return AnalysisResult.model_validate(row_dict)
         except ValidationError as e:
@@ -96,7 +98,10 @@ class AnalysisRepository:
         input_cost: Decimal,
         output_cost: Decimal,
         thinking_cost: Decimal,
+        search_cost: Decimal,
         total_cost: Decimal,
+        search_queries_used: int = 0,
+        analysis_prompt: str = "",
     ) -> None:
         """Updates an existing analysis record with the full analysis results.
 
@@ -115,7 +120,11 @@ class AnalysisRepository:
             input_cost: The calculated cost of the input tokens.
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
+            thinking_cost: The calculated cost of the thinking tokens.
+            search_cost: The calculated cost of the search queries.
             total_cost: The total calculated cost of the analysis.
+            search_queries_used: The number of search queries performed.
+            analysis_prompt: The prompt used for the analysis.
         """
         self.logger.info(f"Updating analysis for analysis_id {analysis_id}.")
 
@@ -139,6 +148,8 @@ class AnalysisRepository:
                 cost_input_tokens = :cost_input_tokens,
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
+                cost_search_queries = :cost_search_queries,
+                search_queries_used = :search_queries_used,
                 total_cost = :total_cost,
                 analysis_prompt = :analysis_prompt,
                 grounding_metadata = :grounding_metadata
@@ -168,6 +179,8 @@ class AnalysisRepository:
             "cost_input_tokens": input_cost,
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
+            "cost_search_queries": search_cost,
+            "search_queries_used": search_queries_used,
             "total_cost": total_cost,
             "grounding_metadata": (result.grounding_metadata.model_dump_json() if result.grounding_metadata else None),
         }
@@ -219,6 +232,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
+                cost_search_queries,
+                search_queries_used,
                 total_cost,
                 analysis_prompt
             FROM procurement_analyses
@@ -300,7 +315,9 @@ class AnalysisRepository:
         input_cost: Decimal,
         output_cost: Decimal,
         thinking_cost: Decimal,
+        search_cost: Decimal,
         total_cost: Decimal,
+        search_queries_used: int = 0,
         analysis_prompt: str = "",
     ) -> None:
         """Updates an existing analysis record with token counts and costs.
@@ -313,7 +330,10 @@ class AnalysisRepository:
             input_cost: The calculated cost of the input tokens.
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
+            thinking_cost: The calculated cost of the thinking tokens.
+            search_cost: The calculated cost of the search queries.
             total_cost: The total calculated cost of the analysis.
+            search_queries_used: The number of search queries performed.
             analysis_prompt: The prompt used for the analysis.
         """
         self.logger.info(f"Updating pre-analysis record {analysis_id} with token counts.")
@@ -327,6 +347,8 @@ class AnalysisRepository:
                 cost_input_tokens = :cost_input_tokens,
                 cost_output_tokens = :cost_output_tokens,
                 cost_thinking_tokens = :cost_thinking_tokens,
+                cost_search_queries = :cost_search_queries,
+                search_queries_used = :search_queries_used,
                 total_cost = :total_cost,
                 analysis_prompt = :analysis_prompt
             WHERE analysis_id = :analysis_id;
@@ -340,6 +362,8 @@ class AnalysisRepository:
             "cost_input_tokens": input_cost,
             "cost_output_tokens": output_cost,
             "cost_thinking_tokens": thinking_cost,
+            "cost_search_queries": search_cost,
+            "search_queries_used": search_queries_used,
             "total_cost": total_cost,
             "analysis_prompt": analysis_prompt,
         }
@@ -383,6 +407,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
+                cost_search_queries,
+                search_queries_used,
                 total_cost,
                 analysis_prompt
             FROM procurement_analyses
@@ -466,6 +492,8 @@ class AnalysisRepository:
                 cost_input_tokens,
                 cost_output_tokens,
                 cost_thinking_tokens,
+                cost_search_queries,
+                search_queries_used,
                 total_cost,
                 analysis_prompt
             FROM procurement_analyses
@@ -512,7 +540,9 @@ class AnalysisRepository:
         input_cost: Decimal,
         output_cost: Decimal,
         thinking_cost: Decimal,
+        search_cost: Decimal,
         total_cost: Decimal,
+        search_queries_used: int,
         retry_count: int,
         analysis_prompt: str,
     ) -> UUID:
@@ -532,7 +562,9 @@ class AnalysisRepository:
             input_cost: The calculated cost of the input tokens.
             output_cost: The calculated cost of the output tokens.
             thinking_cost: The calculated cost of the thinking tokens.
+            search_cost: The calculated cost of the search queries.
             total_cost: The total calculated cost of the analysis.
+            search_queries_used: The number of search queries performed.
             retry_count: The new retry count for this analysis attempt.
             analysis_prompt: The prompt from the original analysis.
 
@@ -557,7 +589,9 @@ class AnalysisRepository:
             input_cost=input_cost,
             output_cost=output_cost,
             thinking_cost=thinking_cost,
+            search_cost=search_cost,
             total_cost=total_cost,
+            search_queries_used=search_queries_used,
             analysis_prompt=analysis_prompt,
         )
         self.update_analysis_status(analysis_id, ProcurementAnalysisStatus.PENDING_ANALYSIS)
@@ -602,6 +636,8 @@ class AnalysisRepository:
                 procurement_analyses.cost_input_tokens,
                 procurement_analyses.cost_output_tokens,
                 procurement_analyses.cost_thinking_tokens,
+                procurement_analyses.cost_search_queries,
+                procurement_analyses.search_queries_used,
                 procurement_analyses.total_cost,
                 COUNT(votes.vote_id) AS votes_count
             FROM

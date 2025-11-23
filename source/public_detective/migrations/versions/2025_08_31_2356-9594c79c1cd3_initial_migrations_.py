@@ -123,6 +123,8 @@ def upgrade() -> None:
             cost_input_tokens DECIMAL(32, 18),
             cost_output_tokens DECIMAL(32, 18),
             cost_thinking_tokens DECIMAL(32, 18),
+            cost_search_queries DECIMAL(32, 18),
+            search_queries_used INTEGER,
             total_cost DECIMAL(32, 18),
             grounding_metadata JSONB,
             analysis_prompt TEXT,

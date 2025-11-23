@@ -12,7 +12,7 @@ from public_detective.models.procurements import Procurement
 from public_detective.providers.config import ConfigProvider
 from public_detective.repositories.analyses import AnalysisRepository
 from public_detective.services.analysis import AIFileCandidate
-from public_detective.services.pricing import PricingService
+from public_detective.services.pricing import Modality, PricingService
 from public_detective.services.ranking import RankingService
 
 
@@ -57,10 +57,19 @@ def test_calculate_priority(ranking_service: RankingService) -> None:
             Decimal("0.01"),
             Decimal("0"),
             Decimal("0"),
+            Decimal("0"),
             Decimal("0.01"),
         )
 
         result = ranking_service.calculate_priority(procurement, candidates, analysis_id)
+
+        mock_calculate_total_cost.assert_called_with(
+            1000,
+            ranking_service.config.GCP_GEMINI_MAX_OUTPUT_TOKENS,
+            0,
+            modality=Modality.TEXT,
+            search_queries_count=10,
+        )
     assert result.quality_score is not None
     assert result.estimated_cost is not None
     assert result.potential_impact_score is not None
