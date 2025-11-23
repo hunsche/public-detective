@@ -80,6 +80,7 @@ def test_build_analysis_prompt_contains_new_instructions() -> None:
             "Valor Estimado": "R$ 1.000,00",
             "Abertura das Propostas": "10/05/2023 09:00",
             "Encerramento das Propostas": "20/05/2023 17:00",
+            "Data de Execução desta Análise (Hoje)": datetime.now().strftime("%d/%m/%Y"),
         },
         indent=2,
         ensure_ascii=False,
