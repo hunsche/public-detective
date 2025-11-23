@@ -63,7 +63,6 @@ class Subscription:
         processing_complete_event: threading.Event | None = None,
         gcs_path_prefix: str | None = None,
         no_ai_tools: bool = False,
-        thinking_level: str = "HIGH",
     ):
         """Initializes the worker, loading configuration and services.
 
@@ -77,7 +76,6 @@ class Subscription:
                 message has been fully processed.
             gcs_path_prefix: Overwrites the base GCS path for uploads.
             no_ai_tools: Use the direct Gemini API without tools.
-            thinking_level: The thinking level (LOW or HIGH).
         """
         self.config = ConfigProvider.get_config()
         self.logger = LoggingProvider().get_logger()
@@ -91,11 +89,7 @@ class Subscription:
             db_engine = DatabaseManager.get_engine()
             gcs_provider = GcsProvider()
 
-            level = types.ThinkingLevel.HIGH
-            if thinking_level.upper() == "LOW":
-                level = types.ThinkingLevel.LOW
-
-            ai_provider = AiProvider(Analysis, no_ai_tools=no_ai_tools, thinking_level=level)
+            ai_provider = AiProvider(Analysis, no_ai_tools=no_ai_tools)
 
             http_provider = HttpProvider()
             analysis_repo = AnalysisRepository(engine=db_engine)

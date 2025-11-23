@@ -55,22 +55,44 @@ class Config(BaseSettings):
     GCP_PUBSUB_TOPIC_DLQ_PROCUREMENTS: str | None = None
     GCP_PUBSUB_TOPIC_SUBSCRIPTION_PROCUREMENTS: str | None = None
     GCP_GEMINI_HOST: str | None = None
+
+    # Updated for Gemini 3.0 Pro Preview model
     GCP_GEMINI_MODEL: str = "gemini-3-pro-preview"
     GCP_GEMINI_THINKING_LEVEL: str = "HIGH"
-    GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 65535
+
+    # Token limits (Gemini 3.0 Pro has 1M+ input and ~64k output)
+    GCP_GEMINI_MAX_OUTPUT_TOKENS: int = 65536
     GCP_GEMINI_MAX_INPUT_TOKENS: int = 1048576
-    GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("7.750969275")
-    GCP_GEMINI_TEXT_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
-    GCP_GEMINI_TEXT_OUTPUT_COST: Decimal = Decimal("62.0077542")
-    GCP_GEMINI_TEXT_OUTPUT_LONG_COST: Decimal = Decimal("93.0116313")
-    GCP_GEMINI_THINKING_OUTPUT_COST: Decimal = Decimal("62.0077542")
-    GCP_GEMINI_THINKING_OUTPUT_LONG_COST: Decimal = Decimal("93.0116313")
-    GCP_GEMINI_AUDIO_INPUT_COST: Decimal = Decimal("7.750969275")
-    GCP_GEMINI_AUDIO_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
-    GCP_GEMINI_IMAGE_INPUT_COST: Decimal = Decimal("7.750969275")
-    GCP_GEMINI_IMAGE_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
-    GCP_GEMINI_VIDEO_INPUT_COST: Decimal = Decimal("7.750969275")
-    GCP_GEMINI_VIDEO_INPUT_LONG_COST: Decimal = Decimal("15.50193855")
+
+    # Prices extracted from CSV 'Pricing for My Billing Account.csv' for Gemini 3.0 Pro
+    # Values per 1 million tokens (Unit: 1e+06 in CSV)
+
+    # Text Input (Standard)
+    GCP_GEMINI_TEXT_INPUT_COST: Decimal = Decimal("12.155222719")
+    # Text Input (Long - above standard limit, usually 128k or 200k)
+    GCP_GEMINI_TEXT_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
+
+    # Text Output (Standard)
+    GCP_GEMINI_TEXT_OUTPUT_COST: Decimal = Decimal("72.931336319")
+    # Text Output (Long)
+    GCP_GEMINI_TEXT_OUTPUT_LONG_COST: Decimal = Decimal("109.397004479")
+
+    # Thinking Output (Charged as Text Output)
+    GCP_GEMINI_THINKING_OUTPUT_COST: Decimal = Decimal("72.931336319")
+    GCP_GEMINI_THINKING_OUTPUT_LONG_COST: Decimal = Decimal("109.397004479")
+
+    # Audio, Image, Video Input (In Gemini 3.0 Pro, these follow Text Input price per token)
+    GCP_GEMINI_AUDIO_INPUT_COST: Decimal = Decimal("12.155222719")
+    GCP_GEMINI_AUDIO_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
+
+    GCP_GEMINI_IMAGE_INPUT_COST: Decimal = Decimal("12.155222719")
+    GCP_GEMINI_IMAGE_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
+
+    GCP_GEMINI_VIDEO_INPUT_COST: Decimal = Decimal("12.155222719")
+    GCP_GEMINI_VIDEO_INPUT_LONG_COST: Decimal = Decimal("24.310445439")
+
+    # The 'thinking_budget' parameter is legacy in 3.0 (replaced by thinking_level='high'/'low'),
+    # but kept here to avoid contract breakage if code depends on this variable.
     GCP_GEMINI_THINKING_BUDGET: int = 32768
 
     WORKER_MAX_CONCURRENCY: int = 4

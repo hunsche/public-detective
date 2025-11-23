@@ -39,7 +39,7 @@ class AiProvider(Generic[PydanticModel]):
         self,
         output_schema: type[PydanticModel],
         no_ai_tools: bool = False,
-        thinking_level: types.ThinkingLevel = types.ThinkingLevel.HIGH,
+        thinking_level: types.ThinkingLevel | None = None,
     ):
         """Initialize the AiProvider.
 
@@ -56,7 +56,14 @@ class AiProvider(Generic[PydanticModel]):
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
         self.no_ai_tools = no_ai_tools
-        self.thinking_level = thinking_level
+
+        if thinking_level is None:
+            if self.config.GCP_GEMINI_THINKING_LEVEL.upper() == "LOW":
+                self.thinking_level = types.ThinkingLevel.LOW
+            else:
+                self.thinking_level = types.ThinkingLevel.HIGH
+        else:
+            self.thinking_level = thinking_level
 
         self.client = genai.Client(
             vertexai=True,

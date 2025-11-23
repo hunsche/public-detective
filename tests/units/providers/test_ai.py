@@ -458,6 +458,48 @@ def test_should_retry_without_tools_no_candidates(
     assert result is False
 
 
+def test_init_thinking_level_explicit(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test that explicit thinking_level in __init__ overrides config."""
+    _, _, _, _ = mock_ai_provider
+    provider = AiProvider(output_schema=MockOutputSchema, thinking_level=types.ThinkingLevel.LOW)
+    assert provider.thinking_level == types.ThinkingLevel.LOW
+
+
+def test_init_thinking_level_from_config_high(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test that thinking_level defaults to HIGH from config."""
+    _, _, mock_config, _ = mock_ai_provider
+    mock_config.GCP_GEMINI_THINKING_LEVEL = "HIGH"
+
+    provider = AiProvider(output_schema=MockOutputSchema)
+    assert provider.thinking_level == types.ThinkingLevel.HIGH
+
+
+def test_init_thinking_level_from_config_low(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test that thinking_level defaults to LOW from config."""
+    _, _, mock_config, _ = mock_ai_provider
+    mock_config.GCP_GEMINI_THINKING_LEVEL = "LOW"
+
+    provider = AiProvider(output_schema=MockOutputSchema)
+    assert provider.thinking_level == types.ThinkingLevel.LOW
+
+
+def test_init_thinking_level_from_config_default(
+    mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
+) -> None:
+    """Test that unknown config value defaults to HIGH."""
+    _, _, mock_config, _ = mock_ai_provider
+    mock_config.GCP_GEMINI_THINKING_LEVEL = "UNKNOWN"
+
+    provider = AiProvider(output_schema=MockOutputSchema)
+    assert provider.thinking_level == types.ThinkingLevel.HIGH
+
+
 def test_should_retry_without_tools_no_content(
     mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
 ) -> None:

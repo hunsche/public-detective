@@ -42,19 +42,12 @@ def worker_group() -> None:
     default=False,
     help="[Internal Testing] Use the direct Gemini API without tools.",
 )
-@click.option(
-    "--thinking-level",
-    type=click.Choice(["LOW", "HIGH"], case_sensitive=False),
-    default="HIGH",
-    help="[Internal Testing] Set the AI thinking level.",
-)
 def start(
     max_messages: int | None,
     timeout: int | None,
     max_output_tokens: str | None,
     gcs_path_prefix: str | None,
     no_ai_tools: bool,
-    thinking_level: str,
 ) -> None:
     """Initializes and runs the Pub/Sub subscription worker.
 
@@ -64,7 +57,6 @@ def start(
         max_output_tokens: Maximum number of output tokens for the AI model.
         gcs_path_prefix: Overwrites the base GCS path for uploads.
         no_ai_tools: Use the direct Gemini API without tools.
-        thinking_level: The thinking level (LOW or HIGH).
     """
     logger = LoggingProvider().get_logger()
     if max_messages is not None and timeout is None:
@@ -86,7 +78,6 @@ def start(
         subscription = Subscription(
             gcs_path_prefix=gcs_path_prefix,
             no_ai_tools=no_ai_tools,
-            thinking_level=thinking_level,
         )
         subscription.run(
             max_messages=max_messages,
