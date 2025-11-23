@@ -39,7 +39,6 @@ class AiProvider(Generic[PydanticModel]):
         self,
         output_schema: type[PydanticModel],
         no_ai_tools: bool = False,
-        thinking_level: types.ThinkingLevel = types.ThinkingLevel.HIGH,
     ):
         """Initialize the AiProvider.
 
@@ -49,14 +48,17 @@ class AiProvider(Generic[PydanticModel]):
             output_schema: The Pydantic model class that this provider instance
                            will use for all structured outputs.
             no_ai_tools: If True, the AI model will not use any tools.
-            thinking_level: The thinking level to use for the AI model.
         """
         self.logger = LoggingProvider().get_logger()
         self.config = ConfigProvider.get_config()
         self.output_schema = output_schema
         self.gcs_provider = GcsProvider()
         self.no_ai_tools = no_ai_tools
-        self.thinking_level = thinking_level
+
+        if self.config.GCP_GEMINI_THINKING_LEVEL.upper() == "LOW":
+            self.thinking_level = types.ThinkingLevel.LOW
+        else:
+            self.thinking_level = types.ThinkingLevel.HIGH
 
         self.client = genai.Client(
             vertexai=True,

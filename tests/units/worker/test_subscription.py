@@ -239,7 +239,7 @@ def test_message_callback_no_max_messages(subscription: Subscription, mock_messa
 @patch("public_detective.worker.subscription.StatusHistoryRepository")
 @patch("public_detective.worker.subscription.BudgetLedgerRepository")
 @patch("public_detective.worker.subscription.AnalysisService")
-def test_subscription_init_with_low_thinking_level(
+def test_subscription_init_ai_provider_args(
     mock_analysis_service: MagicMock,
     mock_budget_ledger_repo: MagicMock,
     mock_status_history_repo: MagicMock,
@@ -252,15 +252,13 @@ def test_subscription_init_with_low_thinking_level(
     mock_db_manager: MagicMock,
     mock_ai_provider: MagicMock,
 ) -> None:
-    """Tests that Subscription correctly initializes with LOW thinking level."""
-    from google.genai import types
+    """Tests that Subscription initializes AiProvider without explicit thinking level."""
+    _ = Subscription()
 
-    _ = Subscription(thinking_level="LOW")
-
-    # Verify AiProvider was called with LOW thinking level
+    # Verify AiProvider was called without thinking_level argument (relying on default/config)
     mock_ai_provider.assert_called_once()
     call_kwargs = mock_ai_provider.call_args[1]
-    assert call_kwargs["thinking_level"] == types.ThinkingLevel.LOW
+    assert "thinking_level" not in call_kwargs
 
 
 def test_process_message_with_processing_complete_event(mock_analysis_service: MagicMock) -> None:

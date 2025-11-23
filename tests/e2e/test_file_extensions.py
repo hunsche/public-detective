@@ -596,8 +596,8 @@ def test_file_extension_processing(
     # 7. Run the worker as a subprocess
     gcs_prefix = gcs_cleanup_manager.prefix
     worker_command = (
-        f"poetry run pd worker start --max-messages 1 --timeout 15 "
-        f"--gcs-path-prefix {gcs_prefix} --no-ai-tools --thinking-level LOW"
+        f"GCP_GEMINI_THINKING_LEVEL=LOW poetry run pd worker start --max-messages 1 --timeout 15 "
+        f"--gcs-path-prefix {gcs_prefix} --no-ai-tools"
     )
     run_command(worker_command)
 
