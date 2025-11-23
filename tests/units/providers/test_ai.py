@@ -568,6 +568,7 @@ def test_should_retry_without_tools_no_tool_call(
 
     assert result is False
 
+
 def test_get_structured_analysis_with_thoughts(
     mock_ai_provider: tuple[MagicMock, MagicMock, MagicMock, MagicMock],
 ) -> None:

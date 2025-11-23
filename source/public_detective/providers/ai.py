@@ -164,7 +164,7 @@ class AiProvider(Generic[PydanticModel]):
         thoughts = []
         if response.candidates and response.candidates[0].content and response.candidates[0].content.parts:
             for part in response.candidates[0].content.parts:
-                if getattr(part, "thought", False):
+                if getattr(part, "thought", False) and part.text:
                     thoughts.append(part.text)
 
         full_thoughts = "\n\n".join(thoughts) if thoughts else None
