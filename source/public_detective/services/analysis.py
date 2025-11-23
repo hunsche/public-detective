@@ -1362,10 +1362,12 @@ class AnalysisService:
         processed_procurements = []
         for city_code, allocation in city_allocations.items():
             processed_procurements.extend(
-                sorted(procurements_by_city[city_code], key=lambda x: x[1].priority_score, reverse=True)[:allocation]
+                sorted(procurements_by_city[city_code], key=lambda x: x[1].current_priority_score, reverse=True)[
+                    :allocation
+                ]
             )
 
-        processed_procurements.sort(key=lambda x: x[1].priority_score, reverse=True)
+        processed_procurements.sort(key=lambda x: x[1].current_priority_score, reverse=True)
 
         for analysis, procurement in processed_procurements:
             if remaining_budget <= 0:
@@ -1396,7 +1398,7 @@ class AnalysisService:
 
             self.logger.info(
                 f"Processing analysis {analysis.analysis_id} with "
-                f"priority score {procurement.priority_score} and "
+                f"priority score {procurement.current_priority_score} and "
                 f"estimated cost of {estimated_cost:.2f} BRL."
             )
             try:

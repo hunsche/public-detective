@@ -25,7 +25,7 @@ def _build_ranked_procurement(
 ) -> MagicMock:
     procurement = MagicMock(spec=Procurement)
     procurement.pncp_control_number = pncp_control_number
-    procurement.priority_score = priority_score
+    procurement.current_priority_score = priority_score
     procurement.temporal_score = temporal_score
     procurement.is_stable = is_stable
     procurement.entity_unit = MagicMock()
@@ -924,10 +924,10 @@ def test_pre_analyze_procurement_missing_uuid_raises(analysis_service: AnalysisS
     proc.dispute_method = "Online"
     proc.votes_count = 0
     proc.last_changed_at = None
-    proc.quality_score = None
-    proc.estimated_cost = None
-    proc.potential_impact_score = None
-    proc.priority_score = None
+    proc.current_quality_score = None
+    proc.current_estimated_cost = None
+    proc.current_potential_impact_score = None
+    proc.current_priority_score = None
     proc.is_stable = None
     proc.last_update_date = datetime.now(timezone.utc)
 
@@ -1309,12 +1309,12 @@ def test_run_ranked_analysis_max_messages(mock_run_specific: MagicMock, analysis
     analysis_service.analysis_repo.get_pending_analyses_ranked.return_value = [mock_analysis1, mock_analysis2]
 
     # Mock procurements with priority scores to allow sorting
-    mock_proc1 = MagicMock(spec=Procurement, priority_score=100, is_stable=True, pncp_control_number="PCN1")
+    mock_proc1 = MagicMock(spec=Procurement, current_priority_score=100, is_stable=True, pncp_control_number="PCN1")
     mock_proc1.temporal_score = 20
     mock_proc1.entity_unit = MagicMock()
     mock_proc1.entity_unit.ibge_code = "1001"
 
-    mock_proc2 = MagicMock(spec=Procurement, priority_score=90, is_stable=True, pncp_control_number="PCN2")
+    mock_proc2 = MagicMock(spec=Procurement, current_priority_score=90, is_stable=True, pncp_control_number="PCN2")
     mock_proc2.temporal_score = 20
     mock_proc2.entity_unit = MagicMock()
     mock_proc2.entity_unit.ibge_code = "1001"
