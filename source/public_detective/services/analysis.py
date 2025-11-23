@@ -818,6 +818,7 @@ class AnalysisService:
                 if procurement.proposal_closing_date
                 else "N/A"
             ),
+            "Data de Execução desta Análise (Hoje)": datetime.now().strftime("%d/%m/%Y"),
         }
         procurement_summary_str = json.dumps(procurement_summary, indent=2, ensure_ascii=False)
 

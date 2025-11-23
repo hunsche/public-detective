@@ -1125,6 +1125,7 @@ def test_build_analysis_prompt_complex_scenario(analysis_service: AnalysisServic
     assert "[IGNORADO] (AVISO: Arquivo excluído porque o limite de 8192 tokens foi excedido.)" in prompt
     assert "[IGNORADO] (AVISO: Falha ao converter o arquivo.)" in prompt
     assert "[IGNORADO] (AVISO: Arquivo de bloqueio temporário, ignorado pois não contém o documento real.)" in prompt
+    assert "Data de Execução desta Análise (Hoje)" in prompt
 
 
 def test_build_analysis_prompt_with_included_candidates(analysis_service: AnalysisService) -> None:
@@ -1155,6 +1156,7 @@ def test_build_analysis_prompt_with_included_candidates(analysis_service: Analys
     prompt = analysis_service._build_analysis_prompt(mock_procurement, [cand])
     assert "Fonte do Documento" in prompt
     assert "Arquivos extraídos desta fonte" in prompt
+    assert "Data de Execução desta Análise (Hoje)" in prompt
 
 
 @patch("public_detective.services.analysis.datetime")
