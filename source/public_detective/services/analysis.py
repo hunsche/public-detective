@@ -894,7 +894,7 @@ class AnalysisService:
 
         1. **Análise da Fase Interna e Competitividade:** Examine a conformidade do Termo de Referência/Edital, buscando direcionamentos (marca sem justificativa técnica) ou restrições indevidas à competitividade.
         2. **Análise da Pesquisa de Preços do Órgão:** Avalie a metodologia utilizada pelo órgão. Eles seguiram a hierarquia legal? A pesquisa foi ampla? Há indícios de simulação ou cotações viciadas?
-        3. **Auditoria de Economicidade (Verificação de Sobrepreço):** Etapa crítica. Utilize as ferramentas de busca (ex: Google Search) seguindo a metodologia abaixo.
+        3. **Auditoria de Economicidade (Verificação de Sobrepreço):** Etapa crítica. Utilize as ferramentas de busca (ex: Google Search) seguindo a metodologia abaixo. Inicie as buscas obrigatoriamente por termos como: "Painel de Preços [Objeto]", "Licitação Homologada [Objeto]", "Ata de Registro de Preços [Objeto]".
 
         ---
         #### METODOLOGIA DE ANÁLISE DE PREÇOS (OBRIGATÓRIA)
@@ -925,6 +925,7 @@ class AnalysisService:
         **III. REGRAS DE PREENCHIMENTO DA LISTA `sources` (CRÍTICO):**
             1. **Identificação da Fonte (ANTI-ALUCINAÇÃO):** Priorize o preenchimento do campo `name` com o nome da loja ou entidade (ex: "Kalunga", "Mercado Livre", "Painel de Preços"). As URLs de busca (Grounding) serão capturadas automaticamente pelo sistema e vinculadas à análise, portanto, concentre-se em identificar corretamente a origem do preço.
             2. **Quantidade de Fontes:**
+                *   Cite **todas** as fontes relevantes encontradas que sustentem o achado. Não se limite a 3 fontes se houver mais evidências disponíveis.
                 *   Se encontrar apenas **1 fonte válida** (e não for oficial), o `severity` DEVE ser rebaixado para **MODERADA** ou **LEVE**, pois a prova é frágil.
                 *   Para sustentar `severity` **GRAVE** ou **CRÍTICO** em sobrepreço, é OBRIGATÓRIO citar **3 fontes** ou 1 fonte oficial.
             3. **Data da Referência:** Se a data não for explícita na página, use a data atual da consulta. **JAMAIS invente datas passadas.** Se a data for antiga (> 6 meses), justifique explicitamente no `rationale` por que ela ainda é válida.
@@ -947,12 +948,12 @@ class AnalysisService:
         - `potential_savings` (opcional): Valor monetário estimado da economia potencial. No `auditor_reasoning`, você DEVE explicitar a fórmula usada com os valores EXATOS: "Considerando preço referência R$ X (média/menor), a economia é: (Preço Contratado - Preço Ref) * Quantidade = R$ Y".
         - `sources` (Obrigatório para SOBREPRECO/SUPERFATURAMENTO):
             - `name`: nome ou título da fonte.
-            - `type`: Classificação da fonte conforme hierarquia: "OFICIAL" (Tipo A), "TABELA" (Tipo B), "B2B" (Tipo C) ou "VAREJO" (Tipo D).
+            - `type`: Classificação da fonte conforme hierarquia: "OFICIAL", "TABELA", "B2B" ou "VAREJO".
             - `reference_price`: preço de referência por unidade (quando disponível).
             - `price_unit`: unidade do valor (ex.: “unidade”, “metro”).
             - `reference_date`: data em que o preço foi válido ou coletado.
             - `evidence`: Trecho literal da fonte que apoia a comparação.
-            - `rationale`: **(CRÍTICO)** Explicação detalhada da comparação. DEVE incluir: a hierarquia da fonte usada (A, B, C ou D), o preço unitário contratado, o preço de referência médio (da cesta), o cálculo da diferença percentual, a contextualização temporal e, se aplicável (Fonte D), o Fator de Desconto aplicado (mostre a conta: X * 0.80 = Y) e as Ressalvas ponderadas.
+            - `rationale`: **(CRÍTICO)** Explicação detalhada da comparação. DEVE incluir: o tipo da fonte usada (ex: Oficial, Varejo), o preço unitário contratado, o preço de referência médio (da cesta), o cálculo da diferença percentual, a contextualização temporal e, se aplicável (Fonte Varejo), o Fator de Desconto aplicado (mostre a conta: X * 0.80 = Y) e as Ressalvas ponderadas.
 
         **CLASSIFICAÇÃO DE SEVERIDADE (Calibrada para Rigor e Materialidade):**
         - **Leve:** Falhas formais sem impacto material, ou sobrepreço < 15% acima da Cesta de Preços Aceitável.
