@@ -628,7 +628,7 @@ class ProcurementsRepository:
         extracted = []
         with tempfile.TemporaryDirectory() as tmpdir:
             with io.BytesIO(content) as stream:
-                with py7zr.SevenZipFile(stream, mode="r") as archive:
+                with py7zr.SevenZipFile(stream, mode="r", mp=False) as archive:
                     archive.extractall(path=tmpdir)
 
             for root, _, files in os.walk(tmpdir):
