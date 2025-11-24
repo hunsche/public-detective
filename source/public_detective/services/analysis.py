@@ -1367,12 +1367,26 @@ class AnalysisService:
         }
 
         processed_procurements = []
+        selected_ids = set()
         for city_code, allocation in city_allocations.items():
-            processed_procurements.extend(
-                sorted(procurements_by_city[city_code], key=lambda x: x[1].current_priority_score, reverse=True)[
-                    :allocation
-                ]
-            )
+            candidates = sorted(procurements_by_city[city_code], key=lambda x: x[1].current_priority_score, reverse=True)[:allocation]
+            processed_procurements.extend(candidates)
+            for analysis, _ in candidates:
+                selected_ids.add(analysis.analysis_id)
+
+        # Backfill if we haven't reached max_messages due to rounding
+        if max_messages is not None and len(processed_procurements) < max_messages:
+            remaining_needed = max_messages - len(processed_procurements)
+            all_sorted = sorted(analyses_with_procurements, key=lambda x: x[1].current_priority_score, reverse=True)
+            added_count = 0
+            for item in all_sorted:
+                analysis, _ = item
+                if analysis.analysis_id not in selected_ids:
+                    processed_procurements.append(item)
+                    selected_ids.add(analysis.analysis_id)
+                    added_count += 1
+                    if added_count >= remaining_needed:
+                        break
 
         processed_procurements.sort(key=lambda x: x[1].current_priority_score, reverse=True)
 
