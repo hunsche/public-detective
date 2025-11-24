@@ -415,6 +415,162 @@ window.SHOWCASE_DATA = [
     "link_oficial": "https://pncp.gov.br/app/editais/13864377000130/2025/1693"
   },
   {
+    "analysis_id": "445d28d8-84e2-4524-b62b-0b3625f7a3d8",
+    "procurement_control_number": "10882594000165-1-000397/2025",
+    "procurement_summary": "Preg\u00e3o Eletr\u00f4nico para contrata\u00e7\u00e3o de servi\u00e7os especializados de apoio educacional (Psicopedagogia, Libras, Braile e Monitoria) para estudantes com necessidades espec\u00edficas (NEE) do IFSP Campus Caraguatatuba. O valor estimado \u00e9 de R$ 1.204.179,00 com vig\u00eancia de 12 meses, prorrog\u00e1vel. O regime \u00e9 de dedica\u00e7\u00e3o exclusiva de m\u00e3o de obra.",
+    "analysis_summary": "A auditoria apontou risco de sobrepre\u00e7o relevante nos custos unit\u00e1rios dos postos de Ledor e Tradutor de Libras, cujos valores estimados superam em mais de 40% refer\u00eancias de contratos similares do mesmo \u00f3rg\u00e3o em 2023, mesmo ap\u00f3s ajuste inflacion\u00e1rio. A metodologia de forma\u00e7\u00e3o de pre\u00e7os baseou-se em 'sal\u00e1rios de mercado' em vez de conven\u00e7\u00f5es coletivas, elevando a base salarial acima da m\u00e9dia regional. Tamb\u00e9m foram notadas cl\u00e1usulas com potencial restritivo \u00e0 competitividade.",
+    "risk_score": 68,
+    "risk_score_rationale": "A pontua\u00e7\u00e3o de risco 68 (Alto) reflete a identifica\u00e7\u00e3o de sobrepre\u00e7o potencial significativo (aproximadamente 30% do valor total) nos itens de Ledor/Braile e Int\u00e9rprete de Libras, quando comparados a contrata\u00e7\u00f5es recentes do pr\u00f3prio IFSP (Campus Hortol\u00e2ndia/2023). Adicionalmente, h\u00e1 restri\u00e7\u00f5es competitivas moderadas, como a exig\u00eancia de escrit\u00f3rio em raio de 200km e o agrupamento de fun\u00e7\u00f5es distintas em lote \u00fanico.",
+    "red_flags": [
+      {
+        "sources": [
+          {
+            "name": "Contrato IFSP Campus Hortol\u00e2ndia (2023)",
+            "type": "OFICIAL",
+            "evidence": "Audiodescritor, ledor e transcritor de Braille \u2013 40h semanais... Valor Unit\u00e1rio Mensal R$ 6.293,68",
+            "rationale": "O contrato de refer\u00eancia (2023) precificou o posto de 40h em R$ 6.293,68. Proporcionalmente para 20h, seria R$ 3.146,84. Adicionando ajuste inflacion\u00e1rio conservador de 10% para trazer a 2025 (IPCA), o pre\u00e7o de refer\u00eancia torna-se R$ 3.461,52. O pre\u00e7o do edital \u00e9 R$ 7.321,31, indicando sobrepre\u00e7o unit\u00e1rio de R$ 3.859,79 por posto.",
+            "price_unit": "Posto 20h (Ajustado)",
+            "reference_date": "2023-07-24 00:00:00+00:00",
+            "reference_price": "3460"
+          },
+          {
+            "name": "Portal Sal\u00e1rio (CAGED SP 2025)",
+            "type": "TABELA",
+            "evidence": "Um Int\u00e9rprete de Libras trabalhando no estado de S\u00e3o Paulo ganha em m\u00e9dia R$ 2.953,60 para uma jornada de trabalho de 29 horas semanais.",
+            "rationale": "O sal\u00e1rio base m\u00e9dio de mercado para TILSP (ajustado para 30h) \u00e9 aprox. R$ 3.055,00. O edital fixa sal\u00e1rio de R$ 3.679,53, cerca de 20% acima da m\u00e9dia, o que contribui para o custo global elevado, embora a maior discrep\u00e2ncia esteja nos encargos/lucro.",
+            "price_unit": "Sal\u00e1rio Base M\u00e9dio (30h)",
+            "reference_date": "2025-11-06 00:00:00+00:00",
+            "reference_price": "3055"
+          }
+        ],
+        "category": "SOBREPRECO",
+        "severity": "GRAVE",
+        "description": "Sobrepre\u00e7o unit\u00e1rio de aproximadamente 100% no posto de Ledor/Transcritor Braile (20h) e 40% no posto de Tradutor de Libras (30h) em compara\u00e7\u00e3o com refer\u00eancias internas do IFSP.",
+        "evidence_quote": "Ledor /Audiodescritor /Transcritor de Braile (20 horas semanais)... Valor Unit\u00e1rio Mensal R$ 7.321,31 ... Tradutor Int\u00e9rprete Libras - (30 horas semanais)... Valor Unit\u00e1rio Mensal R$ 8.167,89",
+        "auditor_reasoning": "Foram realizadas buscas por contrata\u00e7\u00f5es similares no \u00e2mbito do IFSP. Comparando-se com o Contrato do IFSP Hortol\u00e2ndia (2023), onde o posto de 40h para Ledor custava R$ 6.293,68, o valor de R$ 7.321,31 para apenas 20h em Caraguatatuba representa uma despropor\u00e7\u00e3o grave, implicando um custo equivalente de R$ 14.642,00 para 40h. Para Libras (30h), o valor de R$ 8.167,89 tamb\u00e9m excede a proporcionalidade do contrato paradigma (R$ 6.999,74 para 40h -> ~R$ 5.250 para 30h). Considerando infla\u00e7\u00e3o acumulada de 10%, o sobrepre\u00e7o persiste. A economia potencial global considera o ajuste aos pre\u00e7os de refer\u00eancia.",
+        "potential_savings": "359640"
+      },
+      {
+        "sources": null,
+        "category": "RESTRICAO_COMPETITIVIDADE",
+        "severity": "MODERADA",
+        "description": "Exig\u00eancia de instala\u00e7\u00e3o de escrit\u00f3rio f\u00edsico em raio limitado a 200km, sem justificativa t\u00e9cnica robusta para a limita\u00e7\u00e3o geogr\u00e1fica espec\u00edfica.",
+        "evidence_quote": "Considera-se imprescind\u00edvel... que o fornecedor possua ou venha a instalar escrit\u00f3rio... no munic\u00edpio de Caraguatatuba/SP ou em um raio de no m\u00e1ximo 200km",
+        "auditor_reasoning": "Embora a Lei 14.133/2021 (Art. 67, \u00a76\u00ba) permita exigir escrit\u00f3rio local para servi\u00e7os cont\u00ednuos, a limita\u00e7\u00e3o espec\u00edfica de 'raio de 200km' pode restringir injustificadamente a competi\u00e7\u00e3o, excluindo empresas sediadas em outras regi\u00f5es que poderiam instalar a base operacional apenas ap\u00f3s a adjudica\u00e7\u00e3o. A justificativa de 'atendimento \u00e1gil' poderia ser suprida por preposto local, sem necessidade de estrutura f\u00edsica pr\u00e9-definida nessa dist\u00e2ncia espec\u00edfica.",
+        "potential_savings": null
+      },
+      {
+        "sources": [
+          {
+            "name": "Portal Sal\u00e1rio (CAGED SP 2025)",
+            "type": "TABELA",
+            "evidence": "Hoje um Monitor Infantil ganha em m\u00e9dia R$ 1.978,05 para uma jornada de trabalho de 42 horas semanais",
+            "rationale": "Compara\u00e7\u00e3o do sal\u00e1rio base fixado no edital (R$ 2.591,89) com a m\u00e9dia de mercado para CBO correlato (3714-10), indicando que a estimativa da administra\u00e7\u00e3o est\u00e1 inflacionada em rela\u00e7\u00e3o ao mercado de trabalho local.",
+            "price_unit": "Sal\u00e1rio Mensal",
+            "reference_date": "2025-11-06 00:00:00+00:00",
+            "reference_price": "1978.049999999999954525264911353588104248046875"
+          }
+        ],
+        "category": "SOBREPRECO",
+        "severity": "MODERADA",
+        "description": "Custo do posto de Monitor de Inclus\u00e3o acima da m\u00e9dia de mercado para fun\u00e7\u00f5es de n\u00edvel m\u00e9dio.",
+        "evidence_quote": "Monitor de Inclus\u00e3o e Acessibilidade - 40 horas semanais... Valor Unit\u00e1rio Mensal R$ 6.845,95",
+        "auditor_reasoning": "O custo mensal de R$ 6.845,95 para um posto de n\u00edvel m\u00e9dio (Sal\u00e1rio base R$ 2.591,89) apresenta um multiplicador de 2,64, acima da m\u00e9dia usual de 2,2-2,4 para servi\u00e7os terceirizados. Comparado a fun\u00e7\u00f5es similares (Monitor Infantil/Recrea\u00e7\u00e3o), o sal\u00e1rio base est\u00e1 cerca de 30% acima da m\u00e9dia de mercado (R$ 1.978,00), elevando o custo total.",
+        "potential_savings": "48000"
+      }
+    ],
+    "total_cost": 1.323699009924391,
+    "analysis_date": "2025-11-24T11:00:56.011946+00:00",
+    "grounding_metadata": {
+      "sources": [
+        {
+          "title": "educamaisbrasil.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQH7KaXqpAF6YqFVJCNCIGmaFnJacbvoY0jCCn1dxc5zWoaCqmFYFs5_NnSg0hUyg7vA7mSqyi60038UrzAkgXUG2pps3FIjNbQg8gAgob9Oo_76gT6mPljusyj8aLvw930kMlNjYzdPsn2cw0ZICsC4qUcPiBTCNKLqxR4WiHd264vFqoaOQSJD75BJDtIaOVMPjp2OzwBnEm8hceUe5guE7pM=",
+          "resolved_url": "https://www.educamaisbrasil.com.br/cursos-e-faculdades/psicopedagogia/salario-de-psicopedagogo-carreira"
+        },
+        {
+          "title": "ifsp.edu.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEKwtkmzTFTkg-kP-qbTmnVL4azulnxHFGHnZq5vM4mZ5MPpSXm-ULdjWwc48n88Pu0zeXG6-71pc1djMLgHETmTJjIRWCB9OWKRUzYfsbCiV19feV4hjD03hSW5S-DR_UOc9wPpeBqS04Tyt6WrBzp9vEft_HVKhKdTBYQQjrHwIxhajAxbFUBaFDpVQIQ331ZU7E7mPAWmjTMhharcGSpSbYN-ZfyHvFLXSY3TCAoeLOOfWcvf2QRkzxptPPGt7TYs7hoCGNVihM23J_ZMlA=",
+          "resolved_url": "https://portalpadrao.ifsp.edu.br/cbt/index.php/projetos-de-ensino/78-instituicao/setores/diretoria-de-administracao/3738-licitacoes-anos-anteriores"
+        },
+        {
+          "title": "salario.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG8uwhf9TQFVHpLRtexuXf54BH-iq9JCJqFmYrj2Dom9fW7yD2MANlwMSjJVQuNwO8PgkInCHZJ6qxNxlWLNDTmh-Mmx8nKfKcyiBajOOXG8PQ3MSSR63oj5ezaXvTvsDi2Fq1VdRqypcE2OclF3Yx9g3zsi_qyOMA8DqGC9Lk=",
+          "resolved_url": "https://www.salario.com.br/profissao/professor-de-cegos-cbo-239225/"
+        },
+        {
+          "title": "querobolsa.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEsRk8bXP-fWdHlDJDnUKnzloA_6657EaZB1ZevaiihrzaGcwg1NbZrXq1rMOgE3N_Fu5xYEXdy-a0nbAzfUQl0iUbNBN5ZNqESkzxi3meZqWbpA9cyjv6sfmDPh_9J-amoWvtrViw4ho2BFCK-rZpFTh7IDCPsks-Ym7J5YoDIRvSreEx9vRTnf6uR_N7xTtMDTYxJyIzoqx63",
+          "resolved_url": "https://querobolsa.com.br/cursos-e-faculdades/psicopedagogia/quanto-ganha-psicopedagogo-salario"
+        },
+        {
+          "title": "salario.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQFnPdXmNoivlO9CjwLZX9bDULymfbu32i0HsuO-hsxIEkFYP4lYKsXRt22DSqXAVNfURt8YnSvJiNLjdQg9VKmKozvS7FiHsK8koG0AQZ_5zJPtTFwYbg803xeyHFAMcZJzz20YU7jOyp5rYOAD4VZnkztCmNz-_aw=",
+          "resolved_url": "https://www.salario.com.br/ocupacao/cargos/cbo-239225-cargos/"
+        },
+        {
+          "title": "ifsp.edu.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQG_kZVk1L2N8S_IttIGz5plX0EXUD2fAnF-Q1T7Y_40ji-RZIYKKaT4VicXQyzZKzym6Z0r1g-itAE_85XahJVRcihd3MY059s3feNWWYChcXxo0pCJ82EH9lSIAmFLFjG644hOvhao6uTrJ76Ci0IRgXZwJxdqfqluvRK8DWtKJQaXLaBsyqG-fBIz",
+          "resolved_url": "https://cbt.ifsp.edu.br/images/Edital_TR_Anexos_Rev03_Preg%C3%A3o_90105-2024.pdf"
+        },
+        {
+          "title": "ifsp.edu.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQF-9ACctDanuZnRQw4UrwBZRBz-veNG-r1j7Ij6RrsXFmmyxp80F4C94WUQ7QzIzvRg5nfHMR1Y8utIDhTUL_Mo48D26rDBMkUtP9pNxTcptPbIlM4ndGTILp3W-4UOtJXwhxitENV43rK8tR93ZZ0iqVNiLvkDxgj0glG1gufwNzn5x0uMGWr_mg==",
+          "resolved_url": "https://www.ifsp.edu.br/index.php/convenios-e-transferencias?layout=edit&id=12"
+        },
+        {
+          "title": "ifsp.edu.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQE9MOvoEf0HZJ_QpG-6QdKpPnsZ-o_JGq0rruGaR5XqJfPQidDrpObdVRnCul2C3vtxZPpwVGp0IkxVKFTYLVvoa9HIfjgLriwd6ZfEZMf-ohCWS1RkLRwpLqVX9Lx7T7Cy_5gQ2RG95kDe-WfUZLMRcWdjnxaHoJpRgU04vpM_-6iMVA3Gb1fMUuPd45q-UtMmGTuBEIiJzZM0WMH7yIxveWsr",
+          "resolved_url": "https://prc.ifsp.edu.br/images/CTI/2023/3528/01_-_Edital_de_Prego_e_seus_anexos_-_03528-202318052023.pdf"
+        },
+        {
+          "title": "pncp.gov.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGmre9SXNj0f09W3bU8kNbu6EUR8BE4CsNWcG844aYWSPBSpDRXIKS-2QetZNpRvdQ4MRwCVhinfp-uWm1IrTvmyS7EFxcNCbnnjosXpoPhfkd1bNoc654NiuHHYUdVwiNoRUqvK72p8mQ91siRiWZH0WgDiTjo0z_7KV_Kw9HjSn0HQ-gBRkMo5t0=",
+          "resolved_url": "https://pncp.gov.br/pncp-api/v1/orgaos/19038603000100/compras/2024/7/arquivos/1"
+        },
+        {
+          "title": "icom.app",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGa554-sOH-PNkgVGjotrqkGUzmQliY4KCBUd3ZemGscvNG3PexoyxWNXjgr75RABh8Um6XDGPOM1vqqC-kFAHU0mMeYErR3rTwudRBZ5AavMDZfIXWzfC6HUhMX3tNdhjaxKYvFx08mcPq4Ly5DgEpXWM=",
+          "resolved_url": "https://www.icom.app/quanto-custa-um-servico-de-libras/"
+        },
+        {
+          "title": "febrapils.org.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQElaNup0AC4Z0Q10Ni8zQa4iTokdQafHcQBVvp_JjKtnrLAQD-B5BjiozPyViVykPcwf1YpHxDDpySKTn7sGzaWS9ojeoqYn-Ux-MvKAwnqHJ2JrTlz1_53WMAIKiaVsoatB3cukwnvgoH4CO7V-k5oeS24-xdI",
+          "resolved_url": "https://febrapils.org.br/lista-de-referencia-de-honorarios/"
+        },
+        {
+          "title": "salario.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQEfkwaklRlMu7M5J4gDDn4UHmuphTrk9O8OM7Ztv4GYpLE6GJd9D2IPHafoawO7vSjGakgDEKy7EK4h72_ymb3Gh_xPouVtHPK0bG-1hQeyt-kmAsaAIHbkKlfSQRcNZhvqcsXRpaOCGw0Xe_3aumMjfjHGnqUGyqLdy05dmTlH",
+          "resolved_url": "https://www.salario.com.br/profissao/professor-de-braile-cbo-239225/"
+        },
+        {
+          "title": "ifal.edu.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGvn-Qj_G9HW_kBa-_wd90-jXDOpqAvzr0lWTDT0I9VXgGXaxWy0XpHl_3avNq_oKQk94MC3jQJni_2JcV36UoQPYg6E_ZrIJNBJ5-nOGGpYb7YLk8AB7sVcbdAkwpqiSrMJ3gQvGNffZJfqc1mUiqPzLmp0kWkuZGD4FHgsmsE8XdPKp-pW30qXmMZ3Ag29lrvy0YNYL4VwRXHaVjKHN_SFKRUyBa42qARXjdSv7ZJ6mhNRcEW9hC4PkskEDV76k9YKgBJXsyvtEfKPi5H6Aeoquse_tngreMdv6kjPJjfxA==",
+          "resolved_url": "https://sipac.ifal.edu.br/public/verArquivoDocumento?idArquivo=1639920&key=91f75b909d15622aa22c8850bbe2b0a9&idDocumento=1975861&downloadArquivo=true&publicPath=true"
+        }
+      ],
+      "search_queries": [
+        "contrato terceiriza\u00e7\u00e3o apoio educacional IFSP valor posto",
+        "sal\u00e1rio m\u00e9dio CBO 2392-25 Ledor Audiodescritor S\u00e3o Paulo",
+        "painel de pre\u00e7os contrata\u00e7\u00e3o int\u00e9rprete libras 30 horas mensais",
+        "sal\u00e1rio m\u00e9dio CBO 3714-10 Monitor de Inclus\u00e3o e Acessibilidade S\u00e3o Paulo",
+        "sal\u00e1rio m\u00e9dio CBO 2394-25 Psicopedagogo S\u00e3o Paulo 2024 2025",
+        "sal\u00e1rio m\u00e9dio CBO 2614-25 Tradutor Int\u00e9rprete de Libras S\u00e3o Paulo 2024"
+      ]
+    },
+    "municipio": "S\u00e3o Paulo",
+    "uf": "SP",
+    "orgao": "INSTITUTO FEDERAL DE EDUCACAO, CIENCIA E TECNOLOGIA DE SAO PAULO",
+    "valor_estimado": 1204179.0,
+    "data_publicacao": "2025-09-30T07:32:03",
+    "status_compra": "Divulgada no PNCP",
+    "modalidade": "Preg\u00e3o - Eletr\u00f4nico",
+    "cnpj": "10882594000165",
+    "ano_compra": "2025",
+    "sequencial_compra": "397",
+    "link_oficial": "https://pncp.gov.br/app/editais/10882594000165/2025/397"
+  },
+  {
     "analysis_id": "fe394a28-03c0-4903-b177-7a08e3d53443",
     "procurement_control_number": "13864377000130-1-001452/2025",
     "procurement_summary": "Aquisi\u00e7\u00e3o de 96 Camas Hospitalares Tipo Fawler El\u00e9tricas, por emenda parlamentar, para hospitais da Secretaria Municipal de Sa\u00fade de S\u00e3o Paulo. O certame \u00e9 um Preg\u00e3o Eletr\u00f4nico com valor total estimado de R$ 2.035.056,00 e crit\u00e9rio de julgamento por menor pre\u00e7o unit\u00e1rio.",
@@ -1645,6 +1801,80 @@ window.SHOWCASE_DATA = [
     "ano_compra": "2025",
     "sequencial_compra": "1693",
     "link_oficial": "https://pncp.gov.br/app/editais/13864377000130/2025/1693"
+  },
+  {
+    "analysis_id": "0168551e-88e3-4e01-ab10-df86fa3b3bd1",
+    "procurement_control_number": "10882594000165-1-000442/2025",
+    "procurement_summary": "Preg\u00e3o Eletr\u00f4nico para aquisi\u00e7\u00e3o parcelada de g\u00eaneros aliment\u00edcios (hortifrutis, estoc\u00e1veis, carnes e latic\u00ednios) para o IFSP Campus Barretos, com valor total estimado de R$ 2.798.328,60 e vig\u00eancia de 24 meses. O certame \u00e9 dividido em 3 lotes e exige entrega semanal parcelada.",
+    "analysis_summary": "A auditoria revelou que os pre\u00e7os dos itens de maior peso financeiro (carnes bovinas, arroz, feij\u00e3o e \u00f3leo) est\u00e3o competitivos e condizentes com o mercado atacadista de 2025. Identificou-se sobrepre\u00e7o unit\u00e1rio moderado apenas no item 'Alho a granel' e 'Leite em P\u00f3', por\u00e9m com baixa materialidade frente ao total licitado. A justificativa para o agrupamento em lotes e as exig\u00eancias de habilita\u00e7\u00e3o mostram-se adequadas \u00e0 complexidade log\u00edstica da entrega parcelada.",
+    "risk_score": 25,
+    "risk_score_rationale": "A licita\u00e7\u00e3o apresenta, em geral, pre\u00e7os alinhados ou inferiores ao mercado para os itens de maior materialidade (Curva A), como carnes, arroz e \u00f3leo, reduzindo drasticamente o risco de dano ao er\u00e1rio. A nota de risco 25 reflete apenas pontuais sobrepre\u00e7os unit\u00e1rios identificados em itens de menor impacto global (alho e leite em p\u00f3), caracterizando falhas de estimativa isoladas em um certame globalmente vantajoso.",
+    "red_flags": [
+      {
+        "sources": [
+          {
+            "name": "Fort Atacadista / Tenda Atacado / Mercado Livre",
+            "type": "VAREJO",
+            "evidence": "Ofertas de alho triturado/descascado e a granel em atacadistas variando de R$ 18,00 a R$ 45,00/kg. Leite em p\u00f3 400g cotado entre R$ 14,00 e R$ 18,00.",
+            "rationale": "O pre\u00e7o licitado do alho (R$ 59,67) supera at\u00e9 mesmo alho processado. Utilizou-se um pre\u00e7o de refer\u00eancia conservador de R$ 40,00/kg (Varejo R$ 50,00 * 0.80 desconto atacado). Para o leite em p\u00f3, refer\u00eancias de licita\u00e7\u00f5es recentes (ex: Prefeitura Contagem R$ 12,80 e SJB R$ 20,21) indicam que R$ 21,67 est\u00e1 no teto ou acima. Refer\u00eancia adotada para leite: R$ 16,00 (m\u00e9dia de mercado).",
+            "price_unit": "kg",
+            "reference_date": "2025-11-24 00:00:00+00:00",
+            "reference_price": "40.00"
+          }
+        ],
+        "category": "SOBREPRECO",
+        "severity": "MODERADA",
+        "description": "Ind\u00edcio de sobrepre\u00e7o unit\u00e1rio no Item 7 (Alho a granel) e Item 82 (Leite em p\u00f3), com valores acima das refer\u00eancias de mercado varejista/atacadista.",
+        "evidence_quote": "Item 7 Alho a granel ... Valor Unit\u00e1rio R$ 59,67 ... Item 82 Leite em p\u00f3 400g ... Valor Unit\u00e1rio R$ 21,67",
+        "auditor_reasoning": "Foram realizadas buscas em sites de varejo e atacado para o per\u00edodo de refer\u00eancia (2025). O pre\u00e7o do alho a granel (R$ 59,67/kg) encontra-se significativamente acima da m\u00e9dia de mercado, que oscila entre R$ 30,00 e R$ 45,00/kg mesmo em cen\u00e1rios inflacion\u00e1rios. Similarmente, o leite em p\u00f3 (400g) a R$ 21,67 projeta um custo de R$ 54,00/kg, superior a marcas premium. Apesar do percentual elevado (>30% no item), a severidade \u00e9 MODERADA pois o impacto financeiro global \u00e9 dilu\u00eddo pelos descontos nos itens de maior vulto (carnes). Considerando pre\u00e7o refer\u00eancia conservador de R$ 40,00 (alho) e R$ 16,00 (leite), a economia potencial global \u00e9: ((59,67 - 40,00) * 1000) + ((21,67 - 16,00) * 800) = R$ 24.206,00.",
+        "potential_savings": "24206.00"
+      },
+      {
+        "sources": null,
+        "category": "OUTROS",
+        "severity": "LEVE",
+        "description": "Poss\u00edvel superestimativa na propor\u00e7\u00e3o de quantitativos de condimentos (Alho) em rela\u00e7\u00e3o aos vegetais base (Cebola/Batata).",
+        "evidence_quote": "Item 7 Alho a granel: 1.000 Kg ... Item 13 Cebola: 4.000 Kg",
+        "auditor_reasoning": "A rela\u00e7\u00e3o de consumo de 1kg de alho para cada 4kg de cebola (25%) \u00e9 at\u00edpica para cozinhas industriais padr\u00e3o, onde a propor\u00e7\u00e3o usual gira em torno de 5% a 10%. O quantitativo de 1 tonelada de alho para 24 meses sugere um consumo de ~41kg/m\u00eas, o que \u00e9 alto, mas n\u00e3o imposs\u00edvel. O risco associado \u00e9 o 'Jogo de Planilha', onde o item com sobrepre\u00e7o unit\u00e1rio (alho) tem quantidade superestimada. Contudo, sem hist\u00f3rico de consumo real, mant\u00e9m-se como alerta leve para fiscaliza\u00e7\u00e3o contratual.",
+        "potential_savings": "0.00"
+      }
+    ],
+    "total_cost": 1.33898746352879,
+    "analysis_date": "2025-11-24T10:15:57.320719+00:00",
+    "grounding_metadata": {
+      "sources": [
+        {
+          "title": "sjb.rj.gov.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQGfZ9_oRZp8Wx8ZZSC7-Q5nnoGyZ2JIC40ROSwAdbJokDEpd4XghVL9lSq633rGnmHyZPqPkeTTIZKDmysUHtj_x8L7vRZa6OFtOqI8ubdjIFzzMATX73hjpF1ZxziBRnb-M0J87BiMBTFNCuC-lVct-Mok7HShsDgXZ2srJKgFOv04jvAV-tBhqCcI",
+          "resolved_url": "https://www.sjb.rj.gov.br/arquivos/diario_oficial/208_25_do_14_novembro-_208.pdf"
+        },
+        {
+          "title": "fortatacadista.com.br",
+          "original_url": "https://vertexaisearch.cloud.google.com/grounding-api-redirect/AUZIYQHGqHX5woHPA95H3-kjGX5YcBGWdGcvWemSf-jbH_0uBKAO1uvkQLgNu4EbRBmiKU0LXzBpnghtTGOxbh8JeKbpHgKgTbhZRLlom7VWgMpRG1yEOXPsdSCCsBduWeyj2HHCUtne_bnlSho-l6ETX36KVbugnB0z44R8Pt9gSEFCy6RyLTPp3l1AhSAB0GGJOJShjrZI8K0saz7eo-J3HOb-mmw-zrivD84SlltvJVA=",
+          "resolved_url": "https://www.fortatacadista.com.br/wp-content/uploads/2025/11/DF_Fort_Food-Service-Restaurante_24-a-30_NOV_25_DF.pdf"
+        }
+      ],
+      "search_queries": [
+        "pre\u00e7o leite em p\u00f3 integral 400g licita\u00e7\u00e3o 2025",
+        "pre\u00e7o arroz branco tipo 1 5kg atacado 2025",
+        "pre\u00e7o a\u00e7\u00facar refinado 1kg licita\u00e7\u00e3o 2025",
+        "pre\u00e7o caf\u00e9 em p\u00f3 500g atacado licita\u00e7\u00e3o 2025",
+        "pre\u00e7o \u00f3leo de soja 900ml atacado 2025",
+        "pre\u00e7o m\u00e9dio alho a granel kg licita\u00e7\u00e3o 2024 2025",
+        "pre\u00e7o carne bovina cox\u00e3o mole kg atacado 2025"
+      ]
+    },
+    "municipio": "S\u00e3o Paulo",
+    "uf": "SP",
+    "orgao": "INSTITUTO FEDERAL DE EDUCACAO, CIENCIA E TECNOLOGIA DE SAO PAULO",
+    "valor_estimado": 2798328.6,
+    "data_publicacao": "2025-10-14T07:04:01",
+    "status_compra": "Divulgada no PNCP",
+    "modalidade": "Preg\u00e3o - Eletr\u00f4nico",
+    "cnpj": "10882594000165",
+    "ano_compra": "2025",
+    "sequencial_compra": "442",
+    "link_oficial": "https://pncp.gov.br/app/editais/10882594000165/2025/442"
   },
   {
     "analysis_id": "f096e824-a5ee-471b-8a80-d2c7fd842b5d",
