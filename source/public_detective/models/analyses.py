@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RedFlagCategory(StrEnum):
@@ -82,6 +82,22 @@ class Source(BaseModel):
         ),
     )
 
+    @field_validator("reference_price", mode="before")
+    @classmethod
+    def parse_reference_price(cls, v: str | float | int | None) -> Decimal | None:
+        """Parses the reference price, handling 'N/A' and other non-numeric strings."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            v = v.strip()
+            if v.upper() in ("N/A", "NA", "NONE", "NENHUM", "NENHUMA"):
+                return None
+            try:
+                return Decimal(v)
+            except Exception:
+                return None
+        return Decimal(v)
+
 
 class RedFlag(BaseModel):
     """Represents a single red flag identified during an audit."""
@@ -125,6 +141,38 @@ class RedFlag(BaseModel):
         None,
         description="Estimated potential savings (unit difference * quantity) if the reference price were applied.",
     )
+
+    @field_validator("potential_savings", mode="before")
+    @classmethod
+    def parse_potential_savings(cls, v: str | float | int | None) -> Decimal | None:
+        """Parses the potential savings, handling currency symbols and text."""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            # Remove currency symbols, whitespace, and explanatory text
+            # Assuming the model might return something like "R$ 1.000,00 (approx)"
+            # We try to extract the first valid number.
+            import re
+
+            # Normalize decimal separator: replace comma with dot if it looks like a decimal
+            # Simple heuristic: remove non-numeric chars except dot and comma
+            cleaned_v = re.sub(r"[^\d.,]", "", v)
+
+            # Handle Brazilian format (1.000,00) -> 1000.00
+            if "," in cleaned_v and "." in cleaned_v:
+                if cleaned_v.find(".") < cleaned_v.find(","):
+                    # 1.000,00
+                    cleaned_v = cleaned_v.replace(".", "").replace(",", ".")
+            elif "," in cleaned_v:
+                # 1000,00 -> 1000.00
+                cleaned_v = cleaned_v.replace(",", ".")
+
+            try:
+                return Decimal(cleaned_v)
+            except Exception:
+                return None
+        return Decimal(v)
+
     sources: list[Source] | None = Field(
         None,
         description=(

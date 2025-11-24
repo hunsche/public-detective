@@ -261,6 +261,34 @@ class AnalysisRepository:
 
         return self._parse_row_to_model(row, columns)
 
+    def get_latest_analysis_with_files(self, procurement_control_number: str, version_number: int) -> UUID | None:
+        """Retrieves the ID of the latest analysis for a procurement version that has associated files.
+
+        Args:
+            procurement_control_number: The PNCP control number.
+            version_number: The specific version number to match.
+
+        Returns:
+            The UUID of the analysis with files, or None if not found.
+        """
+        sql = text(
+            """
+            SELECT pa.analysis_id
+            FROM procurement_analyses pa
+            JOIN procurement_source_documents psd ON pa.analysis_id = psd.analysis_id
+            JOIN file_records fr ON psd.id = fr.source_document_id
+            WHERE pa.procurement_control_number = :control_number
+              AND pa.version_number = :version_number
+            ORDER BY pa.created_at DESC
+            LIMIT 1;
+            """
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(
+                sql, {"control_number": procurement_control_number, "version_number": version_number}
+            ).scalar_one_or_none()
+        return cast(UUID | None, result)
+
     def create_pre_analysis_record(
         self,
         procurement_control_number: str,
@@ -515,7 +543,14 @@ class AnalysisRepository:
                         AND updated_at < NOW() - (INTERVAL '1 hour' * :timeout_hours)
                     )
                 )
-                AND retry_count < :max_retries;
+                AND retry_count < :max_retries
+                AND NOT EXISTS (
+                    SELECT 1
+                    FROM procurement_analyses pa2
+                    WHERE pa2.procurement_control_number = procurement_analyses.procurement_control_number
+                      AND pa2.version_number = procurement_analyses.version_number
+                      AND pa2.retry_count > procurement_analyses.retry_count
+                );
             """
         )
         params = {

@@ -327,16 +327,17 @@ class AnalysisService:
                 )
             file_records = self.file_record_repo.get_all_file_records_by_analysis_id(str(analysis_id))
             if not file_records:
-                self.logger.warning(
-                    f"No file records found for analysis {analysis_id}. Proceeding with analysis without documents."
-                )
+                error_msg = f"No file records found for analysis {analysis_id}. Cannot proceed with analysis."
+                self.logger.error(error_msg)
+                raise AnalysisError(error_msg)
 
             included_records = [rec for rec in file_records if rec.get("included_in_analysis")]
             if not included_records:
-                self.logger.warning(
-                    f"No files were selected for analysis for {control_number}. "
-                    f"Proceeding with analysis without documents."
+                error_msg = (
+                    f"No files were selected for analysis for {control_number}. " "Cannot proceed with analysis."
                 )
+                self.logger.error(error_msg)
+                raise AnalysisError(error_msg)
 
             files_for_ai_uris = [
                 uri
@@ -1456,7 +1457,9 @@ class AnalysisService:
                     self.logger.info(f"Resuming pre-analysis for stuck analysis {analysis.analysis_id}...")
                     try:
                         self._resume_pre_analysis(analysis)
-                        self.run_specific_analysis(analysis.analysis_id)
+                        # We do NOT run the analysis immediately here. We just finish the preparation
+                        # so it settles in PENDING_ANALYSIS state, ready to be picked up by the
+                        # 'rank' command according to budget and priority.
                         retried_count += 1
                     except Exception as e:
                         self.logger.error(
@@ -1477,9 +1480,9 @@ class AnalysisService:
                         search_cost,
                         total_cost,
                     ) = self.pricing_service.calculate_total_cost(
-                        analysis.input_tokens_used,
-                        analysis.output_tokens_used,
-                        analysis.thinking_tokens_used,
+                        analysis.input_tokens_used or 0,
+                        analysis.output_tokens_used or 0,
+                        analysis.thinking_tokens_used or 0,
                         modality=modality,
                         search_queries_count=analysis.search_queries_used or 0,
                     )
@@ -1487,9 +1490,9 @@ class AnalysisService:
                         procurement_control_number=analysis.procurement_control_number,
                         version_number=analysis.version_number,
                         document_hash=analysis.document_hash,
-                        input_tokens_used=analysis.input_tokens_used,
-                        output_tokens_used=analysis.output_tokens_used,
-                        thinking_tokens_used=analysis.thinking_tokens_used,
+                        input_tokens_used=analysis.input_tokens_used or 0,
+                        output_tokens_used=analysis.output_tokens_used or 0,
+                        thinking_tokens_used=analysis.thinking_tokens_used or 0,
                         input_cost=input_cost,
                         output_cost=output_cost,
                         thinking_cost=thinking_cost,
@@ -1499,12 +1502,145 @@ class AnalysisService:
                         retry_count=analysis.retry_count + 1,
                         analysis_prompt=analysis.analysis_prompt,
                     )
-                    self.run_specific_analysis(new_analysis_id)
+                    
+                    # Mark the old analysis as failed if it was stuck in progress
+                    if analysis.status == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value:
+                        self._update_status_with_history(
+                            analysis.analysis_id,
+                            ProcurementAnalysisStatus.ANALYSIS_FAILED,
+                            "Analysis timed out and was retried.",
+                        )
+
+                    self._copy_files_to_retry_analysis(
+                        analysis.analysis_id,
+                        new_analysis_id,
+                        analysis.procurement_control_number,
+                        analysis.version_number,
+                    )
+                    # Similar to the PENDING_TOKEN_CALCULATION case, we do NOT run the analysis immediately.
+                    # The retried analysis is saved with status PENDING_ANALYSIS.
+                    # It will be picked up by the next 'rank' command execution, ensuring all
+                    # executions respect the budget and priority logic.
                     retried_count += 1
 
             return retried_count
         except Exception as e:
             raise AnalysisError(f"An unexpected error occurred during retry analyses: {e}") from e
+
+    def _copy_files_to_retry_analysis(
+        self,
+        old_analysis_id: UUID,
+        new_analysis_id: UUID,
+        procurement_control_number: str,
+        version_number: int,
+    ) -> None:
+        """Copies source documents and file records to a new retry analysis.
+
+        Tries to copy from the immediate predecessor. If that fails (no files),
+        tries to copy from an ancestor of the SAME version. If that also fails,
+        it triggers a re-download of the files from the source.
+
+        Args:
+            old_analysis_id: The UUID of the original analysis.
+            new_analysis_id: The UUID of the new retry analysis.
+            procurement_control_number: The control number.
+            version_number: The version number.
+        """
+        self.logger.info(f"Ensuring files for analysis {new_analysis_id}...")
+
+        # 1. Try to get files from the immediate predecessor
+        old_source_docs = self.source_document_repo.get_source_documents_by_analysis_id(old_analysis_id)
+        old_files = self.file_record_repo.get_all_file_records_by_analysis_id(str(old_analysis_id))
+
+        if old_files:
+            # Copy logic (from predecessor)
+            self.logger.info(f"Copying {len(old_files)} file records to new analysis.")
+            files_by_source_doc = defaultdict(list)
+            for f in old_files:
+                files_by_source_doc[f["source_document_id"]].append(f)
+
+            for old_doc in old_source_docs:
+                new_doc_model = NewSourceDocument(
+                    analysis_id=new_analysis_id,
+                    synthetic_id=old_doc.synthetic_id,
+                    title=old_doc.title,
+                    publication_date=old_doc.publication_date,
+                    document_type_name=old_doc.document_type_name,
+                    url=old_doc.url,
+                    raw_metadata=old_doc.raw_metadata,
+                )
+                new_doc_id = self.source_document_repo.save_source_document(new_doc_model)
+
+                for old_file in files_by_source_doc.get(old_doc.id, []):
+                    prioritization_logic = old_file.get("prioritization_logic")
+                    if prioritization_logic and isinstance(prioritization_logic, str):
+                        try:
+                            prioritization_logic = PrioritizationLogic(prioritization_logic)
+                        except ValueError:
+                            prioritization_logic = PrioritizationLogic.NO_PRIORITY
+                    else:
+                        prioritization_logic = PrioritizationLogic.NO_PRIORITY
+
+                    exclusion_reason = old_file.get("exclusion_reason")
+                    if exclusion_reason and isinstance(exclusion_reason, str):
+                        try:
+                            exclusion_reason = ExclusionReason(exclusion_reason)
+                        except ValueError:
+                            exclusion_reason = None
+
+                    new_file_record = NewFileRecord(
+                        source_document_id=new_doc_id,
+                        file_name=old_file["file_name"],
+                        gcs_path=old_file["gcs_path"],
+                        extension=old_file["extension"],
+                        size_bytes=old_file["size_bytes"],
+                        nesting_level=old_file["nesting_level"],
+                        included_in_analysis=old_file["included_in_analysis"],
+                        exclusion_reason=exclusion_reason,
+                        prioritization_logic=prioritization_logic,
+                        prioritization_keyword=old_file.get("prioritization_keyword"),
+                        applied_token_limit=old_file.get("applied_token_limit"),
+                        prepared_content_gcs_uris=old_file.get("prepared_content_gcs_uris"),
+                        raw_document_metadata=old_file.get("raw_document_metadata"),
+                        inferred_extension=old_file.get("inferred_extension"),
+                        used_fallback_conversion=old_file.get("used_fallback_conversion", False),
+                    )
+                    self.file_record_repo.save_file_record(new_file_record)
+            return
+
+        # 2. Fallback: Re-download and process files
+        self.logger.warning(
+            f"No files found in previous analysis {old_analysis_id} for {procurement_control_number}. "
+            "Triggering full re-download and processing..."
+        )
+        procurement = self.procurement_repo.get_procurement_by_id_and_version(
+            procurement_control_number, version_number
+        )
+        if not procurement:
+            self.logger.error(f"Procurement {procurement_control_number} not found in DB. Cannot recover files.")
+            return
+
+        procurement_uuid = self.procurement_repo.get_procurement_uuid(procurement_control_number, version_number)
+        if not procurement_uuid:
+            self.logger.error(f"Procurement UUID not found for {procurement_control_number}. Cannot recover files.")
+            return
+
+        try:
+            # This re-downloads, converts, and saves everything for the new analysis ID
+            all_original_files = self.procurement_repo.process_procurement_documents(procurement)
+            all_candidates = self._prepare_ai_candidates(all_original_files)
+            source_docs_map = self._process_and_save_source_documents(new_analysis_id, all_candidates)
+            self._upload_and_save_initial_records(
+                procurement, procurement_uuid, new_analysis_id, all_candidates, source_docs_map
+            )
+
+            # Re-run selection to mark included files
+            final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
+            self._update_selected_file_records(final_candidates)
+            self.logger.info(f"Successfully recovered and saved files for analysis {new_analysis_id}.")
+
+        except Exception as e:
+            self.logger.error(f"Failed to re-download/process files for analysis {new_analysis_id}: {e}", exc_info=True)
 
     def _rebuild_candidates_from_db(self, analysis_id: UUID) -> list[AIFileCandidate]:
         """Rebuilds a list of AIFileCandidate objects from database records.
