@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detetive Público | Showcase</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+</head>
+<body>
+    <div class="app-container">
+        <header class="hero">
+            <div class="hero-content">
+                <div class="logo-badge">Detetive Público</div>
+                <h1>Auditoria de Licitações com IA</h1>
+                <p>Transparência, eficiência e combate a irregularidades em compras públicas.</p>
+            </div>
+            <div class="hero-stats">
+                <div class="stat-item">
+                    <span class="stat-value" id="total-analyses">0</span>
+                    <span class="stat-label">Análises Realizadas</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="high-risk-count">0</span>
+                    <span class="stat-label">Risco Crítico</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-value" id="total-savings">R$ 0</span>
+                    <span class="stat-label">Economia Potencial</span>
+                </div>
+            </div>
+        </header>
+
+        <main class="dashboard-grid" id="analyses-grid">
+            <!-- Cards will be injected here by JS -->
+        </main>
+    </div>
+
+    <!-- Analysis Detail Modal -->
+    <div class="modal-overlay" id="detail-modal">
+        <div class="modal-container">
+            <button class="modal-close" id="close-modal">&times;</button>
+            <div class="modal-content" id="modal-content">
+                <!-- Content injected by JS -->
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="close-modal-btn">Fechar</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="data.js"></script>
+    <script src="script.js"></script>
+</body>
+</html>
