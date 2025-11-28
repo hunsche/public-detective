@@ -84,19 +84,26 @@ class Source(BaseModel):
 
     @field_validator("reference_price", mode="before")
     @classmethod
-    def parse_reference_price(cls, v: str | float | int | None) -> Decimal | None:
-        """Parses the reference price, handling 'N/A' and other non-numeric strings."""
-        if v is None:
+    def parse_reference_price(cls, value: str | float | int | None) -> Decimal | None:
+        """Parses the reference price, handling 'N/A' and other non-numeric strings.
+
+        Args:
+            value: The value to parse.
+
+        Returns:
+            The parsed Decimal value or None.
+        """
+        if value is None:
             return None
-        if isinstance(v, str):
-            v = v.strip()
-            if v.upper() in ("N/A", "NA", "NONE", "NENHUM", "NENHUMA"):
+        if isinstance(value, str):
+            value = value.strip()
+            if value.upper() in ("N/A", "NA", "NONE", "NENHUM", "NENHUMA"):
                 return None
             try:
-                return Decimal(v)
+                return Decimal(value)
             except Exception:
                 return None
-        return Decimal(v)
+        return Decimal(value)
 
 
 class RedFlag(BaseModel):
@@ -144,29 +151,33 @@ class RedFlag(BaseModel):
 
     @field_validator("potential_savings", mode="before")
     @classmethod
-    def parse_potential_savings(cls, v: str | float | int | None) -> Decimal | None:
-        """Parses the potential savings, handling currency symbols and text."""
-        if v is None:
-            return None
-        if isinstance(v, str):
+    def parse_potential_savings(cls, value: str | float | int | None) -> Decimal | None:
+        """Parses the potential savings, handling currency symbols and text.
 
+        Args:
+            value: The value to parse.
+
+        Returns:
+            The parsed Decimal value or None.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
             import re
 
-            cleaned_v = re.sub(r"[^\d.,]", "", v)
+            cleaned_value = re.sub(r"[^\d.,]", "", value)
 
-            if "," in cleaned_v and "." in cleaned_v:
-                if cleaned_v.find(".") < cleaned_v.find(","):
-                    # 1.000,00
-                    cleaned_v = cleaned_v.replace(".", "").replace(",", ".")
-            elif "," in cleaned_v:
-                # 1000,00 -> 1000.00
-                cleaned_v = cleaned_v.replace(",", ".")
+            if "," in cleaned_value and "." in cleaned_value:
+                if cleaned_value.find(".") < cleaned_value.find(","):
+                    cleaned_value = cleaned_value.replace(".", "").replace(",", ".")
+            elif "," in cleaned_value:
+                cleaned_value = cleaned_value.replace(",", ".")
 
             try:
-                return Decimal(cleaned_v)
+                return Decimal(cleaned_value)
             except Exception:
                 return None
-        return Decimal(v)
+        return Decimal(value)
 
     sources: list[Source] | None = Field(
         None,
