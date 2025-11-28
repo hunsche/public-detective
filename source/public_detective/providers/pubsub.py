@@ -10,8 +10,6 @@ import threading
 from collections.abc import Callable
 from typing import cast
 
-from google.api_core.client_options import ClientOptions
-from google.auth.credentials import AnonymousCredentials
 from google.cloud.pubsub_v1 import PublisherClient, SubscriberClient
 from google.cloud.pubsub_v1.publisher.futures import Future
 from google.cloud.pubsub_v1.subscriber.futures import StreamingPullFuture

@@ -149,16 +149,11 @@ class RedFlag(BaseModel):
         if v is None:
             return None
         if isinstance(v, str):
-            # Remove currency symbols, whitespace, and explanatory text
-            # Assuming the model might return something like "R$ 1.000,00 (approx)"
-            # We try to extract the first valid number.
+
             import re
 
-            # Normalize decimal separator: replace comma with dot if it looks like a decimal
-            # Simple heuristic: remove non-numeric chars except dot and comma
             cleaned_v = re.sub(r"[^\d.,]", "", v)
 
-            # Handle Brazilian format (1.000,00) -> 1000.00
             if "," in cleaned_v and "." in cleaned_v:
                 if cleaned_v.find(".") < cleaned_v.find(","):
                     # 1.000,00

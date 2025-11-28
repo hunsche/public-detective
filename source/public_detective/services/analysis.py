@@ -1369,12 +1369,13 @@ class AnalysisService:
         processed_procurements = []
         selected_ids = set()
         for city_code, allocation in city_allocations.items():
-            candidates = sorted(procurements_by_city[city_code], key=lambda x: x[1].current_priority_score, reverse=True)[:allocation]
+            candidates = sorted(
+                procurements_by_city[city_code], key=lambda x: x[1].current_priority_score, reverse=True
+            )[:allocation]
             processed_procurements.extend(candidates)
             for analysis, _ in candidates:
                 selected_ids.add(analysis.analysis_id)
 
-        # Backfill if we haven't reached max_messages due to rounding
         if max_messages is not None and len(processed_procurements) < max_messages:
             remaining_needed = max_messages - len(processed_procurements)
             all_sorted = sorted(analyses_with_procurements, key=lambda x: x[1].current_priority_score, reverse=True)
@@ -1471,9 +1472,7 @@ class AnalysisService:
                     self.logger.info(f"Resuming pre-analysis for stuck analysis {analysis.analysis_id}...")
                     try:
                         self._resume_pre_analysis(analysis)
-                        # We do NOT run the analysis immediately here. We just finish the preparation
-                        # so it settles in PENDING_ANALYSIS state, ready to be picked up by the
-                        # 'rank' command according to budget and priority.
+
                         retried_count += 1
                     except Exception as e:
                         self.logger.error(
@@ -1516,8 +1515,7 @@ class AnalysisService:
                         retry_count=analysis.retry_count + 1,
                         analysis_prompt=analysis.analysis_prompt,
                     )
-                    
-                    # Mark the old analysis as failed if it was stuck in progress
+
                     if analysis.status == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value:
                         self._update_status_with_history(
                             analysis.analysis_id,
@@ -1531,10 +1529,7 @@ class AnalysisService:
                         analysis.procurement_control_number,
                         analysis.version_number,
                     )
-                    # Similar to the PENDING_TOKEN_CALCULATION case, we do NOT run the analysis immediately.
-                    # The retried analysis is saved with status PENDING_ANALYSIS.
-                    # It will be picked up by the next 'rank' command execution, ensuring all
-                    # executions respect the budget and priority logic.
+
                     retried_count += 1
 
             return retried_count
@@ -1562,16 +1557,15 @@ class AnalysisService:
         """
         self.logger.info(f"Ensuring files for analysis {new_analysis_id}...")
 
-        # 1. Try to get files from the immediate predecessor
         old_source_docs = self.source_document_repo.get_source_documents_by_analysis_id(old_analysis_id)
         old_files = self.file_record_repo.get_all_file_records_by_analysis_id(str(old_analysis_id))
 
         if old_files:
-            # Copy logic (from predecessor)
+
             self.logger.info(f"Copying {len(old_files)} file records to new analysis.")
             files_by_source_doc = defaultdict(list)
-            for f in old_files:
-                files_by_source_doc[f["source_document_id"]].append(f)
+            for old_file_record in old_files:
+                files_by_source_doc[old_file_record["source_document_id"]].append(old_file_record)
 
             for old_doc in old_source_docs:
                 new_doc_model = NewSourceDocument(
@@ -1622,7 +1616,6 @@ class AnalysisService:
                     self.file_record_repo.save_file_record(new_file_record)
             return
 
-        # 2. Fallback: Re-download and process files
         self.logger.warning(
             f"No files found in previous analysis {old_analysis_id} for {procurement_control_number}. "
             "Triggering full re-download and processing..."
@@ -1640,7 +1633,7 @@ class AnalysisService:
             return
 
         try:
-            # This re-downloads, converts, and saves everything for the new analysis ID
+
             all_original_files = self.procurement_repo.process_procurement_documents(procurement)
             all_candidates = self._prepare_ai_candidates(all_original_files)
             source_docs_map = self._process_and_save_source_documents(new_analysis_id, all_candidates)
@@ -1648,7 +1641,6 @@ class AnalysisService:
                 procurement, procurement_uuid, new_analysis_id, all_candidates, source_docs_map
             )
 
-            # Re-run selection to mark included files
             final_candidates = self._select_files_by_token_limit(all_candidates, procurement)
             self._update_selected_file_records(final_candidates)
             self.logger.info(f"Successfully recovered and saved files for analysis {new_analysis_id}.")
