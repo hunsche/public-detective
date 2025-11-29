@@ -8,7 +8,7 @@ The primary goal is to test the "glue" that holds different parts of the system 
 
 ## Test Architecture
 
-Integration tests validate the interactions *within* the application, using a mix of real services (in Docker) and mocks for external APIs to ensure stability and focus.
+Integration tests validate the interactions _within_ the application, using a mix of real services (in Docker) and mocks for external APIs to ensure stability and focus.
 
 ### Local (Emulated) Services
 

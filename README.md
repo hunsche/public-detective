@@ -7,12 +7,15 @@
 [![Python Version](https://img.shields.io/badge/python-3.12-blue.svg)](https://www.python.org/downloads/release/python-3120/)
 [![Poetry](https://img.shields.io/badge/poetry-managed-blue.svg)](https://python-poetry.org/)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![Prettier](https://img.shields.io/badge/code_style-prettier-ff69b4.svg)](https://github.com/prettier/prettier)
 [![pre-commit](https://img.shields.io/badge/pre--commit-enabled-brightgreen?logo=pre-commit&logoColor=white)](https://github.com/pre-commit/pre-commit)
 [![Mypy](https://img.shields.io/badge/mypy-checked-green.svg)](http://mypy-lang.org/)
 [![Flake8](https://img.shields.io/badge/flake8-checked-green.svg)](https://flake8.pycqa.org/en/latest/)
 [![Bandit](https://img.shields.io/badge/bandit-checked-green.svg)](https://github.com/PyCQA/bandit)
 [![isort](https://img.shields.io/badge/isort-checked-green.svg)](https://pycqa.github.io/isort/)
 [![Vulture](https://img.shields.io/badge/vulture-checked-green.svg)](https://github.com/jendrikseipp/vulture)
+[![DjLint](https://img.shields.io/badge/djlint-checked-green.svg)](https://github.com/djlint/djLint)
+[![Rustywind](https://img.shields.io/badge/rustywind-checked-green.svg)](https://github.com/avencera/rustywind)
 [![Alembic](https://img.shields.io/badge/Alembic-migrations-blue.svg)](https://alembic.sqlalchemy.org/)
 [![Click](https://img.shields.io/badge/Click-CLI-blue.svg)](https://click.palletsprojects.com/)
 
@@ -102,12 +105,11 @@ To get a local copy up and running, follow these simple steps.
 
 ### Prerequisites
 
--   Python 3.12
--   Poetry
--   Docker
--   LibreOffice Headless
--   ImageMagick
-
+- Python 3.12
+- Poetry
+- Docker
+- LibreOffice Headless
+- ImageMagick
 
 ### ⚙️ Installation
 
@@ -122,9 +124,11 @@ To get a local copy up and running, follow these simple steps.
     ```
 3.  **Set up environment variables:**
     Create a `.env` file from the example. This is primarily used to configure local emulators.
+
     ```sh
     cp .env.example .env
     ```
+
     Authentication with Google Cloud is handled automatically. See the
     [Authentication](#-authentication) section for more details.
 
@@ -144,21 +148,21 @@ This project uses the **Vertex AI** backend for the Google Gemini API and authen
 The application attempts to find credentials in the following order:
 
 1.  **`GOOGLE_APPLICATION_CREDENTIALS` Environment Variable:**
-    -   **Use Case:** This is the standard Google Cloud method to force the application to use a specific service account. It's useful for local development or CI/CD.
-    -   **To Use:** Set the environment variable to the **absolute path** of your service account's JSON key file.
-    -   **⭐ E2E Test Convention:** To make running E2E tests easier, this project uses the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable (defined in `.env.example`). You should paste the **full JSON content** of your key there. The test suite will automatically handle creating a temporary file and setting the `GOOGLE_APPLICATION_CREDENTIALS` path for you during the test run.
+    - **Use Case:** This is the standard Google Cloud method to force the application to use a specific service account. It's useful for local development or CI/CD.
+    - **To Use:** Set the environment variable to the **absolute path** of your service account's JSON key file.
+    - **⭐ E2E Test Convention:** To make running E2E tests easier, this project uses the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable (defined in `.env.example`). You should paste the **full JSON content** of your key there. The test suite will automatically handle creating a temporary file and setting the `GOOGLE_APPLICATION_CREDENTIALS` path for you during the test run.
 
 2.  **`gcloud` CLI Credentials (for Local Development):**
-    -   **Use Case:** The most common method for local development.
-    -   **To Use:** If the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable is not set, the application will use the credentials of the user logged into the `gcloud` CLI. To set this up, run:
-        ```sh
-        gcloud auth application-default login
-        ```
+    - **Use Case:** The most common method for local development.
+    - **To Use:** If the `GCP_SERVICE_ACCOUNT_CREDENTIALS` variable is not set, the application will use the credentials of the user logged into the `gcloud` CLI. To set this up, run:
+      ```sh
+      gcloud auth application-default login
+      ```
 
 3.  **Attached Service Account (Recommended for Production on GCP):**
-    -   **Use Case:** When running the application on Google Cloud infrastructure (e.g., Cloud Run, GKE, Compute Engine).
-    -   **How it Works:** The application automatically detects and uses the service account attached to the host resource. This is the most secure method for production as it eliminates the need to manage and store credential files.
-    -   **To Use:** Ensure the `GCP_SERVICE_ACCOUNT_CREDENTIALS` environment variable is **unset**, and the host's service account has the necessary IAM permissions (e.g., "Vertex AI User"). Also, ensure any emulator-specific environment variables (like `GCP_GEMINI_HOST`) are cleared so the application connects to the live Google Cloud APIs.
+    - **Use Case:** When running the application on Google Cloud infrastructure (e.g., Cloud Run, GKE, Compute Engine).
+    - **How it Works:** The application automatically detects and uses the service account attached to the host resource. This is the most secure method for production as it eliminates the need to manage and store credential files.
+    - **To Use:** Ensure the `GCP_SERVICE_ACCOUNT_CREDENTIALS` environment variable is **unset**, and the host's service account has the necessary IAM permissions (e.g., "Vertex AI User"). Also, ensure any emulator-specific environment variables (like `GCP_GEMINI_HOST`) are cleared so the application connects to the live Google Cloud APIs.
 
 ## 💻 How to Use
 
@@ -168,10 +172,10 @@ The application is controlled via a unified Command-Line Interface (CLI) accessi
 
 The CLI is organized into logical groups:
 
--   **`analysis`**: Commands for running the different stages of the procurement analysis pipeline.
--   **`config`**: Tools for managing the application's configuration.
--   **`db`**: Utilities for database management, including migrations.
--   **`worker`**: Commands to control the background worker responsible for processing analysis tasks.
+- **`analysis`**: Commands for running the different stages of the procurement analysis pipeline.
+- **`config`**: Tools for managing the application's configuration.
+- **`db`**: Utilities for database management, including migrations.
+- **`worker`**: Commands to control the background worker responsible for processing analysis tasks.
 
 To see all available commands, you can run:
 
@@ -183,97 +187,97 @@ pd --help
 
 This group contains the core logic for the analysis pipeline.
 
--   **`pd analysis prepare`**: Scans for new procurements within a given date range and prepares them for analysis.
+- **`pd analysis prepare`**: Scans for new procurements within a given date range and prepares them for analysis.
 
-    ```bash
-    # Prepare procurements from a specific date range
-    pd analysis prepare --start-date 2025-01-01 --end-date 2025-01-05
-    ```
+  ```bash
+  # Prepare procurements from a specific date range
+  pd analysis prepare --start-date 2025-01-01 --end-date 2025-01-05
+  ```
 
--   **`pd analysis run`**: Triggers a specific analysis by its ID.
+- **`pd analysis run`**: Triggers a specific analysis by its ID.
 
-    ```bash
-    # Run analysis for a specific ID
-    pd analysis run --analysis-id "a1b2c3d4-..."
-    ```
+  ```bash
+  # Run analysis for a specific ID
+  pd analysis run --analysis-id "a1b2c3d4-..."
+  ```
 
--   **`pd analysis rank`**: Ranks pending analyses based on a budget and triggers them.
+- **`pd analysis rank`**: Ranks pending analyses based on a budget and triggers them.
 
-    ```bash
-    # Trigger ranked analysis with a manual budget
-    pd analysis rank --budget 100.00
-    ```
+  ```bash
+  # Trigger ranked analysis with a manual budget
+  pd analysis rank --budget 100.00
+  ```
 
--   **`pd analysis retry`**: Retries failed or stale analyses.
+- **`pd analysis retry`**: Retries failed or stale analyses.
 
-    ```bash
-    # Retry analyses that have been stuck for 1 hour
-    pd analysis retry --timeout-hours 1
-    ```
+  ```bash
+  # Retry analyses that have been stuck for 1 hour
+  pd analysis retry --timeout-hours 1
+  ```
 
 ### `config` Group
 
 Manage your application's environment settings.
 
--   **`pd config list`**: Lists all configuration key-value pairs.
+- **`pd config list`**: Lists all configuration key-value pairs.
 
-    ```bash
-    # List all configurations
-    pd config list
+  ```bash
+  # List all configurations
+  pd config list
 
-    # Show secret values without masking
-    pd config list --show-secrets
-    ```
+  # Show secret values without masking
+  pd config list --show-secrets
+  ```
 
--   **`pd config get`**: Retrieves a specific configuration value.
+- **`pd config get`**: Retrieves a specific configuration value.
 
-    ```bash
-    # Get the value of a specific key
-    pd config get POSTGRES_USER
-    ```
+  ```bash
+  # Get the value of a specific key
+  pd config get POSTGRES_USER
+  ```
 
--   **`pd config set`**: Sets or unsets a configuration value.
+- **`pd config set`**: Sets or unsets a configuration value.
 
-    ```bash
-    # Set a new value
-    pd config set LOG_LEVEL "DEBUG"
+  ```bash
+  # Set a new value
+  pd config set LOG_LEVEL "DEBUG"
 
-    # Unset a value
-    pd config set LOG_LEVEL --unset
-    ```
+  # Unset a value
+  pd config set LOG_LEVEL --unset
+  ```
 
 ### `db` Group
 
 Handle database operations.
 
--   **`pd db migrate`**: Applies all pending database migrations.
+- **`pd db migrate`**: Applies all pending database migrations.
 
-    ```bash
-    pd db migrate
-    ```
+  ```bash
+  pd db migrate
+  ```
 
--   **`pd db downgrade`**: Reverts the last database migration.
+- **`pd db downgrade`**: Reverts the last database migration.
 
-    ```bash
-    pd db downgrade
-    ```
+  ```bash
+  pd db downgrade
+  ```
 
--   **`pd db reset`**: **(Destructive)** Resets the database to its initial state.
+- **`pd db reset`**: **(Destructive)** Resets the database to its initial state.
 
-    ```bash
-    pd db reset
-    ```
+  ```bash
+  pd db reset
+  ```
 
 ### `worker` Group
 
 Control the background worker.
 
--   **`pd worker start`**: Starts the worker to listen for and process analysis tasks from the queue.
+- **`pd worker start`**: Starts the worker to listen for and process analysis tasks from the queue.
 
-    ```bash
-    # Start the worker
-    pd worker start
-    ```
+  ```bash
+  # Start the worker
+  pd worker start
+  ```
 
 ## 🙌 Join the Mission!
 

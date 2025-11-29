@@ -30,17 +30,17 @@ To ensure the tests are independent, repeatable, and do not interfere with devel
 To run the E2E tests, the environment must be configured with credentials and resources that allow access to the real GCP services. The following environment variables are **mandatory**:
 
 1.  `GCP_SERVICE_ACCOUNT_CREDENTIALS`:
-    *   **Description:** The JSON content of a GCP service account key.
-    *   **Minimum Permissions:** The service account must have permissions to read and write to Google Cloud Storage (`Storage Object Admin`) and to invoke the Vertex AI API (`Vertex AI User`).
-    *   **How to configure:** Export the content of the JSON file to this environment variable.
+    - **Description:** The JSON content of a GCP service account key.
+    - **Minimum Permissions:** The service account must have permissions to read and write to Google Cloud Storage (`Storage Object Admin`) and to invoke the Vertex AI API (`Vertex AI User`).
+    - **How to configure:** Export the content of the JSON file to this environment variable.
 
 2.  `GCP_GCS_BUCKET_PROCUREMENTS`:
-    *   **Description:** The name of a real, existing bucket in Google Cloud Storage.
-    *   **Purpose:** This bucket will be used by the tests to store files and artifacts generated during the procurement analysis.
+    - **Description:** The name of a real, existing bucket in Google Cloud Storage.
+    - **Purpose:** This bucket will be used by the tests to store files and artifacts generated during the procurement analysis.
 
-3. `GCP_PROJECT`:
-    *   **Description:** The GCP project ID where the above resources (service account and bucket) are located.
-    *   **Purpose:** This is required for the GCP SDK to know which project to operate in.
+3.  `GCP_PROJECT`:
+    - **Description:** The GCP project ID where the above resources (service account and bucket) are located.
+    - **Purpose:** This is required for the GCP SDK to know which project to operate in.
 
 ## How to Run
 
@@ -50,5 +50,5 @@ With the local services running (`docker compose up -d`) and the environment var
 poetry run pytest -s -n auto tests/e2e/
 ```
 
-*   The `-s` flag is important to disable `pytest`'s output capturing, allowing you to see the application's logs in real-time, which is crucial for debugging and understanding the execution flow.
-*   The `-n auto` flag (provided by `pytest-xdist`) runs the tests in parallel, which can significantly speed up the execution time by utilizing multiple CPU cores.
+- The `-s` flag is important to disable `pytest`'s output capturing, allowing you to see the application's logs in real-time, which is crucial for debugging and understanding the execution flow.
+- The `-n auto` flag (provided by `pytest-xdist`) runs the tests in parallel, which can significantly speed up the execution time by utilizing multiple CPU cores.

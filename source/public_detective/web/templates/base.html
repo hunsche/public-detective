@@ -1,13 +1,23 @@
 <!DOCTYPE html>
 <html lang="pt-BR">
-<head>
+  <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Detetive Público{% endblock %}</title>
+    <meta name="description"
+          content="Detetive Público - Auditoria de Licitações com IA">
+    <meta name="keywords" content="licitações, auditoria, ia, compras públicas">
+    <title>
+      {% block title %}
+        Detetive Público
+      {% endblock title %}
+    </title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://unpkg.com/htmx.org@1.9.10"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap"
+          rel="stylesheet">
+    <link rel="icon"
+          type="image/svg+xml"
+          href="{{ url_for('static', path='logo.svg') }}">
     <script>
         tailwind.config = {
             theme: {
@@ -38,33 +48,43 @@
             @apply bg-primary text-slate-200 antialiased;
         }
     </style>
-    {% block extra_head %}{% endblock %}
-</head>
-<body class="min-h-screen flex flex-col">
-    <header class="border-b border-white/10 bg-primary/80 backdrop-blur-md sticky top-0 z-50">
-        <div class="container mx-auto px-4 h-[76px] flex items-center justify-between">
-            <a href="/" class="flex items-center gap-3 group">
-                <img src="/static/logo.svg" alt="Detetive Público Logo" class="w-14 h-14 transition-transform group-hover:scale-110">
-                <span class="font-heading font-bold text-xl tracking-tight text-white">Detetive <span class="text-accent">Público</span></span>
-            </a>
-            <nav>
-                <ul class="flex gap-6">
-                    <li><a href="/" class="hover:text-accent transition-colors">Início</a></li>
-                    <li><a href="/analyses" class="hover:text-accent transition-colors">Análises</a></li>
-                </ul>
-            </nav>
-        </div>
+    {% block extra_head %}
+    {% endblock extra_head %}
+  </head>
+  <body class="flex flex-col min-h-screen">
+    <header class="sticky top-0 z-50 border-b border-white/10 bg-primary/80 backdrop-blur-md">
+      <div class="container flex justify-between items-center px-4 mx-auto h-[76px]">
+        <a href="{{ url_for("home") }}" class="flex gap-3 items-center group">
+          <img src="{{ url_for('static', path='logo.svg') }}"
+               alt="Detetive Público Logo"
+               width="56"
+               height="56"
+               class="w-14 h-14 transition-transform group-hover:scale-110">
+          <span class="text-xl font-bold tracking-tight text-white font-heading">Detetive <span class="text-accent">Público</span></span>
+        </a>
+        <nav>
+          <ul class="flex gap-6">
+            <li>
+              <a href="{{ url_for("home") }}"
+                 class="transition-colors hover:text-accent">Início</a>
+            </li>
+            <li>
+              <a href="{{ url_for("analyses") }}"
+                 class="transition-colors hover:text-accent">Análises</a>
+            </li>
+          </ul>
+        </nav>
+      </div>
     </header>
-
-    <main class="flex-grow container mx-auto px-4 py-8">
-        {% block content %}{% endblock %}
+    <main class="container flex-grow py-8 px-4 mx-auto">
+      {% block content %}
+      {% endblock content %}
     </main>
-
-    <footer class="bg-secondary/30 border-t border-white/10 mt-auto">
-        <div class="container mx-auto px-4 py-8 text-center text-slate-400 text-sm">
-            <p>&copy; 2025 Detetive Público. Todos os direitos reservados.</p>
-            <p class="mt-2">Desenvolvido para transparência em compras públicas.</p>
-        </div>
+    <footer class="mt-auto border-t bg-secondary/30 border-white/10">
+      <div class="container py-8 px-4 mx-auto text-sm text-center text-slate-400">
+        <p>© 2025 Detetive Público. Todos os direitos reservados.</p>
+        <p class="mt-2">Desenvolvido para transparência em compras públicas.</p>
+      </div>
     </footer>
-</body>
+  </body>
 </html>

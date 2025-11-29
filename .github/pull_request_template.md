@@ -1,24 +1,23 @@
 ---
-name: 'Pull Request'
-about: 'Propose a new feature or bug fix'
-title: '[TYPE]: Brief description of your change'
-labels: ''
-assignees: ''
-
+name: "Pull Request"
+about: "Propose a new feature or bug fix"
+title: "[TYPE]: Brief description of your change"
+labels: ""
+assignees: ""
 ---
 
 ## 🚀 Description
 
 Please include a summary of the change and which issue it fixes. Please also include relevant motivation and context.
 
-*e.g. This change adds feature X to solve problem Y.*
+_e.g. This change adds feature X to solve problem Y._
 
 ## 🔗 Related Issues/Tasks
 
 - Closes #[Issue Number]
 - Related to #[Issue Number]
 
-*e.g. Closes #42*
+_e.g. Closes #42_
 
 ## 📝 Type of Change
 
@@ -48,18 +47,19 @@ Please check the boxes that apply.
 Please describe the tests that you ran to verify your changes. Provide instructions so we can reproduce. Please also list any relevant details for your test configuration.
 
 - **Test A:**
-  - *Command:* `command to run the test`
-  - *Assertion:* What you expected to happen.
+  - _Command:_ `command to run the test`
+  - _Assertion:_ What you expected to happen.
 
 - **Test B:**
-  - *Command:* `command to run the test`
-  - *Assertion:* What you expected to happen.
+  - _Command:_ `command to run the test`
+  - _Assertion:_ What you expected to happen.
 
 **Test Configuration:**
-* **Firmware Version:**
-* **Hardware:**
-* **Toolchain:**
-* **Dependencies:**
+
+- **Firmware Version:**
+- **Hardware:**
+- **Toolchain:**
+- **Dependencies:**
 
 ## 📷 Screenshots (if applicable)
 

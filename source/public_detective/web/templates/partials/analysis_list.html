@@ -1,97 +1,103 @@
 {% for analysis in analyses.results %}
-<div class="bg-secondary/30 border border-white/5 rounded-xl overflow-hidden hover:border-accent/30 transition-all hover:shadow-lg hover:shadow-accent/5 group flex flex-col h-full">
-    <div class="p-5 flex flex-col h-full">
-        <!-- Header: Score & Date -->
-        <div class="flex justify-between items-center mb-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold
-                {% if analysis.score > 70 %}bg-red-900/30 text-red-400 border border-red-800/50
-                {% elif analysis.score > 40 %}bg-yellow-900/30 text-yellow-400 border border-yellow-800/50
-                {% else %}bg-green-900/30 text-green-400 border border-green-800/50{% endif %}">
-                Risco: {{ analysis.score }}/100
+  <div class="flex overflow-hidden flex-col h-full rounded-xl border transition-all hover:shadow-lg bg-secondary/30 border-white/5 group hover:border-accent/30 hover:shadow-accent/5">
+    <div class="flex flex-col p-5 h-full">
+      <!-- Header: Score & Date -->
+      <div class="flex justify-between items-center mb-3">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if analysis.score > 70 %}bg-red-900/30 text-red-400 border border-red-800/50 {% elif analysis.score > 40 %}bg-yellow-900/30 text-yellow-400 border border-yellow-800/50 {% else %}bg-green-900/30 text-green-400 border border-green-800/50{% endif %}">
+          Risco: {{ analysis.score }}/100
+        </span>
+        <span class="text-xs text-slate-500">{{ analysis.created_at.strftime("%d/%m/%Y") }}</span>
+      </div>
+      <!-- Agency -->
+      <div class="mb-1">
+        <h4 class="text-xs font-bold tracking-wide uppercase text-slate-400 line-clamp-1"
+            title="{{ analysis.agency }}">{{ analysis.agency }}</h4>
+      </div>
+      <!-- Title / Control Number -->
+      <h3 class="mb-1 text-lg font-bold text-white transition-colors font-heading group-hover:text-accent">
+        {{ analysis.control_number }}
+      </h3>
+      <!-- Location -->
+      <div class="flex gap-1 items-center mb-3 text-xs text-slate-500">
+        <svg xmlns="http://www.w3.org/2000/svg"
+             width="12"
+             height="12"
+             viewBox="0 0 24 24"
+             fill="none"
+             stroke="currentColor"
+             stroke-width="2"
+             stroke-linecap="round"
+             stroke-linejoin="round">
+          <path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z" />
+          <circle cx="12" cy="10" r="3" />
+        </svg>
+        {{ analysis.location }}
+      </div>
+      <!-- Summary -->
+      <p class="flex-grow mb-4 text-sm leading-relaxed text-slate-400 line-clamp-3">{{ analysis.summary }}</p>
+      <!-- Footer: Savings & Link -->
+      <div class="flex justify-between items-center pt-3 mt-auto border-t border-white/5">
+        <div>
+          {% if analysis.savings %}
+            <span class="inline-flex gap-1 items-center py-1 px-2 text-xs font-medium text-green-400 rounded border bg-green-900/20 border-green-900/30">
+              Economia Potencial: {{ analysis.savings }}
             </span>
-            <span class="text-xs text-slate-500">{{ analysis.created_at.strftime('%d/%m/%Y') }}</span>
+          {% endif %}
         </div>
-
-        <!-- Agency -->
-        <div class="mb-1">
-            <h4 class="text-xs font-bold text-slate-400 uppercase tracking-wide line-clamp-1" title="{{ analysis.agency }}">
-                {{ analysis.agency }}
-            </h4>
-        </div>
-
-        <!-- Title / Control Number -->
-        <h3 class="text-lg font-bold font-heading text-white group-hover:text-accent transition-colors mb-1">
-            {{ analysis.control_number }}
-        </h3>
-
-        <!-- Location -->
-        <div class="flex items-center gap-1 text-xs text-slate-500 mb-3">
-            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
-            {{ analysis.location }}
-        </div>
-
-        <!-- Summary -->
-        <p class="text-slate-400 text-sm mb-4 line-clamp-3 leading-relaxed flex-grow">
-            {{ analysis.summary }}
-        </p>
-
-        <!-- Footer: Savings & Link -->
-        <div class="flex justify-between items-center mt-auto pt-3 border-t border-white/5">
-            <div>
-                {% if analysis.savings %}
-                <span class="inline-flex items-center gap-1 text-xs font-medium text-green-400 bg-green-900/20 px-2 py-1 rounded border border-green-900/30">
-                    Economia Potencial: {{ analysis.savings }}
-                </span>
-                {% endif %}
-            </div>
-
-            <a href="/analyses/{{ analysis.id }}" class="text-sm text-accent hover:text-accent/80 font-medium flex items-center gap-1 transition-colors">
-                Detalhes
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
-            </a>
-        </div>
+        <a href="{{ url_for('analysis_detail', id=analysis.id) }}"
+           class="flex gap-1 items-center text-sm font-medium transition-colors text-accent hover:text-accent/80">
+          Detalhes
+          <svg xmlns="http://www.w3.org/2000/svg"
+               width="16"
+               height="16"
+               viewBox="0 0 24 24"
+               fill="none"
+               stroke="currentColor"
+               stroke-width="2"
+               stroke-linecap="round"
+               stroke-linejoin="round">
+            <path d="M5 12h14" />
+            <path d="m12 5 7 7-7 7" />
+          </svg>
+        </a>
+      </div>
     </div>
-</div>
+  </div>
 {% else %}
-<div class="col-span-full text-center py-20 text-slate-500">
+  <div class="col-span-full py-20 text-center text-slate-500">
     <p>Nenhuma análise encontrada.</p>
-</div>
+  </div>
 {% endfor %}
-
 {% if analyses.pages > 1 %}
-<div class="col-span-full flex justify-center items-center gap-4 mt-8 pt-8 border-t border-white/5">
+  <div class="flex col-span-full gap-4 justify-center items-center pt-8 mt-8 border-t border-white/5">
     {% if analyses.has_prev %}
-    <button
-        hx-get="/analyses?page={{ analyses.page - 1 }}&q={{ q }}"
-        hx-target="#analysis-list"
-        hx-indicator=".htmx-indicator"
-        class="px-4 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-slate-300 hover:text-white transition-colors text-sm font-medium border border-white/10 hover:border-accent/30"
-    >
+      <button hx-get="/analyses?page={{ analyses.page - 1 }}&q={{ q }}"
+              hx-target="#analysis-list"
+              hx-indicator=".htmx-indicator"
+              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-secondary/50 text-slate-300 border-white/10 hover:bg-secondary hover:border-accent/30">
         Anterior
-    </button>
+      </button>
     {% else %}
-    <button disabled class="px-4 py-2 rounded-lg bg-secondary/20 text-slate-600 text-sm font-medium border border-white/5 cursor-not-allowed">
+      <button disabled
+              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-secondary/20 text-slate-600 border-white/5">
         Anterior
-    </button>
+      </button>
     {% endif %}
-
-    <span class="text-slate-400 text-sm font-medium">
-        Página <span class="text-white">{{ analyses.page }}</span> de <span class="text-white">{{ analyses.pages }}</span>
+    <span class="text-sm font-medium text-slate-400">
+      Página <span class="text-white">{{ analyses.page }}</span> de <span class="text-white">{{ analyses.pages }}</span>
     </span>
-
     {% if analyses.has_next %}
-    <button
-        hx-get="/analyses?page={{ analyses.page + 1 }}&q={{ q }}"
-        hx-target="#analysis-list"
-        hx-indicator=".htmx-indicator"
-        class="px-4 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-slate-300 hover:text-white transition-colors text-sm font-medium border border-white/10 hover:border-accent/30"
-    >
+      <button hx-get="/analyses?page={{ analyses.page + 1 }}&q={{ q }}"
+              hx-target="#analysis-list"
+              hx-indicator=".htmx-indicator"
+              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-secondary/50 text-slate-300 border-white/10 hover:bg-secondary hover:border-accent/30">
         Próxima
-    </button>
+      </button>
     {% else %}
-    <button disabled class="px-4 py-2 rounded-lg bg-secondary/20 text-slate-600 text-sm font-medium border border-white/5 cursor-not-allowed">
+      <button disabled
+              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-secondary/20 text-slate-600 border-white/5">
         Próxima
-    </button>
+      </button>
     {% endif %}
-</div>
+  </div>
 {% endif %}
