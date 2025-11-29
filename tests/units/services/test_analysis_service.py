@@ -485,9 +485,8 @@ def test_analyze_procurement_no_file_records(analysis_service: AnalysisService, 
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert (
-        f"No file records found for analysis {analysis_id}. Proceeding with analysis without documents." in caplog.text
-    )
+    analysis_service.analysis_repo.save_analysis.assert_called_once()
+    assert "No file records found" in caplog.text
 
 
 def test_analyze_procurement_no_included_files(analysis_service: AnalysisService, caplog: Any) -> None:
@@ -537,9 +536,8 @@ def test_analyze_procurement_no_included_files(analysis_service: AnalysisService
 
     analysis_service.analyze_procurement(mock_procurement, 1, analysis_id)
 
-    assert (
-        "No files were selected for analysis for PNCP-123. Proceeding with analysis without documents." in caplog.text
-    )
+    analysis_service.analysis_repo.save_analysis.assert_called_once()
+    assert "No files were selected" in caplog.text
 
 
 @patch("public_detective.services.analysis.AnalysisService._build_analysis_prompt")
@@ -1468,6 +1466,7 @@ def test_analyze_procurement_no_procurement_id(
 
     analysis_service.analyze_procurement(mock_procurement, 1, uuid.uuid4())
 
+    analysis_service.analysis_repo.save_analysis.assert_called_once()
     assert "Could not find procurement UUID" in caplog.text
     assert "Proceeding with analysis without documents" in caplog.text
 

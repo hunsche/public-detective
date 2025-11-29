@@ -327,17 +327,13 @@ class AnalysisService:
                 )
             file_records = self.file_record_repo.get_all_file_records_by_analysis_id(str(analysis_id))
             if not file_records:
-                error_msg = f"No file records found for analysis {analysis_id}. Cannot proceed with analysis."
-                self.logger.error(error_msg)
-                raise AnalysisError(error_msg)
+                self.logger.warning(f"No file records found for analysis {analysis_id}. Proceeding with metadata only.")
 
             included_records = [rec for rec in file_records if rec.get("included_in_analysis")]
-            if not included_records:
-                error_msg = (
-                    f"No files were selected for analysis for {control_number}. " "Cannot proceed with analysis."
+            if not included_records and file_records:
+                self.logger.warning(
+                    f"No files were selected for analysis for {control_number}. " "Proceeding with metadata only."
                 )
-                self.logger.error(error_msg)
-                raise AnalysisError(error_msg)
 
             files_for_ai_uris = [
                 uri
@@ -434,6 +430,8 @@ class AnalysisService:
 
             self.logger.info(f"Successfully completed analysis for {control_number}.")
 
+        except AnalysisError:
+            raise
         except ValueError as e:
             self.logger.error(
                 f"Analysis pipeline failed for {control_number} due to AI model error: {e}", exc_info=True

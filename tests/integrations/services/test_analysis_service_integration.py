@@ -550,19 +550,15 @@ def test_retry_analyses_resumes_stuck_pre_analysis(
     # Check analysis status in DB
     updated_analysis = service.analysis_repo.get_analysis_by_id(analysis_id)
     assert updated_analysis is not None
-    assert updated_analysis.status == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value
+    assert updated_analysis.status == ProcurementAnalysisStatus.PENDING_ANALYSIS.value
     assert updated_analysis.input_tokens_used == 1000
     assert updated_analysis.total_cost > 0
 
-    # Check if it was queued for analysis
-    service.pubsub_provider.publish.assert_called_once()
-    publish_args = service.pubsub_provider.publish.call_args[0]
-    message_data = json.loads(publish_args[1].decode())
-    assert message_data["analysis_id"] == str(analysis_id)
+    # Check if it was NOT queued for analysis (it waits for rank command)
+    service.pubsub_provider.publish.assert_not_called()
 
     # Check status history
     history = service.status_history_repo.get_history_by_analysis_id(analysis_id)
-    assert len(history) == 2  # PENDING_ANALYSIS, ANALYSIS_IN_PROGRESS
+    assert len(history) == 1  # PENDING_ANALYSIS
     assert history[0]["status"] == ProcurementAnalysisStatus.PENDING_ANALYSIS.value
-    assert history[1]["status"] == ProcurementAnalysisStatus.ANALYSIS_IN_PROGRESS.value
-    assert "resumed" in history[0]["details"] or "Triggering analysis" in history[1]["details"]
+    assert "resumed" in history[0]["details"]
