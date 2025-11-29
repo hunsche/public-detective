@@ -274,6 +274,7 @@ class AnalysisResult(BaseModel):
     version_number: int | None = None
     status: str | None = None
     retry_count: int | None = 0
+    created_at: datetime | None = None
     updated_at: datetime | None = None
     ai_analysis: Analysis
     document_hash: str | None = None
@@ -298,3 +299,4 @@ class AnalysisResult(BaseModel):
     cost_search_queries: Decimal | None = None
     search_queries_used: int | None = 0
     total_cost: Decimal | None = None
+    raw_data: dict | str | None = None

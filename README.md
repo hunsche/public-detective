@@ -19,8 +19,9 @@
 </div>
 
 <div align="center">
-  <img src="docs/logo.svg" alt="Public Detective Logo" width="400"/>
-  <h1>Public Detective</h1>
+<p align="center">
+  <img src="source/public_detective/web/static/logo.svg" alt="Detetive Público Logo" width="200"/>
+</p>  <h1>Public Detective</h1>
   <p style="font-family: 'Montserrat', 'Poppins', sans-serif; font-weight: 500; color: #39D6D6; font-size: 1.3em; margin-top: 0px;">Open Source Data Investigation</p>
 </div>
 
@@ -300,3 +301,13 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
   </tr>
 </table>
 </div>
+
+## Running the Web Interface
+
+To start the web interface, run the following command:
+
+```bash
+poetry run pd web serve --port 8000 --reload
+```
+
+This will start the server at `http://localhost:8000`.

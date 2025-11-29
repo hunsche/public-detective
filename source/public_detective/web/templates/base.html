@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Detetive Público{% endblock %}</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.10"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/svg+xml" href="/static/logo.svg">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                        heading: ['Outfit', 'sans-serif'],
+                    },
+                    colors: {
+                        primary: '#0f172a',
+                        secondary: '#1e293b',
+                        accent: '#3b82f6',
+                        success: '#10b981',
+                        warning: '#f59e0b',
+                        danger: '#ef4444',
+                    }
+                }
+            }
+        }
+    </script>
+    <style type="text/tailwindcss">
+        @layer utilities {
+            .glass-panel {
+                @apply bg-secondary/50 backdrop-blur-md border border-white/10 shadow-xl;
+            }
+        }
+        body {
+            @apply bg-primary text-slate-200 antialiased;
+        }
+    </style>
+    {% block extra_head %}{% endblock %}
+</head>
+<body class="min-h-screen flex flex-col">
+    <header class="border-b border-white/10 bg-primary/80 backdrop-blur-md sticky top-0 z-50">
+        <div class="container mx-auto px-4 h-[76px] flex items-center justify-between">
+            <a href="/" class="flex items-center gap-3 group">
+                <img src="/static/logo.svg" alt="Detetive Público Logo" class="w-14 h-14 transition-transform group-hover:scale-110">
+                <span class="font-heading font-bold text-xl tracking-tight text-white">Detetive <span class="text-accent">Público</span></span>
+            </a>
+            <nav>
+                <ul class="flex gap-6">
+                    <li><a href="/" class="hover:text-accent transition-colors">Início</a></li>
+                    <li><a href="/analyses" class="hover:text-accent transition-colors">Análises</a></li>
+                </ul>
+            </nav>
+        </div>
+    </header>
+
+    <main class="flex-grow container mx-auto px-4 py-8">
+        {% block content %}{% endblock %}
+    </main>
+
+    <footer class="bg-secondary/30 border-t border-white/10 mt-auto">
+        <div class="container mx-auto px-4 py-8 text-center text-slate-400 text-sm">
+            <p>&copy; 2025 Detetive Público. Todos os direitos reservados.</p>
+            <p class="mt-2">Desenvolvido para transparência em compras públicas.</p>
+        </div>
+    </footer>
+</body>
+</html>

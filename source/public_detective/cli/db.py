@@ -67,3 +67,37 @@ def reset() -> None:
     except subprocess.CalledProcessError as e:
         click.secho(f"An error occurred during reset: {e}", fg="red")
         raise click.Abort()
+
+
+@db_group.command("populate")
+def populate() -> None:
+    """Populates the database with the dump file."""
+    click.echo("Populating database...")
+    dump_file = "tests/fixtures/seed.sql"
+    
+    try:
+        with open(dump_file, "r") as f:
+            psql_process = subprocess.Popen(
+                [
+                    "docker", "compose", "exec", "-T", "postgres",
+                    "psql", "-U", "postgres", "-d", "public_detective"
+                ],
+                stdin=f,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+            )
+            stdout, stderr = psql_process.communicate()
+
+            if psql_process.returncode != 0:
+                click.secho(f"An error occurred during population: {stderr.decode()}", fg="red")
+                raise click.Abort()
+            
+            click.echo(stdout.decode())
+            click.secho("Database populated successfully!", fg="green")
+
+    except FileNotFoundError:
+        click.secho(f"Error: Dump file {dump_file} not found!", fg="red")
+        raise click.Abort()
+    except Exception as e:
+        click.secho(f"An unexpected error occurred: {e}", fg="red")
+        raise click.Abort()

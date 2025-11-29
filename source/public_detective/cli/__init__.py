@@ -5,6 +5,7 @@ from public_detective.cli.analysis import analysis_group
 from public_detective.cli.config import config_group
 from public_detective.cli.db import db_group
 from public_detective.cli.worker import worker_group
+from public_detective.cli.web import web_group
 from public_detective.providers.logging import LoggingProvider
 
 
@@ -75,5 +76,6 @@ def create_cli() -> click.Group:
     cli.add_command(worker_group)
     cli.add_command(db_group)
     cli.add_command(config_group)
+    cli.add_command(web_group)
 
     return cli
