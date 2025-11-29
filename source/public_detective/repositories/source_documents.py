@@ -89,3 +89,37 @@ class SourceDocumentsRepository:
             return []
 
         return [SourceDocument.model_validate(row) for row in result]
+
+    def get_source_documents_by_analysis_id(self, analysis_id: UUID) -> list[SourceDocument]:
+        """Retrieves all source documents associated with a specific analysis ID.
+
+        Args:
+            analysis_id: The UUID of the analysis.
+
+        Returns:
+            A list of `SourceDocument` objects.
+        """
+        sql = text(
+            """
+            SELECT
+                id,
+                analysis_id,
+                synthetic_id,
+                title,
+                publication_date,
+                document_type_name,
+                url,
+                raw_metadata,
+                created_at,
+                updated_at
+            FROM procurement_source_documents
+            WHERE analysis_id = :analysis_id
+        """
+        )
+        with self.engine.connect() as conn:
+            result = conn.execute(sql, {"analysis_id": analysis_id}).mappings().fetchall()
+
+        if not result:
+            return []
+
+        return [SourceDocument.model_validate(row) for row in result]

@@ -6,7 +6,7 @@ from enum import StrEnum
 from typing import Literal
 from uuid import UUID
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class RedFlagCategory(StrEnum):
@@ -82,6 +82,29 @@ class Source(BaseModel):
         ),
     )
 
+    @field_validator("reference_price", mode="before")
+    @classmethod
+    def parse_reference_price(cls, value: str | float | int | None) -> Decimal | None:
+        """Parses the reference price, handling 'N/A' and other non-numeric strings.
+
+        Args:
+            value: The value to parse.
+
+        Returns:
+            The parsed Decimal value or None.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = value.strip()
+            if value.upper() in ("N/A", "NA", "NONE", "NENHUM", "NENHUMA"):
+                return None
+            try:
+                return Decimal(value)
+            except Exception:
+                return None
+        return Decimal(value)
+
 
 class RedFlag(BaseModel):
     """Represents a single red flag identified during an audit."""
@@ -125,6 +148,37 @@ class RedFlag(BaseModel):
         None,
         description="Estimated potential savings (unit difference * quantity) if the reference price were applied.",
     )
+
+    @field_validator("potential_savings", mode="before")
+    @classmethod
+    def parse_potential_savings(cls, value: str | float | int | None) -> Decimal | None:
+        """Parses the potential savings, handling currency symbols and text.
+
+        Args:
+            value: The value to parse.
+
+        Returns:
+            The parsed Decimal value or None.
+        """
+        if value is None:
+            return None
+        if isinstance(value, str):
+            import re
+
+            cleaned_value = re.sub(r"[^\d.,]", "", value)
+
+            if "," in cleaned_value and "." in cleaned_value:
+                if cleaned_value.find(".") < cleaned_value.find(","):
+                    cleaned_value = cleaned_value.replace(".", "").replace(",", ".")
+            elif "," in cleaned_value:
+                cleaned_value = cleaned_value.replace(",", ".")
+
+            try:
+                return Decimal(cleaned_value)
+            except Exception:
+                return None
+        return Decimal(value)
+
     sources: list[Source] | None = Field(
         None,
         description=(

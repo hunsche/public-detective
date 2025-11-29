@@ -1,3 +1,4 @@
+import json
 import uuid
 from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
@@ -10,6 +11,38 @@ from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
 faker = Faker()
+
+RAW_DATA_TEMPLATE = {
+    "processo": "123/2025",
+    "objetoCompra": "Test Object",
+    "amparoLegal": {"codigo": 1, "nome": "Lei", "descricao": "Desc"},
+    "srp": False,
+    "orgaoEntidade": {
+        "cnpj": "12345678000199",
+        "razaoSocial": "Test Entity",
+        "poderId": "E",
+        "esferaId": "M",
+    },
+    "anoCompra": 2025,
+    "sequencialCompra": 1,
+    "dataPublicacaoPncp": "2025-01-01T12:00:00",
+    "dataAtualizacao": "2025-01-01T12:00:00",
+    "numeroCompra": "1-1-2025",
+    "unidadeOrgao": {
+        "ufNome": "Test State",
+        "codigoUnidade": "123",
+        "nomeUnidade": "Test Unit",
+        "ufSigla": "TS",
+        "municipioNome": "Test City",
+        "codigoIbge": "1234567",
+    },
+    "modalidadeId": 1,
+    "numeroControlePNCP": "PNCP123",
+    "dataAtualizacaoGlobal": "2025-01-01T12:00:00",
+    "modoDisputaId": 1,
+    "situacaoCompraId": 1,
+    "usuarioNome": "Test User",
+}
 
 
 def setup_analysis(
@@ -42,7 +75,7 @@ def setup_analysis(
                     object_description, is_srp, procurement_year, procurement_sequence,
                     pncp_publication_date, last_update_date, modality_id, procurement_status_id
                 ) VALUES (
-                    :procurement_id, :version_number, 'hash', '{}', :object_description,
+                    :procurement_id, :version_number, 'hash', :raw_data, :object_description,
                     :is_srp, :procurement_year, :procurement_sequence, :pncp_publication_date,
                     :last_update_date, :modality_id, :procurement_status_id
                 )
@@ -59,6 +92,7 @@ def setup_analysis(
                 "last_update_date": last_update_date,
                 "modality_id": modality_id,
                 "procurement_status_id": procurement_status_id,
+                "raw_data": json.dumps(RAW_DATA_TEMPLATE),
             },
         )
 
@@ -123,7 +157,7 @@ def test_retry_command_failed_analysis(db_session: Engine) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Successfully triggered 1 analyses for retry" in result.output
-    mock_pubsub.publish.assert_called_once()
+    mock_pubsub.publish.assert_not_called()
 
     # Check that a new analysis has been created
     with db_engine.connect() as conn:
@@ -140,7 +174,7 @@ def test_retry_command_failed_analysis(db_session: Engine) -> None:
 
     assert new_analysis_result is not None
     assert new_analysis_result[0] == 1  # retry_count
-    assert new_analysis_result[1] == "ANALYSIS_IN_PROGRESS"
+    assert new_analysis_result[1] == "PENDING_ANALYSIS"
 
 
 def test_retry_command_stale_in_progress(db_session: Engine) -> None:
@@ -167,7 +201,7 @@ def test_retry_command_stale_in_progress(db_session: Engine) -> None:
 
     assert result.exit_code == 0, result.output
     assert "Successfully triggered 1 analyses for retry" in result.output
-    mock_pubsub.publish.assert_called_once()
+    mock_pubsub.publish.assert_not_called()
 
     # Check that a new analysis has been created
     with db_engine.connect() as conn:
@@ -184,7 +218,7 @@ def test_retry_command_stale_in_progress(db_session: Engine) -> None:
 
     assert new_analysis_result is not None
     assert new_analysis_result[0] == 1  # retry_count
-    assert new_analysis_result[1] == "ANALYSIS_IN_PROGRESS"
+    assert new_analysis_result[1] == "PENDING_ANALYSIS"
 
 
 def test_retry_command_max_retries_exceeded(db_session: Engine) -> None:

@@ -65,12 +65,14 @@ class PubSubProvider:
         Returns:
             An instance of the specified GCP client class.
         """
-        class_name = client_class.__name__
+        class_name = str(client_class.__name__)
         self.logger.info(f"{class_name} not found in cache, creating a new instance...")
-        emulator_host = os.environ.get("PUBSUB_EMULATOR_HOST")
+        emulator_host = self.config.GCP_PUBSUB_HOST
 
         if emulator_host:
+            os.environ["PUBSUB_EMULATOR_HOST"] = emulator_host
             client_options = ClientOptions(api_endpoint=emulator_host)
+
             client = client_class(client_options=client_options)
             self.logger.info(f"{class_name} instance created for emulator at {emulator_host}")
         else:

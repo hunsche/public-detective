@@ -12,12 +12,19 @@ from public_detective.providers.pubsub import PubSubProvider
 def mock_config_provider() -> Generator[MagicMock, None, None]:
     with patch("public_detective.providers.config.ConfigProvider.get_config") as mock_get_config:
         mock_get_config.return_value.GCP_PROJECT = "test-project"
+        mock_get_config.return_value.GCP_PUBSUB_HOST = "localhost:8085"
         yield mock_get_config
 
 
 @pytest.fixture
 def pubsub_provider(mock_config_provider: MagicMock) -> PubSubProvider:
-    return PubSubProvider()
+    with patch("public_detective.providers.pubsub.LoggingProvider") as mock_logging_provider:
+        mock_logger = MagicMock()
+        mock_logging_provider.return_value.get_logger.return_value = mock_logger
+        provider = PubSubProvider()
+        # Ensure the logger is the mock we expect
+        provider.logger = mock_logger
+        return provider
 
 
 def test_create_client_instance_no_emulator(pubsub_provider: PubSubProvider) -> None:
@@ -26,9 +33,13 @@ def test_create_client_instance_no_emulator(pubsub_provider: PubSubProvider) -> 
     Args:
         pubsub_provider: The PubSubProvider instance.
     """
+    # Force set config to None for this test
+    pubsub_provider.config.GCP_PUBSUB_HOST = None
     with patch.dict(os.environ, {}, clear=True):
         with patch("google.cloud.pubsub_v1.PublisherClient") as mock_publisher:
             mock_publisher.__name__ = "PublisherClient"
+            # Ensure the mock behaves like a class when instantiated
+            mock_publisher.return_value = MagicMock()
             pubsub_provider._create_client_instance(mock_publisher)
             mock_publisher.assert_called_once_with()
 
@@ -40,10 +51,15 @@ def test_create_client_instance_with_emulator(pubsub_provider: PubSubProvider) -
         pubsub_provider: The PubSubProvider instance.
     """
     emulator_host = "localhost:8085"
+    # Force set config to emulator host for this test
+    pubsub_provider.config.GCP_PUBSUB_HOST = emulator_host
     with patch.dict(os.environ, {"PUBSUB_EMULATOR_HOST": emulator_host}, clear=True):
         with patch("google.cloud.pubsub_v1.PublisherClient") as mock_publisher:
             mock_publisher.__name__ = "PublisherClient"
+            # Ensure the mock behaves like a class when instantiated
+            mock_publisher.return_value = MagicMock()
             pubsub_provider._create_client_instance(mock_publisher)
+
             mock_publisher.assert_called_once()
             # Check that ClientOptions was called with the correct endpoint
             args, kwargs = mock_publisher.call_args
