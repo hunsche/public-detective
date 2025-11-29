@@ -74,24 +74,21 @@ def populate() -> None:
     """Populates the database with the dump file."""
     click.echo("Populating database...")
     dump_file = "tests/fixtures/seed.sql"
-    
+
     try:
-        with open(dump_file, "r") as f:
+        with open(dump_file) as f:
             psql_process = subprocess.Popen(
-                [
-                    "docker", "compose", "exec", "-T", "postgres",
-                    "psql", "-U", "postgres", "-d", "public_detective"
-                ],
+                ["docker", "compose", "exec", "-T", "postgres", "psql", "-U", "postgres", "-d", "public_detective"],
                 stdin=f,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
-            )
+            )  # nosec B603, B607
             stdout, stderr = psql_process.communicate()
 
             if psql_process.returncode != 0:
                 click.secho(f"An error occurred during population: {stderr.decode()}", fg="red")
                 raise click.Abort()
-            
+
             click.echo(stdout.decode())
             click.secho("Database populated successfully!", fg="green")
 

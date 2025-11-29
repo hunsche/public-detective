@@ -808,10 +808,18 @@ class AnalysisRepository:
 
         return dict(result._mapping)
 
-    def get_analysis_by_id(self, analysis_id: UUID) -> dict[str, Any] | None:
-        """Retrieves a single analysis by ID, including procurement details."""
-        sql = text("""
-            SELECT 
+    def get_analysis_details(self, analysis_id: UUID) -> dict[str, Any] | None:
+        """Retrieves a single analysis by ID, including procurement details.
+
+        Args:
+            analysis_id: The UUID of the analysis.
+
+        Returns:
+            A dictionary containing the analysis and procurement details, or None.
+        """
+        sql = text(
+            """
+            SELECT
                 pa.*,
                 p.total_estimated_value,
                 p.pncp_publication_date,
@@ -819,60 +827,85 @@ class AnalysisRepository:
                 p.procurement_status_id,
                 p.raw_data
             FROM procurement_analyses pa
-            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number AND pa.version_number = p.version_number
+            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number
+                AND pa.version_number = p.version_number
             WHERE pa.analysis_id = :analysis_id
-        """)
+        """
+        )
         with self.engine.connect() as conn:
             result = conn.execute(sql, {"analysis_id": analysis_id}).fetchone()
-            
+
         if not result:
             return None
-            
+
         return dict(result._mapping)
 
-
     def get_home_stats(self) -> dict[str, Any]:
-        """Retrieves statistics for the home page."""
+        """Retrieves statistics for the home page.
+
+        Returns:
+            A dictionary with total analyses, high risk count, and total savings.
+        """
         with self.engine.connect() as conn:
-            total_analyses = conn.execute(
-                text("SELECT COUNT(*) FROM procurement_analyses WHERE status = :status"),
-                {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}
-            ).scalar() or 0
-            
-            high_risk_count = conn.execute(
-                text("SELECT COUNT(*) FROM procurement_analyses WHERE status = :status AND risk_score > 70"),
-                {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}
-            ).scalar() or 0
-            total_savings = conn.execute(
-                text("""
+            total_analyses = (
+                conn.execute(
+                    text("SELECT COUNT(*) FROM procurement_analyses WHERE status = :status"),
+                    {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value},
+                ).scalar()
+                or 0
+            )
+
+            high_risk_count = (
+                conn.execute(
+                    text("SELECT COUNT(*) FROM procurement_analyses WHERE status = :status AND risk_score > 70"),
+                    {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value},
+                ).scalar()
+                or 0
+            )
+            total_savings = (
+                conn.execute(
+                    text(
+                        """
                     SELECT SUM((elem->>'potential_savings')::numeric)
                     FROM procurement_analyses pa,
                          jsonb_array_elements(pa.red_flags) elem
                     WHERE pa.status = :status
-                """),
-                {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}
-            ).scalar() or 0
-            
+                """
+                    ),
+                    {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value},
+                ).scalar()
+                or 0
+            )
+
             return {
                 "total_analyses": total_analyses,
                 "high_risk_count": high_risk_count,
-                "total_savings": total_savings
+                "total_savings": total_savings,
             }
 
     def get_recent_analyses_summary(self, page: int = 1, limit: int = 9) -> tuple[list[AnalysisResult], int]:
-        """Retrieves recent successful analyses with procurement details, paginated."""
+        """Retrieves recent successful analyses with procurement details, paginated.
+
+        Args:
+            page: The page number (1-based).
+            limit: The number of items per page.
+
+        Returns:
+            A tuple containing a list of AnalysisResult objects and the total count.
+        """
         offset = (page - 1) * limit
-        
-        # Count query
-        count_sql = text("""
-            SELECT COUNT(*) 
-            FROM procurement_analyses 
+
+        count_sql = text(
+            """
+            SELECT COUNT(*)
+            FROM procurement_analyses
             WHERE status = :status
-        """)
-        
-        # Data query
-        sql = text("""
-            SELECT 
+        """
+        )
+
+        sql = text(
+            """
+            SELECT
                 pa.*,
                 p.raw_data,
                 COALESCE((
@@ -880,46 +913,57 @@ class AnalysisRepository:
                     FROM jsonb_array_elements(pa.red_flags) elem
                 ), 0) as total_savings_calc
             FROM procurement_analyses pa
-            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number 
+            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number
                                 AND pa.version_number = p.version_number
-            WHERE pa.status = :status 
+            WHERE pa.status = :status
             ORDER BY pa.risk_score DESC NULLS LAST, total_savings_calc DESC
             LIMIT :limit OFFSET :offset
-        """)
-        
+        """
+        )
+
         with self.engine.connect() as conn:
-            total_count = conn.execute(count_sql, {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}).scalar()
-            result = conn.execute(sql, {
-                "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value, 
-                "limit": limit,
-                "offset": offset
-            }).fetchall()
-        
+            total_count = conn.execute(
+                count_sql, {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value}
+            ).scalar()
+            result = conn.execute(
+                sql, {"status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value, "limit": limit, "offset": offset}
+            ).fetchall()
+
         if not result:
             return [], total_count or 0
-            
+
         columns = list(result[0]._fields)
         return [res for row in result if (res := self._parse_row_to_model(tuple(row), columns))], total_count or 0
 
     def search_analyses_summary(self, query: str, page: int = 1, limit: int = 9) -> tuple[list[AnalysisResult], int]:
-        """Searches analyses by summary or control number, paginated."""
+        """Searches analyses by summary or control number, paginated.
+
+        Args:
+            query: The search query string.
+            page: The page number (1-based).
+            limit: The number of items per page.
+
+        Returns:
+            A tuple containing a list of AnalysisResult objects and the total count.
+        """
         offset = (page - 1) * limit
-        
-        # Count query
-        count_sql = text("""
+
+        count_sql = text(
+            """
             SELECT COUNT(*)
             FROM procurement_analyses pa
-            WHERE pa.status = :status 
+            WHERE pa.status = :status
             AND (
-                pa.procurement_summary ILIKE :q_summary 
+                pa.procurement_summary ILIKE :q_summary
                 OR pa.analysis_summary ILIKE :q_summary
                 OR pa.procurement_control_number ILIKE :q_control_number
             )
-        """)
-        
-        # Data query
-        sql = text("""
-            SELECT 
+        """
+        )
+
+        sql = text(
+            """
+            SELECT
                 pa.*,
                 p.raw_data,
                 COALESCE((
@@ -927,35 +971,39 @@ class AnalysisRepository:
                     FROM jsonb_array_elements(pa.red_flags) elem
                 ), 0) as total_savings_calc
             FROM procurement_analyses pa
-            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number 
+            JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number
                                 AND pa.version_number = p.version_number
-            WHERE pa.status = :status 
+            WHERE pa.status = :status
             AND (
                 procurement_summary ILIKE :q_summary
                 OR pa.procurement_control_number ILIKE :q_control_number
             )
             ORDER BY pa.risk_score DESC NULLS LAST, total_savings_calc DESC
             LIMIT :limit OFFSET :offset
-        """)
-        
+        """
+        )
+
         params = {
             "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
             "q_summary": f"%{query}%",
             "q_control_number": f"%{query}%",
             "limit": limit,
-            "offset": offset
+            "offset": offset,
         }
-        
+
         with self.engine.connect() as conn:
-            total_count = conn.execute(count_sql, {
-                "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
-                "q_summary": f"%{query}%",
-                "q_control_number": f"%{query}%"
-            }).scalar()
+            total_count = conn.execute(
+                count_sql,
+                {
+                    "status": ProcurementAnalysisStatus.ANALYSIS_SUCCESSFUL.value,
+                    "q_summary": f"%{query}%",
+                    "q_control_number": f"%{query}%",
+                },
+            ).scalar()
             result = conn.execute(sql, params).fetchall()
-            
+
         if not result:
             return [], total_count or 0
-            
+
         columns = list(result[0]._fields)
         return [res for row in result if (res := self._parse_row_to_model(tuple(row), columns))], total_count or 0

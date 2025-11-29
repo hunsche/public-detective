@@ -1,22 +1,30 @@
+"""Main web application entry point."""
+
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-from pathlib import Path
+from public_detective.web import pages
 
 app = FastAPI(title="Public Detective Showcase")
 
-# Mount static files
+
 static_path = Path(__file__).parent / "static"
 app.mount("/static", StaticFiles(directory=static_path), name="static")
 
-# Setup templates
+
 templates_path = Path(__file__).parent / "templates"
 templates = Jinja2Templates(directory=templates_path)
 
-# Import routers (will be added later)
-from public_detective.web import pages
 app.include_router(pages.router)
 
+
 @app.get("/health")
-async def health_check():
+async def health_check() -> dict[str, str]:
+    """Health check endpoint.
+
+    Returns:
+        Status dictionary.
+    """
     return {"status": "ok"}

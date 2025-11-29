@@ -3,7 +3,7 @@
     <div class="p-5 flex flex-col h-full">
         <!-- Header: Score & Date -->
         <div class="flex justify-between items-center mb-3">
-            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold 
+            <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold
                 {% if analysis.score > 70 %}bg-red-900/30 text-red-400 border border-red-800/50
                 {% elif analysis.score > 40 %}bg-yellow-900/30 text-yellow-400 border border-yellow-800/50
                 {% else %}bg-green-900/30 text-green-400 border border-green-800/50{% endif %}">
@@ -44,7 +44,7 @@
                 </span>
                 {% endif %}
             </div>
-            
+
             <a href="/analyses/{{ analysis.id }}" class="text-sm text-accent hover:text-accent/80 font-medium flex items-center gap-1 transition-colors">
                 Detalhes
                 <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
@@ -61,9 +61,9 @@
 {% if analyses.pages > 1 %}
 <div class="col-span-full flex justify-center items-center gap-4 mt-8 pt-8 border-t border-white/5">
     {% if analyses.has_prev %}
-    <button 
-        hx-get="/analyses?page={{ analyses.page - 1 }}&q={{ q }}" 
-        hx-target="#analysis-list" 
+    <button
+        hx-get="/analyses?page={{ analyses.page - 1 }}&q={{ q }}"
+        hx-target="#analysis-list"
         hx-indicator=".htmx-indicator"
         class="px-4 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-slate-300 hover:text-white transition-colors text-sm font-medium border border-white/10 hover:border-accent/30"
     >
@@ -80,9 +80,9 @@
     </span>
 
     {% if analyses.has_next %}
-    <button 
-        hx-get="/analyses?page={{ analyses.page + 1 }}&q={{ q }}" 
-        hx-target="#analysis-list" 
+    <button
+        hx-get="/analyses?page={{ analyses.page + 1 }}&q={{ q }}"
+        hx-target="#analysis-list"
         hx-indicator=".htmx-indicator"
         class="px-4 py-2 rounded-lg bg-secondary/50 hover:bg-secondary text-slate-300 hover:text-white transition-colors text-sm font-medium border border-white/10 hover:border-accent/30"
     >

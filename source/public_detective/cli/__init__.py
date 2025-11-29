@@ -4,8 +4,8 @@ import click
 from public_detective.cli.analysis import analysis_group
 from public_detective.cli.config import config_group
 from public_detective.cli.db import db_group
-from public_detective.cli.worker import worker_group
 from public_detective.cli.web import web_group
+from public_detective.cli.worker import worker_group
 from public_detective.providers.logging import LoggingProvider
 
 
