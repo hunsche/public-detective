@@ -129,3 +129,16 @@ tests/.tmp
 
 # Allow all test fixture samples despite global ignores
 !tests/fixtures/file_samples/*
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
+*.tfvars
+*.tfplan
+.terraform.lock.hcl
+
+# Terragrunt
+backend.tf
+provider.tf
+.terragrunt-cache/
