@@ -8,6 +8,31 @@ terraform {
   }
 }
 
+# Enable required services
+resource "google_project_service" "artifactregistry" {
+  project            = var.project_id
+  service            = "artifactregistry.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "iam" {
+  project            = var.project_id
+  service            = "iam.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "iamcredentials" {
+  project            = var.project_id
+  service            = "iamcredentials.googleapis.com"
+  disable_on_destroy = false
+}
+
+resource "google_project_service" "sts" {
+  project            = var.project_id
+  service            = "sts.googleapis.com"
+  disable_on_destroy = false
+}
+
 resource "google_artifact_registry_repository" "main" {
   location      = var.region
   repository_id = var.repository_id
@@ -17,12 +42,15 @@ resource "google_artifact_registry_repository" "main" {
   docker_config {
     immutable_tags = true
   }
+
+  depends_on = [google_project_service.artifactregistry]
 }
 
 # Service Account for GitHub Actions
 resource "google_service_account" "github_actions" {
   account_id   = "gh-actions-${var.repository_id}"
   display_name = "GitHub Actions Service Account for ${var.repository_id}"
+  depends_on   = [google_project_service.iam]
 }
 
 # Grant the Service Account permission to write to the Artifact Registry
@@ -39,6 +67,7 @@ resource "google_iam_workload_identity_pool" "github" {
   workload_identity_pool_id = "github-pool"
   display_name              = "GitHub Actions Pool"
   description               = "Identity pool for GitHub Actions"
+  depends_on                = [google_project_service.iam]
 }
 
 # Workload Identity Provider
