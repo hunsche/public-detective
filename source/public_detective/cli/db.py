@@ -10,7 +10,11 @@ from public_detective.providers.config import ConfigProvider
 @click.group("db")
 @click.option("--schema", default=None, help="The database schema to use.")
 def db_group(schema: str | None) -> None:
-    """Groups commands related to database management."""
+    """Groups commands related to database management.
+
+    Args:
+        schema: The database schema to use.
+    """
     if schema:
         os.environ["POSTGRES_DB_SCHEMA"] = schema
 
@@ -18,7 +22,11 @@ def db_group(schema: str | None) -> None:
 @db_group.command("migrate")
 @click.option("--schema", default=None, help="The database schema to use.")
 def migrate(schema: str | None) -> None:
-    """Runs database migrations to the latest version."""
+    """Runs database migrations to the latest version.
+
+    Args:
+        schema: The database schema to use.
+    """
     if schema:
         os.environ["POSTGRES_DB_SCHEMA"] = schema
 
@@ -38,10 +46,16 @@ def migrate(schema: str | None) -> None:
 @click.option("--schema", default=None, help="The database schema to use.")
 @click.option("--yes", "-y", is_flag=True, help="Skip confirmation prompt.")
 def downgrade(schema: str | None, yes: bool) -> None:
-    """Downgrades the database to the previous version."""
+    """Downgrades the database to the previous version.
+
+    Args:
+        schema: The database schema to use.
+        yes: Skip confirmation prompt.
+    """
     if not yes:
         click.confirm(
-            "Warning: This is a destructive operation that may result in data loss (tables will be dropped). Are you sure you want to continue?",
+            "Warning: This is a destructive operation that may result in data loss "
+            "(tables will be dropped). Are you sure you want to continue?",
             abort=True,
         )
 
@@ -67,6 +81,10 @@ def reset(schema: str | None, yes: bool) -> None:
     """Resets the database by downgrading all migrations and then upgrading to the latest.
 
     Warning: This is a destructive operation and will result in data loss.
+
+    Args:
+        schema: The database schema to use.
+        yes: Skip confirmation prompt.
     """
     if not yes:
         click.confirm(
@@ -96,7 +114,11 @@ def reset(schema: str | None, yes: bool) -> None:
 @db_group.command("populate")
 @click.option("--schema", default=None, help="The database schema to use.")
 def populate(schema: str | None) -> None:
-    """Populates the database with the dump file."""
+    """Populates the database with the dump file.
+
+    Args:
+        schema: The database schema to use.
+    """
     if schema:
         os.environ["POSTGRES_DB_SCHEMA"] = schema
 
@@ -140,7 +162,7 @@ def populate(schema: str | None) -> None:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=env,
-        )
+        )  # nosec B603, B607
         stdout, stderr = psql_process.communicate(input=input_content.encode("utf-8"))
 
         if stderr:

@@ -1,5 +1,6 @@
 """Unit tests for presentation service."""
 
+from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -8,26 +9,26 @@ from public_detective.web.presentation import PresentationService
 
 
 @pytest.fixture
-def mock_repo():
+def mock_repo() -> Any:
     """Mock the analysis repository."""
     with patch("public_detective.web.presentation.AnalysisRepository") as mock:
         yield mock.return_value
 
 
 @pytest.fixture
-def mock_db_manager():
+def mock_db_manager() -> Any:
     """Mock the database manager."""
     with patch("public_detective.web.presentation.DatabaseManager") as mock:
         yield mock
 
 
 @pytest.fixture
-def service(mock_repo, mock_db_manager):
+def service(mock_repo: Any, mock_db_manager: Any) -> PresentationService:
     """Create a presentation service instance."""
     return PresentationService()
 
 
-def test_get_home_stats(service, mock_repo):
+def test_get_home_stats(service: PresentationService, mock_repo: Any) -> None:
     """Test getting home stats."""
     mock_repo.get_home_stats.return_value = {
         "total_analyses": 10,
@@ -40,7 +41,7 @@ def test_get_home_stats(service, mock_repo):
     assert stats["total_red_flags"] == 5
 
 
-def test_get_recent_analyses(service, mock_repo):
+def test_get_recent_analyses(service: PresentationService, mock_repo: Any) -> None:
     """Test getting recent analyses."""
     mock_analysis = MagicMock(spec=AnalysisResult)
     mock_analysis.analysis_id = "123"
@@ -61,7 +62,7 @@ def test_get_recent_analyses(service, mock_repo):
     assert result["results"][0]["id"] == "123"
 
 
-def test_search_analyses(service, mock_repo):
+def test_search_analyses(service: PresentationService, mock_repo: Any) -> None:
     """Test searching analyses."""
     mock_analysis = MagicMock(spec=AnalysisResult)
     mock_analysis.analysis_id = "123"
@@ -82,7 +83,7 @@ def test_search_analyses(service, mock_repo):
     assert result["results"][0]["id"] == "123"
 
 
-def test_get_analysis_details(service, mock_repo):
+def test_get_analysis_details(service: PresentationService, mock_repo: Any) -> None:
     """Test getting analysis details."""
     mock_repo.get_analysis_details.return_value = {
         "analysis_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -109,18 +110,37 @@ def test_get_analysis_details(service, mock_repo):
     assert result["estimated_value"] == "R$ 1.000,00"
 
 
-def test_get_analysis_details_not_found(service, mock_repo):
+def test_get_analysis_details_not_found(service: PresentationService, mock_repo: Any) -> None:
     """Test getting analysis details when not found."""
     mock_repo.get_analysis_details.return_value = None
     result = service.get_analysis_details("123e4567-e89b-12d3-a456-426614174000")
     assert result is None
 
 
-def test_get_analysis_details_invalid_uuid(service):
+def test_get_analysis_details_invalid_uuid(service: PresentationService) -> None:
     """Test getting analysis details with invalid UUID."""
+    result = service.get_analysis_details("invalid-uuid")
+    assert result is None
 
 
-def test_get_analysis_details_complex(service, mock_repo):
+def test_format_currency_none(service: PresentationService) -> None:
+    """Test formatting currency with None."""
+    assert service._format_currency(None) == "N/A"
+
+
+def test_get_analysis_details_with_status_name(service: PresentationService, mock_repo: Any) -> None:
+    """Test getting analysis details where status name is provided."""
+    mock_repo.get_analysis_details.return_value = {
+        "analysis_id": "123e4567-e89b-12d3-a456-426614174000",
+        "procurement_control_number": "123456",
+        "risk_score": 80,
+        "raw_data": '{"situacaoCompraNome": "Custom Status"}',
+    }
+    result = service.get_analysis_details("123e4567-e89b-12d3-a456-426614174000")
+    assert result["status"] == "Custom Status"
+
+
+def test_get_analysis_details_complex(service: PresentationService, mock_repo: Any) -> None:
     """Test getting analysis details with complex data."""
     mock_repo.get_analysis_details.return_value = {
         "analysis_id": "123e4567-e89b-12d3-a456-426614174000",
@@ -129,7 +149,12 @@ def test_get_analysis_details_complex(service, mock_repo):
         "risk_score_rationale": "Rationale",
         "procurement_summary": "Summary",
         "analysis_summary": "Analysis Summary",
-        "red_flags": '[{"category": "SOBREPRECO", "severity": "GRAVE", "description": "Desc", "evidence_quote": "Quote", "auditor_reasoning": "Reasoning", "potential_savings": 100.0, "sources": [{"name": "Source", "type": "VAREJO", "reference_price": 10.0}]}]',
+        "red_flags": (
+            '[{"category": "SOBREPRECO", "severity": "GRAVE", "description": "Desc", '
+            '"evidence_quote": "Quote", "auditor_reasoning": "Reasoning", '
+            '"potential_savings": 100.0, "sources": [{"name": "Source", "type": "VAREJO", '
+            '"reference_price": 10.0}]}]'
+        ),
         "seo_keywords": [],
         "created_at": "2023-01-01",
         "grounding_metadata": {},
@@ -137,7 +162,11 @@ def test_get_analysis_details_complex(service, mock_repo):
         "total_estimated_value": 1000.0,
         "modality_id": 99,  # Unknown modality
         "procurement_status_id": 99,  # Unknown status
-        "raw_data": '{"unidadeOrgao": {"municipioNome": "City", "ufSigla": "UF"}, "orgaoEntidade": {"razaoSocial": "Agency", "cnpj": "123"}, "anoCompra": 2023, "sequencialCompra": 1}',
+        "raw_data": (
+            '{"unidadeOrgao": {"municipioNome": "City", "ufSigla": "UF"}, '
+            '"orgaoEntidade": {"razaoSocial": "Agency", "cnpj": "123"}, '
+            '"anoCompra": 2023, "sequencialCompra": 1}'
+        ),
     }
 
     result = service.get_analysis_details("123e4567-e89b-12d3-a456-426614174000")
@@ -148,3 +177,31 @@ def test_get_analysis_details_complex(service, mock_repo):
     assert result["red_flags"][0]["category"] == "Sobrepreço"
     assert result["red_flags"][0]["sources"][0]["type"] == "Varejo"
     assert result["official_link"] == "https://pncp.gov.br/app/editais/123/2023/1"
+
+
+def test_map_to_view_complex(service: PresentationService) -> None:
+    """Test mapping to view with complex data."""
+    mock_analysis = MagicMock(spec=AnalysisResult)
+    mock_analysis.analysis_id = "123"
+    mock_analysis.procurement_control_number = "123456"
+    mock_analysis.ai_analysis = MagicMock(spec=Analysis)
+    mock_analysis.ai_analysis.risk_score = 80
+    mock_analysis.ai_analysis.procurement_summary = "Summary"
+    mock_analysis.ai_analysis.analysis_summary = "Analysis Summary"
+
+    # Mock red flags with savings
+    flag1 = MagicMock()
+    flag1.potential_savings = 100.0
+    flag2 = MagicMock()
+    flag2.potential_savings = 50.0
+    mock_analysis.ai_analysis.red_flags = [flag1, flag2]
+
+    mock_analysis.created_at = "2023-01-01"
+    mock_analysis.raw_data = (
+        '{"unidadeOrgao": {"municipioNome": "City", "ufSigla": "UF"}, "orgaoEntidade": {"razaoSocial": "Agency"}}'
+    )
+
+    result = service._map_to_view(mock_analysis)
+    assert result["savings"] == "R$ 150,00"
+    assert result["location"] == "City - UF"
+    assert result["agency"] == "Agency"

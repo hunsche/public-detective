@@ -1,6 +1,7 @@
 import os
 import socket
-import subprocess
+import subprocess  # nosec B404
+import tempfile
 import threading
 import time
 import uuid
@@ -25,7 +26,7 @@ def get_free_port() -> int:
 
 
 def _setup_environment(run_id: str) -> str:
-    config = ConfigProvider.get_config()
+    ConfigProvider.get_config()
     schema_name = f"test_web_e2e_{run_id}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
     return schema_name
@@ -55,7 +56,7 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
     alembic_cfg = AlembicConfig("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
     alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
-    lock_path = Path("/tmp/tests_alembic.lock")
+    lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
     try:
         with FileLock(str(lock_path)):
             command.upgrade(alembic_cfg, "head")
@@ -66,7 +67,6 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
 def _seed_database(schema_name: str) -> None:
     """Populates the database with seed data using the pd CLI."""
     import shutil
-    import sys
 
     seed_file = Path(__file__).parent.parent.parent.parent / "tests" / "fixtures" / "seed.sql"
     if not seed_file.exists():
@@ -80,16 +80,16 @@ def _seed_database(schema_name: str) -> None:
     try:
         # Patch the seed file to fix unescaped quotes
         # We use sed to replace d'\u with d''\u
-        cmd_sed = f"sed -i \"s/d'\\\\\\\\u/d''\\\\\\\\u/g\" {seed_file}"
-        subprocess.run(cmd_sed, shell=True, check=True)
+        cmd_sed = ["sed", "-i", "s/d'\\\\\\\\u/d''\\\\\\\\u/g", str(seed_file)]
+        subprocess.run(cmd_sed, check=True)  # nosec B603
 
         # Run the pd command
-        cmd_pd = f"poetry run pd db populate --schema {schema_name}"
-        subprocess.run(cmd_pd, shell=True, check=True, capture_output=True, text=True)
+        cmd_pd = ["poetry", "run", "pd", "db", "populate", "--schema", schema_name]
+        subprocess.run(cmd_pd, check=True, capture_output=True, text=True)  # nosec B603
     except subprocess.CalledProcessError as e:
-        pytest.fail(
-            f"Database seeding failed:\nSTDOUT: {e.stdout if hasattr(e, 'stdout') else ''}\nSTDERR: {e.stderr if hasattr(e, 'stderr') else ''}"
-        )
+        stdout = e.stdout if hasattr(e, "stdout") else ""
+        stderr = e.stderr if hasattr(e, "stderr") else ""
+        pytest.fail(f"Database seeding failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during seeding: {e}")
     finally:
@@ -157,7 +157,7 @@ def live_server_url(db_session: Engine) -> Generator[str, None, None]:
 
     for _ in range(50):
         try:
-            response = requests.get(health_url)
+            response = requests.get(health_url, timeout=5)
             if response.status_code == 200:
                 break
         except Exception:
@@ -172,7 +172,7 @@ def live_server_url(db_session: Engine) -> Generator[str, None, None]:
 
 
 @pytest.fixture(scope="session")
-def browser_context_args(browser_context_args):
+def browser_context_args(browser_context_args: dict) -> dict:
     return {
         **browser_context_args,
         "viewport": {

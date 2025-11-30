@@ -1,6 +1,6 @@
 import os
-import socket
-import subprocess
+import subprocess  # nosec B404
+import tempfile
 import time
 import uuid
 from collections.abc import Generator
@@ -16,7 +16,7 @@ from sqlalchemy.engine import Engine
 
 
 def _setup_environment(run_id: str) -> str:
-    config = ConfigProvider.get_config()
+    ConfigProvider.get_config()
     schema_name = f"test_web_int_{run_id}"
     os.environ["POSTGRES_DB_SCHEMA"] = schema_name
     return schema_name
@@ -46,7 +46,7 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
     alembic_cfg = AlembicConfig("alembic.ini")
     alembic_cfg.set_main_option("sqlalchemy.url", str(engine.url))
     alembic_cfg.set_main_option("POSTGRES_DB_SCHEMA", schema_name)
-    lock_path = Path("/tmp/tests_alembic.lock")
+    lock_path = Path(tempfile.gettempdir()) / "tests_alembic.lock"
     try:
         with FileLock(str(lock_path)):
             command.upgrade(alembic_cfg, "head")
@@ -71,16 +71,16 @@ def _seed_database(schema_name: str) -> None:
     try:
         # Patch the seed file to fix unescaped quotes
         # We use sed to replace d'\u with d''\u
-        cmd_sed = f"sed -i \"s/d'\\\\\\\\u/d''\\\\\\\\u/g\" {seed_file}"
-        subprocess.run(cmd_sed, shell=True, check=True)
+        cmd_sed = ["sed", "-i", "s/d'\\\\\\\\u/d''\\\\\\\\u/g", str(seed_file)]
+        subprocess.run(cmd_sed, check=True)  # nosec B603
 
         # Run the pd command
-        cmd_pd = f"poetry run pd db populate --schema {schema_name}"
-        subprocess.run(cmd_pd, shell=True, check=True, capture_output=True, text=True)
+        cmd_pd = ["poetry", "run", "pd", "db", "populate", "--schema", schema_name]
+        subprocess.run(cmd_pd, check=True, capture_output=True, text=True)  # nosec B603
     except subprocess.CalledProcessError as e:
-        pytest.fail(
-            f"Database seeding failed:\nSTDOUT: {e.stdout if hasattr(e, 'stdout') else ''}\nSTDERR: {e.stderr if hasattr(e, 'stderr') else ''}"
-        )
+        stdout = e.stdout if hasattr(e, "stdout") else ""
+        stderr = e.stderr if hasattr(e, "stderr") else ""
+        pytest.fail(f"Database seeding failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during seeding: {e}")
     finally:

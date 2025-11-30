@@ -1,5 +1,6 @@
 """Unit tests for web pages."""
 
+from collections.abc import Generator
 from datetime import datetime
 from unittest.mock import MagicMock
 
@@ -10,20 +11,20 @@ from public_detective.web.presentation import PresentationService
 
 
 @pytest.fixture
-def mock_presentation_service():
+def mock_presentation_service() -> MagicMock:
     """Mock the presentation service."""
     return MagicMock(spec=PresentationService)
 
 
 @pytest.fixture
-def client(mock_presentation_service):
+def client(mock_presentation_service: MagicMock) -> Generator[TestClient, None, None]:
     """Create a test client with mocked dependencies."""
     app.dependency_overrides[PresentationService] = lambda: mock_presentation_service
     yield TestClient(app)
     app.dependency_overrides.clear()
 
 
-def test_home(client, mock_presentation_service):
+def test_home(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the home page."""
     mock_presentation_service.get_home_stats.return_value = {
         "total_analyses": 10,
@@ -37,7 +38,7 @@ def test_home(client, mock_presentation_service):
     assert "R$ 1.000,00" in response.text
 
 
-def test_analyses_list(client, mock_presentation_service):
+def test_analyses_list(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the analyses list page."""
     mock_presentation_service.get_recent_analyses.return_value = {
         "results": [],
@@ -52,7 +53,22 @@ def test_analyses_list(client, mock_presentation_service):
     assert "Análises de Licitações" in response.text
 
 
-def test_analyses_search(client, mock_presentation_service):
+def test_analyses_pagination(client: TestClient, mock_presentation_service: MagicMock) -> None:
+    """Test the analyses list page with pagination."""
+    mock_presentation_service.get_recent_analyses.return_value = {
+        "results": [],
+        "total": 20,
+        "page": 2,
+        "pages": 2,
+        "has_next": False,
+        "has_prev": True,
+    }
+    response = client.get("/analyses?page=2")
+    assert response.status_code == 200
+    mock_presentation_service.get_recent_analyses.assert_called_once_with(page=2)
+
+
+def test_analyses_search(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the analyses search."""
     mock_presentation_service.search_analyses.return_value = {
         "results": [],
@@ -67,7 +83,7 @@ def test_analyses_search(client, mock_presentation_service):
     mock_presentation_service.search_analyses.assert_called_once_with("test", page=1)
 
 
-def test_analyses_htmx(client, mock_presentation_service):
+def test_analyses_htmx(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the analyses list with HTMX request."""
     mock_presentation_service.get_recent_analyses.return_value = {
         "results": [],
@@ -85,7 +101,7 @@ def test_analyses_htmx(client, mock_presentation_service):
     assert "Nenhuma análise encontrada" in response.text
 
 
-def test_analysis_detail(client, mock_presentation_service):
+def test_analysis_detail(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the analysis detail page."""
     mock_presentation_service.get_analysis_details.return_value = {
         "id": "123",
@@ -110,7 +126,7 @@ def test_analysis_detail(client, mock_presentation_service):
     assert "Test Summary" in response.text
 
 
-def test_analysis_detail_not_found(client, mock_presentation_service):
+def test_analysis_detail_not_found(client: TestClient, mock_presentation_service: MagicMock) -> None:
     """Test the analysis detail page when not found."""
     mock_presentation_service.get_analysis_details.return_value = None
     response = client.get("/analyses/123")

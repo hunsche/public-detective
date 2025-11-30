@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Any
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Query, Request
 from fastapi.templating import Jinja2Templates
 from public_detective.web.presentation import PresentationService
 
@@ -31,7 +31,7 @@ def home(request: Request, service: PresentationService = Depends()) -> Any:  # 
 @router.get("/analyses", name="analyses")
 def analyses(
     request: Request,
-    q: str = "",
+    query: str = Query("", alias="q"),  # noqa: B008
     page: int = 1,
     service: PresentationService = Depends(),  # noqa: B008
 ) -> Any:
@@ -39,19 +39,19 @@ def analyses(
 
     Args:
         request: The request object.
-        q: The search query.
+        query: The search query.
         page: The page number.
         service: The presentation service.
 
     Returns:
         The rendered template response.
     """
-    if q:
-        results = service.search_analyses(q, page=page)
+    if query:
+        results = service.search_analyses(query, page=page)
     else:
         results = service.get_recent_analyses(page=page)
 
-    context = {"request": request, "analyses": results, "q": q}
+    context = {"request": request, "analyses": results, "q": query}
 
     if request.headers.get("HX-Request"):
         return templates.TemplateResponse(request, "partials/analysis_list.html", context)

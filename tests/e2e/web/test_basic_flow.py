@@ -1,7 +1,8 @@
+import pytest
 from playwright.sync_api import Page, expect
 
 
-def test_homepage_loads(page: Page, live_server_url: str):
+def test_homepage_loads(page: Page, live_server_url: str) -> None:
     # Assuming the app is running on localhost:8000 (needs to be started separately or via fixture)
     # For now, we might need a fixture to start the server or assume it's running.
     # Given the complexity of starting the server in tests, we might want to use a plugin or a custom fixture.
