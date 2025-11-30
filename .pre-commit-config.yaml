@@ -47,6 +47,7 @@ repos:
         language: node
         types: [html]
         args: [--write]
+        require_serial: true
   - repo: https://github.com/asottile/pyupgrade
     rev: v3.15.2
     hooks:
