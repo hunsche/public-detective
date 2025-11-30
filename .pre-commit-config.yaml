@@ -5,12 +5,18 @@ repos:
     rev: v4.6.0
     hooks:
       - id: check-merge-conflict
+        name: Check Merge Conflict
       - id: trailing-whitespace
+        name: Trailing Whitespace
       - id: end-of-file-fixer
+        name: Fix End of Files
       - id: debug-statements
+        name: Debug Statements
 
       - id: check-added-large-files
+        name: Check Added Large Files
       - id: name-tests-test
+        name: Python Tests Naming
         args:
           - --pytest-test-first
   - repo: https://github.com/djlint/djLint
@@ -30,12 +36,13 @@ repos:
     rev: v4.0.0-alpha.8
     hooks:
       - id: prettier
+        name: Prettier
         types_or: [css, javascript, json, yaml, markdown]
         exclude: \.html$
   - repo: local
     hooks:
       - id: rustywind
-        name: rustywind
+        name: Rustywind
         entry: npx rustywind
         language: node
         types: [html]
@@ -44,12 +51,13 @@ repos:
     rev: v3.15.2
     hooks:
       - id: pyupgrade
+        name: Pyupgrade
         args:
           - --py312-plus
   - repo: local
     hooks:
       - id: black
-        name: black
+        name: Black
         entry: black
         language: python
         require_serial: true
@@ -57,7 +65,7 @@ repos:
           - python
           - pyi
       - id: isort
-        name: isort
+        name: Isort
         entry: isort
         require_serial: true
         language: python
@@ -68,7 +76,7 @@ repos:
         args:
           - --filter-files
       - id: flake8
-        name: flake8
+        name: Flake8
         entry: flake8
         language: python
         types:
@@ -76,7 +84,7 @@ repos:
         require_serial: true
 
       - id: mypy
-        name: mypy
+        name: Mypy
         entry: mypy
         language: python
         types_or:
@@ -86,7 +94,7 @@ repos:
         additional_dependencies:
           - types-requests
       - id: vulture
-        name: vulture
+        name: Vulture
         language: python
         entry: vulture
         types:
@@ -113,14 +121,14 @@ repos:
           - -c
           - .bandit-migrations.yaml
       - id: interrogate
-        name: interrogate
+        name: Interrogate
         entry: interrogate
         language: python
         types:
           - python
         exclude: ^(source/public_detective/migrations/|tests/|docs/)
       - id: pydocstyle
-        name: pydocstyle
+        name: Pydocstyle
         entry: pydocstyle
         language: python
         types:
@@ -129,7 +137,7 @@ repos:
         args:
           - --convention=google
       - id: pytest-cov
-        name: pytest-cov
+        name: Pytest Coverage
         entry: poetry run pytest -n auto --cov=source
         language: system
         types:
