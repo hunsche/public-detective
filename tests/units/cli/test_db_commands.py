@@ -1,5 +1,6 @@
 """Tests for the db command group."""
 
+import os
 import subprocess  # nosec B404
 from unittest.mock import MagicMock, patch
 
@@ -165,3 +166,98 @@ def test_db_populate_command_file_not_found(
 
     assert result.exit_code == 1
     assert "Error: Dump file tests/fixtures/seed.sql not found!" in result.output
+
+
+@patch.dict(os.environ)
+def test_db_group_with_schema() -> None:
+    """Tests the db group with schema option."""
+    runner = CliRunner()
+
+    # Let's try invoking "migrate" with parent option.
+    with patch("public_detective.cli.db.subprocess.run"):
+        result = runner.invoke(db_group, ["--schema", "test_schema", "migrate"])
+        assert result.exit_code == 0
+        assert os.environ["POSTGRES_DB_SCHEMA"] == "test_schema"
+    # Actually, let's just trust the existing tests cover the logic if we hit the line.
+    # The missing line 19 is: os.environ["POSTGRES_DB_SCHEMA"] = schema
+    # We need to ensure we pass --schema to the GROUP.
+
+
+@patch("public_detective.cli.db.subprocess.run")
+def test_db_reset_command_interactive(mock_run: MagicMock) -> None:
+    """Tests the db reset command in interactive mode."""
+    runner = CliRunner()
+    # Simulate "y" input
+    result = runner.invoke(db_group, ["reset"], input="y\n")
+    assert result.exit_code == 0
+    assert "Resetting database..." in result.output
+    mock_run.assert_called()
+
+
+@patch("public_detective.cli.db.subprocess.Popen")
+@patch("public_detective.cli.db.ConfigProvider")
+@patch("builtins.open", new_callable=MagicMock)
+def test_db_populate_command_with_schema(mock_open: MagicMock, mock_config: MagicMock, mock_popen: MagicMock) -> None:
+    """Tests the db populate command with schema."""
+    mock_config.get_config.return_value.POSTGRES_PASSWORD = "password"  # nosec B105
+    mock_config.get_config.return_value.POSTGRES_DB_SCHEMA = "public"
+    mock_config.get_config.return_value.POSTGRES_HOST = "localhost"
+    mock_config.get_config.return_value.POSTGRES_PORT = "5432"
+    mock_config.get_config.return_value.POSTGRES_USER = "user"
+    mock_config.get_config.return_value.POSTGRES_DB = "db"
+
+    mock_process = MagicMock()
+    mock_process.communicate.return_value = (b"Success", b"")
+    mock_process.returncode = 0
+    mock_popen.return_value = mock_process
+
+    mock_file = MagicMock()
+    mock_file.read.return_value = "SQL DUMP"
+    mock_open.return_value.__enter__.return_value = mock_file
+
+    runner = CliRunner()
+    result = runner.invoke(db_group, ["populate", "--schema", "test_schema"])
+
+    assert result.exit_code == 0
+    # Check if input content has set search path
+    # We can check the input passed to communicate
+    args, kwargs = mock_process.communicate.call_args
+    input_content = kwargs["input"].decode("utf-8")
+    assert "SET search_path TO test_schema;" in input_content
+
+
+@patch("public_detective.cli.db.subprocess.Popen")
+@patch("public_detective.cli.db.ConfigProvider")
+@patch("builtins.open", new_callable=MagicMock)
+def test_db_populate_command_failure(mock_open: MagicMock, mock_config: MagicMock, mock_popen: MagicMock) -> None:
+    """Tests the db populate command failure."""
+    mock_config.get_config.return_value.POSTGRES_PASSWORD = "password"  # nosec B105
+
+    mock_process = MagicMock()
+    mock_process.communicate.return_value = (b"", b"Error message")
+    mock_process.returncode = 1
+    mock_popen.return_value = mock_process
+
+    mock_file = MagicMock()
+    mock_file.read.return_value = "SQL DUMP"
+    mock_open.return_value.__enter__.return_value = mock_file
+
+    runner = CliRunner()
+    result = runner.invoke(db_group, ["populate"])
+
+    assert result.exit_code == 1
+    assert "An error occurred during population: Error message" in result.output
+
+
+@patch("public_detective.cli.db.subprocess.Popen")
+@patch("public_detective.cli.db.ConfigProvider")
+@patch("builtins.open", new_callable=MagicMock)
+def test_db_populate_command_exception(mock_open: MagicMock, mock_config: MagicMock, mock_popen: MagicMock) -> None:
+    """Tests the db populate command unexpected exception."""
+    mock_open.side_effect = Exception("Unexpected error")
+
+    runner = CliRunner()
+    result = runner.invoke(db_group, ["populate"])
+
+    assert result.exit_code == 1
+    assert "An unexpected error occurred: Unexpected error" in result.output

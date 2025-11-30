@@ -2,7 +2,7 @@
 
 from collections.abc import Generator
 from datetime import datetime
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
@@ -131,3 +131,92 @@ def test_analysis_detail_not_found(client: TestClient, mock_presentation_service
     mock_presentation_service.get_analysis_details.return_value = None
     response = client.get("/analyses/123")
     assert response.status_code == 404
+
+
+def test_home_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the home function directly."""
+    from fastapi import Request
+    from public_detective.web.pages import home
+
+    request = MagicMock(spec=Request)
+    mock_presentation_service.get_home_stats.return_value = {}
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        home(request, mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "index.html"
+
+
+def test_analyses_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the analyses function directly."""
+    from fastapi import Request
+    from public_detective.web.pages import analyses
+
+    request = MagicMock(spec=Request)
+    request.headers = {}
+    mock_presentation_service.get_recent_analyses.return_value = {}
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        analyses(request, query="", page=1, service=mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "analyses.html"
+
+
+def test_analyses_search_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the analyses search function directly."""
+    from fastapi import Request
+    from public_detective.web.pages import analyses
+
+    request = MagicMock(spec=Request)
+    request.headers = {}
+    mock_presentation_service.search_analyses.return_value = {}
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        analyses(request, query="test", page=1, service=mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "analyses.html"
+
+
+def test_analyses_htmx_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the analyses function directly with HTMX."""
+    from fastapi import Request
+    from public_detective.web.pages import analyses
+
+    request = MagicMock(spec=Request)
+    request.headers = {"HX-Request": "true"}
+    mock_presentation_service.get_recent_analyses.return_value = {}
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        analyses(request, query="", page=1, service=mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "partials/analysis_list.html"
+
+
+def test_analysis_detail_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the analysis_detail function directly."""
+    from fastapi import Request
+    from public_detective.web.pages import analysis_detail
+
+    request = MagicMock(spec=Request)
+    mock_presentation_service.get_analysis_details.return_value = {"id": "123"}
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        analysis_detail(request, analysis_id="123", service=mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "analysis_detail.html"
+
+
+def test_analysis_detail_not_found_direct(mock_presentation_service: MagicMock) -> None:
+    """Test the analysis_detail function directly when not found."""
+    from fastapi import Request
+    from public_detective.web.pages import analysis_detail
+
+    request = MagicMock(spec=Request)
+    mock_presentation_service.get_analysis_details.return_value = None
+
+    with patch("public_detective.web.pages.templates.TemplateResponse") as mock_render:
+        mock_render.return_value.status_code = 404
+        response = analysis_detail(request, analysis_id="123", service=mock_presentation_service)
+        mock_render.assert_called_once()
+        assert mock_render.call_args[0][1] == "404.html"
+        assert response.status_code == 404
