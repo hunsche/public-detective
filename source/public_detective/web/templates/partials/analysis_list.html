@@ -1,15 +1,15 @@
 {% for analysis in analyses.results %}
-  <div class="flex overflow-hidden flex-col h-full rounded-xl border transition-all hover:shadow-lg bg-secondary/30 border-white/5 group hover:border-accent/30 hover:shadow-accent/5">
+  <div class="flex overflow-hidden flex-col h-full rounded-xl border transition-all hover:shadow-lg bg-surface/30 border-text-muted/5 group dark:bg-secondary/30 dark:border-white/5 hover:border-accent/30 hover:shadow-accent/5">
     <div class="flex flex-col p-5 h-full">
       <!-- Header: Score & Date -->
       <div class="flex justify-between items-center mb-3">
-        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if analysis.score > 70 %}bg-red-900/30 text-red-400 border border-red-800/50 {% elif analysis.score > 40 %}bg-yellow-900/30 text-yellow-400 border border-yellow-800/50 {% else %}bg-green-900/30 text-green-400 border border-green-800/50{% endif %}">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold {% if analysis.score > 70 %}bg-red-100 text-red-800 border border-red-200 dark:bg-red-900/30 dark:text-red-400 dark:border-red-800/50 {% elif analysis.score > 40 %}bg-yellow-100 text-yellow-800 border border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-400 dark:border-yellow-800/50 {% else %}bg-green-100 text-green-800 border border-green-200 dark:bg-green-900/30 dark:text-green-400 dark:border-green-800/50{% endif %}">
           Risco: {{ analysis.score }}/100
         </span>
-        <span class="text-xs text-slate-500">{{ analysis.created_at.strftime("%d/%m/%Y") }}</span>
+        <span class="text-xs text-text-muted">{{ analysis.created_at.strftime("%d/%m/%Y") }}</span>
       </div>
       <!-- Agency -->
-      <div class="flex gap-1.5 items-center mb-1 text-slate-400">
+      <div class="flex gap-1.5 items-center mb-1 text-text-muted">
         <svg xmlns="http://www.w3.org/2000/svg"
              width="14"
              height="14"
@@ -35,11 +35,11 @@
             title="{{ analysis.agency }}">{{ analysis.agency }}</h4>
       </div>
       <!-- Title / Control Number -->
-      <h3 class="mb-1 text-lg font-bold text-white transition-colors font-heading group-hover:text-accent">
+      <h3 class="mb-1 text-lg font-bold transition-colors dark:text-white text-text font-heading group-hover:text-accent">
         {{ analysis.control_number }}
       </h3>
       <!-- Location -->
-      <div class="flex gap-1 items-center mb-3 text-xs text-slate-500">
+      <div class="flex gap-1 items-center mb-3 text-xs text-text-muted">
         <svg xmlns="http://www.w3.org/2000/svg"
              width="12"
              height="12"
@@ -55,12 +55,12 @@
         {{ analysis.location }}
       </div>
       <!-- Summary -->
-      <p class="flex-grow mb-4 text-sm leading-relaxed text-slate-400 line-clamp-3">{{ analysis.summary }}</p>
+      <p class="flex-grow mb-4 text-sm leading-relaxed text-text-muted line-clamp-3">{{ analysis.summary }}</p>
       <!-- Footer: Savings & Link -->
-      <div class="flex justify-between items-center pt-3 mt-auto border-t border-white/5">
+      <div class="flex justify-between items-center pt-3 mt-auto border-t border-text-muted/5 dark:border-white/5">
         <div>
           {% if analysis.savings %}
-            <span class="inline-flex gap-1 items-center py-1 px-2 text-xs font-medium text-green-400 rounded border bg-green-900/20 border-green-900/30">
+            <span class="inline-flex gap-1 items-center py-1 px-2 text-xs font-medium text-green-800 bg-green-100 rounded border border-green-200 dark:text-green-400 dark:bg-green-900/20 dark:border-green-900/30">
               Economia Potencial: {{ analysis.savings }}
             </span>
           {% endif %}
@@ -85,38 +85,38 @@
     </div>
   </div>
 {% else %}
-  <div class="col-span-full py-20 text-center text-slate-500">
+  <div class="col-span-full py-20 text-center text-text-muted">
     <p>Nenhuma análise encontrada.</p>
   </div>
 {% endfor %}
 {% if analyses.pages > 1 %}
-  <div class="flex col-span-full gap-4 justify-center items-center pt-8 mt-8 border-t border-white/5">
+  <div class="flex col-span-full gap-4 justify-center items-center pt-8 mt-8 border-t border-text-muted/5 dark:border-white/5">
     {% if analyses.has_prev %}
       <button hx-get="/analyses?page={{ analyses.page - 1 }}&q={{ q }}"
               hx-target="#analysis-list"
               hx-indicator=".htmx-indicator"
-              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-secondary/50 text-slate-300 border-white/10 hover:bg-secondary hover:border-accent/30">
+              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-surface/50 text-text border-text-muted/10 dark:bg-secondary/50 dark:text-slate-300 dark:border-white/10 dark:hover:bg-secondary hover:bg-surface hover:border-accent/30">
         Anterior
       </button>
     {% else %}
       <button disabled
-              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-secondary/20 text-slate-600 border-white/5">
+              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-surface/20 text-text-muted border-text-muted/5 dark:bg-secondary/20 dark:text-slate-600 dark:border-white/5">
         Anterior
       </button>
     {% endif %}
-    <span class="text-sm font-medium text-slate-400">
-      Página <span class="text-white">{{ analyses.page }}</span> de <span class="text-white">{{ analyses.pages }}</span>
+    <span class="text-sm font-medium text-text-muted">
+      Página <span class="dark:text-white text-text">{{ analyses.page }}</span> de <span class="dark:text-white text-text">{{ analyses.pages }}</span>
     </span>
     {% if analyses.has_next %}
       <button hx-get="/analyses?page={{ analyses.page + 1 }}&q={{ q }}"
               hx-target="#analysis-list"
               hx-indicator=".htmx-indicator"
-              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-secondary/50 text-slate-300 border-white/10 hover:bg-secondary hover:border-accent/30">
+              class="py-2 px-4 text-sm font-medium rounded-lg border transition-colors hover:text-white bg-surface/50 text-text border-text-muted/10 dark:bg-secondary/50 dark:text-slate-300 dark:border-white/10 dark:hover:bg-secondary hover:bg-surface hover:border-accent/30">
         Próxima
       </button>
     {% else %}
       <button disabled
-              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-secondary/20 text-slate-600 border-white/5">
+              class="py-2 px-4 text-sm font-medium rounded-lg border cursor-not-allowed bg-surface/20 text-text-muted border-text-muted/5 dark:bg-secondary/20 dark:text-slate-600 dark:border-white/5">
         Próxima
       </button>
     {% endif %}
