@@ -12,3 +12,13 @@ variable "repository_id" {
   description = "The last part of the repository name."
   type        = string
 }
+
+variable "github_repo_owner" {
+  description = "The owner of the GitHub repository."
+  type        = string
+}
+
+variable "github_repo_name" {
+  description = "The name of the GitHub repository."
+  type        = string
+}

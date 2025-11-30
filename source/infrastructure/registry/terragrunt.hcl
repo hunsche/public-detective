@@ -7,5 +7,7 @@ terraform {
 }
 
 inputs = {
-  repository_id = "public-detective"
+  repository_id     = "public-detective"
+  github_repo_owner = "hunsche"
+  github_repo_name  = "public-detective"
 }
