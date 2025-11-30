@@ -4,7 +4,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import GcsCleanupManager, run_command
+from tests.e2e.workflows.conftest import GcsCleanupManager, run_command
 
 
 @pytest.mark.timeout(240)

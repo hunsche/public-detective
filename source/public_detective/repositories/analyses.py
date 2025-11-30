@@ -950,15 +950,18 @@ class AnalysisRepository:
 
         count_sql = text(
             """
-            SELECT COUNT(*)
-            FROM procurement_analyses pa
-            WHERE pa.status = :status
-            AND (
-                pa.procurement_summary ILIKE :q_summary
-                OR pa.analysis_summary ILIKE :q_summary
-                OR pa.procurement_control_number ILIKE :q_control_number
-            )
-        """
+        SELECT COUNT(*)
+        FROM procurement_analyses pa
+        JOIN procurements p ON pa.procurement_control_number = p.pncp_control_number
+                            AND pa.version_number = p.version_number
+        WHERE pa.status = :status
+        AND (
+            pa.procurement_summary ILIKE :q_summary
+            OR pa.analysis_summary ILIKE :q_summary
+            OR pa.procurement_control_number ILIKE :q_control_number
+            OR p.object_description ILIKE :q_summary
+        )
+    """
         )
 
         sql = text(
@@ -975,8 +978,10 @@ class AnalysisRepository:
                                 AND pa.version_number = p.version_number
             WHERE pa.status = :status
             AND (
-                procurement_summary ILIKE :q_summary
+                pa.procurement_summary ILIKE :q_summary
+                OR pa.analysis_summary ILIKE :q_summary
                 OR pa.procurement_control_number ILIKE :q_control_number
+                OR p.object_description ILIKE :q_summary
             )
             ORDER BY pa.risk_score DESC NULLS LAST, total_savings_calc DESC
             LIMIT :limit OFFSET :offset

@@ -9,7 +9,7 @@ from public_detective.providers.gcs import GcsProvider
 from pydantic import BaseModel
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import GcsCleanupManager
+from tests.e2e.workflows.conftest import GcsCleanupManager
 
 
 class MockOutputSchema(BaseModel):

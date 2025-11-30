@@ -31,7 +31,7 @@ def test_db_migrate_command_failure(mock_run: MagicMock) -> None:
 def test_db_downgrade_command_success(mock_run: MagicMock) -> None:
     """Tests the db downgrade command."""
     runner = CliRunner()
-    result = runner.invoke(db_group, ["downgrade"])
+    result = runner.invoke(db_group, ["downgrade"], input="y\n")
     assert result.exit_code == 0
     assert "Downgrade completed successfully!" in result.output
     mock_run.assert_called_once_with(["poetry", "run", "alembic", "downgrade", "-1"], check=True)
@@ -42,7 +42,7 @@ def test_db_downgrade_command_failure(mock_run: MagicMock) -> None:
     """Tests the db downgrade command failure case."""
     runner = CliRunner()
     mock_run.side_effect = subprocess.CalledProcessError(1, "cmd")
-    result = runner.invoke(db_group, ["downgrade"])
+    result = runner.invoke(db_group, ["downgrade"], input="y\n")
     assert result.exit_code == 1
     assert "An error occurred during downgrade" in result.output
 

@@ -32,7 +32,7 @@ from reportlab.pdfgen import canvas
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import GcsCleanupManager, MockPNCP, run_command
+from tests.e2e.workflows.conftest import GcsCleanupManager, MockPNCP, run_command
 
 
 # Helper functions to generate files
@@ -52,7 +52,7 @@ def create_doc(path: Path) -> None:
     Args:
         path: The path to the file.
     """
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.doc"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.doc"
     shutil.copy(fixture_path, path)
 
 
@@ -294,7 +294,7 @@ def create_xlsb(path: Path) -> None:
     Args:
         path: The path to the file.
     """
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.xlsb"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.xlsb"
     shutil.copy(fixture_path, path)
 
 
@@ -345,31 +345,31 @@ def create_media_from_fixture(path: Path, source_filename: str) -> None:
         path: The path to the file.
         source_filename: The name of the source file.
     """
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / source_filename
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / source_filename
     shutil.copy(fixture_path, path)
 
 
 def create_pptx(path: Path) -> None:
     """Copies a valid PPTX file from the fixtures directory."""
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.pptx"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.pptx"
     shutil.copy(fixture_path, path)
 
 
 def create_xlsm(path: Path) -> None:
     """Copies a valid XLSM file from the fixtures directory."""
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.xlsm"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.xlsm"
     shutil.copy(fixture_path, path)
 
 
 def create_docm(path: Path) -> None:
     """Copies a valid DOCM file from the fixtures directory."""
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.docm"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.docm"
     shutil.copy(fixture_path, path)
 
 
 def create_odg(path: Path) -> None:
     """Copies a valid ODG file from the fixtures directory."""
-    fixture_path = Path(__file__).parent.parent / "fixtures" / "file_samples" / "valid_test.odg"
+    fixture_path = Path(__file__).parent.parent.parent / "fixtures" / "file_samples" / "valid_test.odg"
     shutil.copy(fixture_path, path)
 
 

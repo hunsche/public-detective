@@ -7,7 +7,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from public_detective.web import pages
 
-app = FastAPI(title="Public Detective Showcase")
+app = FastAPI(title="Public Detective")
 
 
 static_path = Path(__file__).parent / "static"

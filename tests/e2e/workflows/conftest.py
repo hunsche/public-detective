@@ -50,7 +50,7 @@ def pytest_terminal_summary(terminalreporter: Any, exitstatus: int, config: Any)
     for report in reports:
         if (
             report.when == "setup"
-            and report.location[0] == "tests/e2e/test_debug_conversion.py"
+            and report.location[0] == "tests/e2e/workflows/test_debug_conversion.py"
             and "got empty parameter set" in str(report.longrepr)
         ):
             terminalreporter.write_line(

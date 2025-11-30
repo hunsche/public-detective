@@ -21,7 +21,7 @@ from public_detective.repositories.status_histories import StatusHistoryReposito
 from public_detective.services.analysis import AnalysisService
 from sqlalchemy import Engine, text
 
-from tests.e2e.test_file_extensions import (
+from tests.e2e.workflows.test_file_extensions import (
     create_docm,
     create_html,
     create_jfif,

@@ -157,15 +157,20 @@ These require the Docker services to be running.
 
 **Warning:** E2E tests are designed to run against real external services or local emulators and require a properly configured environment.
 
+We have two categories of E2E tests:
+
+1.  **Web E2E (`tests/e2e/web/`)**: Tests the frontend interactions using Playwright. These **should be run** as part of the standard verification process.
+2.  **Workflow E2E (`tests/e2e/workflows/`)**: Tests the backend processing pipeline (CLI -> Pub/Sub -> Worker -> DB). These are slower and require complex setup (GCP credentials, emulators).
+
 - **Who Should Run This?** Agents working on the full application flow or making changes that could impact multiple components.
-- **Purpose:** The E2E test (`tests/e2e/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.
+- **Purpose:** The Workflow E2E test (`tests/e2e/workflows/test_full_e2e.py`) validates the entire application flow, from the command-line interface to the database, simulating a real-world scenario. It is crucial for verifying that all components are integrated correctly.
 
 #### How to Run the E2E Test for Analysis
 
-To properly execute the E2E test and view all the necessary output for critical analysis, you must run `pytest` with the `-s` flag. This flag disables output capturing, allowing you to see the real-time logs from the CLI commands and, most importantly, the final JSON data dump.
+To properly execute the Workflow E2E test and view all the necessary output for critical analysis, you must run `pytest` with the `-s` flag. This flag disables output capturing, allowing you to see the real-time logs from the CLI commands and, most importantly, the final JSON data dump.
 
 ```bash
-poetry run pytest -s tests/e2e/test_full_e2e.py
+poetry run pytest -s tests/e2e/workflows/test_full_e2e.py
 ```
 
 Without the `-s` flag, the test might appear to pass, but you will not see the critical data required for your audit.

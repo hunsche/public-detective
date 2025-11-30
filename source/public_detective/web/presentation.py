@@ -71,14 +71,6 @@ class PresentationService:
             "has_prev": page > 1,
         }
 
-    def _get_total_savings(self, analysis: AnalysisResult) -> float:
-        total = 0.0
-        if analysis.ai_analysis and analysis.ai_analysis.red_flags:
-            for flag in analysis.ai_analysis.red_flags:
-                if flag.potential_savings:
-                    total += float(flag.potential_savings)
-        return total
-
     def _format_currency(self, value: float | None) -> str:
         if value is None:
             return "N/A"

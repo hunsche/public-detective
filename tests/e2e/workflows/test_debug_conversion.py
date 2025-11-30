@@ -2,7 +2,7 @@ import pytest
 from sqlalchemy import text
 from sqlalchemy.engine import Engine
 
-from tests.e2e.conftest import run_command
+from tests.e2e.workflows.conftest import run_command
 
 
 def test_debug_failed_conversion(db_session: Engine, pncp_control_number: str) -> None:
