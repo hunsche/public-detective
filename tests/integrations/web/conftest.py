@@ -56,24 +56,12 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
 
 def _seed_database(schema_name: str) -> None:
     """Populates the database with seed data using the pd CLI."""
-    import shutil
-
     # Adjust path to find seed.sql from tests/integrations/web
     seed_file = Path(__file__).parent.parent.parent.parent / "tests" / "fixtures" / "seed.sql"
     if not seed_file.exists():
         pytest.fail(f"Seed file not found at {seed_file}")
 
-    backup_file = seed_file.with_suffix(".sql.bak")
-
-    # Backup the original seed file
-    shutil.copy2(seed_file, backup_file)
-
     try:
-        # Patch the seed file to fix unescaped quotes
-        # We use sed to replace d'\u with d''\u
-        cmd_sed = ["sed", "-i", "s/d'\\\\\\\\u/d''\\\\\\\\u/g", str(seed_file)]
-        subprocess.run(cmd_sed, check=True)  # nosec B603
-
         # Run the pd command
         cmd_pd = ["poetry", "run", "pd", "db", "populate", "--schema", schema_name]
         subprocess.run(cmd_pd, check=True, capture_output=True, text=True)  # nosec B603
@@ -83,10 +71,6 @@ def _seed_database(schema_name: str) -> None:
         pytest.fail(f"Database seeding failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during seeding: {e}")
-    finally:
-        # Restore the original seed file
-        if backup_file.exists():
-            shutil.move(backup_file, seed_file)
 
 
 @pytest.fixture(scope="session")

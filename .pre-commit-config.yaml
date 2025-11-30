@@ -12,7 +12,6 @@ repos:
         name: Fix End of Files
       - id: debug-statements
         name: Debug Statements
-
       - id: check-added-large-files
         name: Check Added Large Files
       - id: name-tests-test
@@ -83,7 +82,6 @@ repos:
         types:
           - python
         require_serial: true
-
       - id: mypy
         name: Mypy
         entry: mypy
@@ -144,3 +142,19 @@ repos:
         types:
           - python
         pass_filenames: false
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.88.0
+    hooks:
+      - id: terraform_fmt
+      - id: terragrunt_fmt
+        entry: terragrunt hcl fmt
+        language: system
+      - id: terraform_docs
+        args:
+          - --args=--lockfile=false
+      # 4. Segurança Estática (Security Scanner)
+      # Procura senhas hardcoded, discos sem encriptação, etc.
+      - id: terraform_trivy
+      - id: terraform_tflint
+        args:
+          - --args=--config=__GIT_WORKING_DIR__/.tflint.hcl

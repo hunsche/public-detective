@@ -32,14 +32,11 @@ jobs:
           git config --global user.name "github-actions[bot]"
           git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Set up Python
-        uses: actions/setup-python@v4
-        with:
-          python-version: "3.12"
+      - name: Install asdf
+        uses: asdf-vm/actions/setup@v3
 
-      - name: Install Poetry
-        run: |
-          curl -sSL https://install.python-poetry.org | python3 -
+      - name: Install asdf tools
+        uses: asdf-vm/actions/install@v3
 
       - name: Install system dependencies
         run: |

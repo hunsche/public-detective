@@ -136,7 +136,6 @@ tests/.tmp
 *.tfstate.backup
 *.tfvars
 *.tfplan
-.terraform.lock.hcl
 
 # Terragrunt
 backend.tf
