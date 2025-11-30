@@ -14,6 +14,7 @@ from alembic import command
 from alembic.config import Config as AlembicConfig
 from filelock import FileLock
 from public_detective.providers.config import ConfigProvider
+from public_detective.providers.database import DatabaseManager
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import Engine
 
@@ -66,23 +67,11 @@ def _run_migrations(engine: Engine, schema_name: str) -> None:
 
 def _seed_database(schema_name: str) -> None:
     """Populates the database with seed data using the pd CLI."""
-    import shutil
-
     seed_file = Path(__file__).parent.parent.parent.parent / "tests" / "fixtures" / "seed.sql"
     if not seed_file.exists():
         pytest.fail(f"Seed file not found at {seed_file}")
 
-    backup_file = seed_file.with_suffix(".sql.bak")
-
-    # Backup the original seed file
-    shutil.copy2(seed_file, backup_file)
-
     try:
-        # Patch the seed file to fix unescaped quotes
-        # We use sed to replace d'\u with d''\u
-        cmd_sed = ["sed", "-i", "s/d'\\\\\\\\u/d''\\\\\\\\u/g", str(seed_file)]
-        subprocess.run(cmd_sed, check=True)  # nosec B603
-
         # Run the pd command
         cmd_pd = ["poetry", "run", "pd", "db", "populate", "--schema", schema_name]
         subprocess.run(cmd_pd, check=True, capture_output=True, text=True)  # nosec B603
@@ -92,10 +81,6 @@ def _seed_database(schema_name: str) -> None:
         pytest.fail(f"Database seeding failed:\nSTDOUT: {stdout}\nSTDERR: {stderr}")
     except Exception as e:
         pytest.fail(f"An unexpected error occurred during seeding: {e}")
-    finally:
-        # Restore the original seed file
-        if backup_file.exists():
-            shutil.move(backup_file, seed_file)
 
 
 @pytest.fixture(scope="session")
@@ -139,6 +124,9 @@ def live_server_url(db_session: Engine) -> Generator[str, None, None]:
     """Starts the web server and returns its URL."""
     # Ensure the env var is set (it should be from db_session, but let's be safe)
     # The db_session fixture sets os.environ["POSTGRES_DB_SCHEMA"] globally for the process.
+
+    # Reset the singleton engine so the app picks up the new schema
+    DatabaseManager.release_engine()
 
     port = get_free_port()
     host = "127.0.0.1"

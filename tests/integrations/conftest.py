@@ -14,6 +14,7 @@ from alembic.config import Config
 from filelock import FileLock
 from google.api_core import exceptions
 from public_detective.providers.config import ConfigProvider
+from public_detective.providers.database import DatabaseManager
 from public_detective.providers.gcs import GcsProvider
 from pydantic import BaseModel, ConfigDict, model_validator
 from sqlalchemy import create_engine, text
@@ -135,6 +136,9 @@ def db_session() -> Generator[Engine, Any, None]:
     )
     engine = create_engine(db_url, connect_args={"options": f"-csearch_path={schema_name}"})
 
+    # Reset the singleton engine so the app picks up the new schema
+    DatabaseManager.release_engine()
+
     # Wait for the database to be ready before proceeding
     for _ in range(60):
         try:
@@ -172,6 +176,16 @@ def db_session() -> Generator[Engine, Any, None]:
             )
             connection.execute(truncate_sql)
             connection.commit()
+
+            # Load seed data
+            seed_path = Path("tests/fixtures/seed.sql")
+            if seed_path.exists():
+                seed_lines = seed_path.read_text().splitlines()
+                # Filter out psql meta-commands (lines starting with \)
+                sanitized_lines = [line for line in seed_lines if not line.strip().startswith("\\")]
+                seed_sql = "\n".join(sanitized_lines)
+                connection.execute(text(seed_sql))
+                connection.commit()
         yield engine
     finally:
         with engine.connect() as connection:
