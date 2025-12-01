@@ -8,7 +8,7 @@ from fastapi.templating import Jinja2Templates
 from public_detective.web import pages
 from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
-app = FastAPI(title="Public Detective")
+app = FastAPI(title="Detetive Público")
 app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "public_detective"
-version = "1.0.0"
+version = "0.1.5"
 description = "An AI-powered tool for enhancing transparency and accountability in Brazilian public procurement."
 authors = ["Matheus Aoki Hunsche <mthunsche+public-detective@gmail.com>"]
 readme = "README.md"
