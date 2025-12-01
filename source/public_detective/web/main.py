@@ -6,8 +6,10 @@ from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from public_detective.web import pages
+from uvicorn.middleware.proxy_headers import ProxyHeadersMiddleware
 
 app = FastAPI(title="Public Detective")
+app.add_middleware(ProxyHeadersMiddleware, trusted_hosts="*")
 
 
 static_path = Path(__file__).parent / "static"
