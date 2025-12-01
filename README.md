@@ -175,6 +175,7 @@ The CLI is organized into logical groups:
 - **`analysis`**: Commands for running the different stages of the procurement analysis pipeline.
 - **`config`**: Tools for managing the application's configuration.
 - **`db`**: Utilities for database management, including migrations.
+- **`web`**: Manage the web interface.
 - **`worker`**: Commands to control the background worker responsible for processing analysis tasks.
 
 To see all available commands, you can run:
@@ -256,10 +257,16 @@ Handle database operations.
   pd db migrate
   ```
 
-- **`pd db downgrade`**: Reverts the last database migration.
+- **`pd db downgrade`**: **(Destructive)** Reverts the last database migration.
 
   ```bash
   pd db downgrade
+  ```
+
+- **`pd db populate`**: Populates the database with real analysis data.
+
+  ```bash
+  pd db populate
   ```
 
 - **`pd db reset`**: **(Destructive)** Resets the database to its initial state.
@@ -267,6 +274,18 @@ Handle database operations.
   ```bash
   pd db reset
   ```
+
+### `web` Group
+
+Manage the web interface.
+
+- **`pd web serve`**: Starts the web server.
+
+  ```bash
+  poetry run pd web serve --port 8000 --reload
+  ```
+
+  This will start the server at `http://localhost:8000`.
 
 ### `worker` Group
 
@@ -305,13 +324,3 @@ Distributed under the Creative Commons Attribution-NonCommercial 4.0 Internation
   </tr>
 </table>
 </div>
-
-## Running the Web Interface
-
-To start the web interface, run the following command:
-
-```bash
-poetry run pd web serve --port 8000 --reload
-```
-
-This will start the server at `http://localhost:8000`.
