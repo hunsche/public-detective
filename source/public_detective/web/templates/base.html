@@ -96,17 +96,18 @@
   <body class="flex flex-col min-h-screen">
     <header class="sticky top-0 z-50 border-b transition-colors duration-300 border-text-muted/10 bg-surface/80 backdrop-blur-md dark:bg-primary/80 dark:border-white/10">
       <div class="container flex justify-between items-center px-4 mx-auto h-[76px]">
-        <a href="{{ url_for("home") }}" class="flex gap-3 items-center group">
+        <a href="{{ url_for("home") }}"
+           class="flex gap-2 items-center md:gap-3 group">
           <img src="{{ url_for('static', path='logo.svg') }}"
                alt="Detetive Público Logo"
                width="56"
                height="56"
                class="w-14 h-14 transition-transform group-hover:scale-110">
-          <span class="text-xl font-bold tracking-tight dark:text-white text-text font-heading">Detetive <span class="text-accent">Público</span></span>
+          <span class="text-xl font-bold tracking-tight whitespace-nowrap dark:text-white text-text font-heading">Detetive <span class="text-accent">Público</span></span>
         </a>
         <nav>
-          <ul class="flex gap-6 items-center">
-            <li>
+          <ul class="flex gap-3 items-center md:gap-6">
+            <li class="hidden md:block">
               <a href="{{ url_for("home") }}"
                  class="font-medium transition-colors hover:text-accent">Início</a>
             </li>
