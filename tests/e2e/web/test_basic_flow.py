@@ -13,7 +13,7 @@ def test_homepage_loads(page: Page, live_server_url: str) -> None:
     # Or use the `live_server` fixture if using something like pytest-django/flask/fastapi-deps.
 
     page.goto(live_server_url)
-    expect(page).to_have_title("Detetive Público - Home")
+    expect(page).to_have_title("Detetive Público - Início")
 
     # Navigate to the analyses page
     page.get_by_role("link", name="Ver Análises").click()

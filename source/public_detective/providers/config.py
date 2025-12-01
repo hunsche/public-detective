@@ -34,6 +34,9 @@ class Config(BaseSettings):
     POSTGRES_DB: str = "public_detective"
     POSTGRES_DB_SCHEMA: str | None = None
 
+    USE_CLOUD_SQL_AUTH: bool = False
+    INSTANCE_CONNECTION_NAME: str | None = None
+
     PNCP_PUBLIC_QUERY_API_URL: str = "https://pncp.gov.br/api/consulta/v1/"
     PNCP_INTEGRATION_API_URL: str = "https://pncp.gov.br/api/pncp/v1/"
 

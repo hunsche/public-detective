@@ -1,6 +1,6 @@
 <div align="center">
 
-[![CI](https://github.com/hunsche/public-detective/actions/workflows/ci.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/ci.yml)
+[![CI](https://github.com/hunsche/public-detective/actions/workflows/validation.yml/badge.svg)](https://github.com/hunsche/public-detective/actions/workflows/validation.yml)
 ![Code Coverage](./.github/badges/code-coverage.svg)
 ![Docstring Coverage](./.github/badges/docstring-coverage.svg)
 [![License: CC BY-NC 4.0](https://img.shields.io/badge/License-CC%20BY--NC%204.0-lightgrey.svg)](https://creativecommons.org/licenses/by-nc/4.0/)

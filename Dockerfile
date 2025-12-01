@@ -5,6 +5,7 @@ RUN apt-get update && apt-get install -y \
     libreoffice-writer-nogui \
     imagemagick \
     curl \
+    libmagic1 \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Poetry

@@ -36,6 +36,15 @@ This directory contains the Infrastructure as Code (IaC) for the project, manage
     gcloud storage buckets update gs://terraform-state-$GCP_PROJECT --versioning-enabled
     ```
 
+4.  **Start Cloud SQL Proxy:**
+
+    To run database migrations or populate data locally, you need the Cloud SQL Proxy running.
+
+    ```bash
+    # Replace <PROJECT_ID> with your actual project ID
+    cloud-sql-proxy --port 5433 --auto-iam-authn <PROJECT_ID>:us-central1:postgres-01
+    ```
+
 ## Usage
 
 We use `terragrunt` to manage the infrastructure.

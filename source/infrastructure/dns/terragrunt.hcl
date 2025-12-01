@@ -7,6 +7,6 @@ terraform {
 }
 
 inputs = {
-  zone_name  = "detetive-publico-com"
-  domain     = "detetive-publico.com."
+  zone_name = "detetive-publico-com"
+  domain    = "detetive-publico.com."
 }
