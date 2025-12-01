@@ -1,5 +1,5 @@
-import pytest
 from playwright.sync_api import Page, expect
+
 
 def test_mobile_header_layout(page: Page, live_server_url: str) -> None:
     """Verifies that the responsive layout works correctly on mobile devices."""
