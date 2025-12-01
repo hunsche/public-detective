@@ -118,9 +118,13 @@ This project uses `docker-compose` to manage dependent services (PostgreSQL, GCS
     ```bash
     poetry run pd db populate
     ```
-4.  **Run the main analysis script (example):**
+4.  **Run the analysis preparation (example):**
     ```bash
-    poetry run python source/cli --start-date 2025-01-01 --end-date 2025-01-02
+    poetry run pd analysis prepare --start-date 2025-01-01 --end-date 2025-01-02
+    ```
+5.  **Start the Web Interface:**
+    ```bash
+    poetry run pd web serve --port 8000 --reload
     ```
 
 ## 4. Running Tests
@@ -398,11 +402,3 @@ After extensive testing, it was confirmed that this is a limitation of the linte
 Therefore, the project has made the pragmatic decision to **globally disable these two specific darglint rules** in the `.flake8` configuration file.
 
 **Trade-off:** By disabling these rules, we lose the automated check that ensures `Raises` sections in docstrings are perfectly synchronized with the code. This means all developers and agents **must be extra diligent** to manually update the `Raises` section of a function's docstring whenever they add or remove a `raise` statement.
-
-## Running the Web Interface
-
-To start the web interface, run the following command:
-
-```bash
-poetry run pd web serve --port 8000 --reload
-```
