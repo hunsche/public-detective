@@ -24,7 +24,7 @@ dependency "registry" {
 
 inputs = {
   service_name = "public-detective-web"
-  image        = "${dependency.registry.outputs.repository_url}/pd-cli:v0.1.3"
+  image        = "${dependency.registry.outputs.repository_url}/pd-cli:v0.1.4"
 
   vpc_network_id = dependency.vpc.outputs.network_id
   vpc_subnet_id  = dependency.vpc.outputs.subnet_id
